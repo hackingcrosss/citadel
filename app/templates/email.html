@@ -1,0 +1,481 @@
+{% extends "base.html" %}
+
+{% block title %}Email - InfraRed{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1 class="h3 mb-0">Email / Mailgun</h1>
+    <button class="btn btn-infrared" data-bs-toggle="modal" data-bs-target="#addDomainModal">
+        <i class="bi bi-plus-circle"></i> Add Domain
+    </button>
+</div>
+
+<!-- Domains Table -->
+<div class="card-custom mb-4">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <span><i class="bi bi-envelope"></i> Sending Domains</span>
+        <div class="d-flex align-items-center gap-2">
+            <select class="form-select form-select-sm" id="region-filter" onchange="loadDomains()" style="width:auto">
+                <option value="">All Regions</option>
+                <option value="us">US</option>
+                <option value="eu">EU</option>
+            </select>
+            <span class="badge bg-secondary" id="domain-count">0 domains</span>
+        </div>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead>
+                    <tr>
+                        <th>Domain</th>
+                        <th>Region</th>
+                        <th>State</th>
+                        <th>Type</th>
+                        <th>Created</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="domains-tbody">
+                    <tr><td colspan="6" class="text-center text-muted py-4">Loading domains...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Domain Detail Panel (shown when a domain is selected) -->
+<div id="domain-detail" style="display:none">
+    <!-- DNS Records -->
+    <div class="card-custom mb-4">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <span><i class="bi bi-shield-check"></i> DNS Records for <strong id="detail-domain-name"></strong></span>
+            <button class="btn btn-sm btn-outline-success" onclick="verifyDomain()">
+                <i class="bi bi-arrow-clockwise"></i> Verify DNS
+            </button>
+        </div>
+        <div class="card-body">
+            <p class="text-muted mb-3">Add these records to your DNS provider to verify and enable sending.</p>
+
+            <!-- Sending Records -->
+            <h6 class="fw-bold mb-2">Sending Records</h6>
+            <div class="table-responsive mb-4">
+                <table class="table table-sm mb-0">
+                    <thead>
+                        <tr>
+                            <th>Type</th>
+                            <th>Name</th>
+                            <th>Value</th>
+                            <th>Status</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody id="sending-records-tbody">
+                        <tr><td colspan="5" class="text-muted">Loading...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Receiving Records -->
+            <h6 class="fw-bold mb-2">Receiving Records (MX)</h6>
+            <div class="table-responsive">
+                <table class="table table-sm mb-0">
+                    <thead>
+                        <tr>
+                            <th>Type</th>
+                            <th>Priority</th>
+                            <th>Value</th>
+                            <th>Status</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody id="receiving-records-tbody">
+                        <tr><td colspan="5" class="text-muted">Loading...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- SMTP Credentials -->
+    <div class="card-custom mb-4">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <span><i class="bi bi-key"></i> SMTP Credentials</span>
+            <button class="btn btn-sm btn-infrared" data-bs-toggle="modal" data-bs-target="#addCredentialModal">
+                <i class="bi bi-plus-circle"></i> Add Credential
+            </button>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover mb-0">
+                    <thead>
+                        <tr>
+                            <th>Login</th>
+                            <th>Created</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="smtp-creds-tbody">
+                        <tr><td colspan="3" class="text-center text-muted py-3">Loading...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Add Domain Modal -->
+<div class="modal fade" id="addDomainModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Add Sending Domain</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label">Domain Name</label>
+                    <input type="text" class="form-control" id="new-domain-name" placeholder="mg.example.com">
+                    <small class="text-muted">Use a subdomain like mg.example.com for best deliverability</small>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Region</label>
+                    <select class="form-select" id="new-domain-region">
+                        <option value="us">US</option>
+                        <option value="eu">EU</option>
+                    </select>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-infrared" onclick="addDomain()">Add Domain</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Add SMTP Credential Modal -->
+<div class="modal fade" id="addCredentialModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Add SMTP Credential</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label">Login</label>
+                    <div class="input-group">
+                        <input type="text" class="form-control" id="new-smtp-login" placeholder="postmaster">
+                        <span class="input-group-text" id="smtp-domain-suffix">@domain</span>
+                    </div>
+                    <small class="text-muted">Username part only (without @domain)</small>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Password</label>
+                    <input type="password" class="form-control" id="new-smtp-password" placeholder="Strong password">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-infrared" onclick="addSmtpCredential()">Create</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    let currentDomain = null;
+    let currentDomainRegion = null;
+
+    document.addEventListener('DOMContentLoaded', loadDomains);
+
+    function loadDomains() {
+        const regionFilter = document.getElementById('region-filter').value;
+        let url = '/api/email/domains';
+        if (regionFilter) url += '?region=' + regionFilter;
+
+        fetch(url)
+            .then(r => r.json())
+            .then(data => {
+                if (data.error) {
+                    document.getElementById('domains-tbody').innerHTML =
+                        '<tr><td colspan="6" class="text-danger text-center py-4">' + data.error + '</td></tr>';
+                    return;
+                }
+
+                const domains = data.domains || [];
+                document.getElementById('domain-count').textContent = domains.length + ' domains';
+
+                if (domains.length === 0) {
+                    document.getElementById('domains-tbody').innerHTML =
+                        '<tr><td colspan="6" class="text-center text-muted py-4">No domains configured. Add one to get started.</td></tr>';
+                    return;
+                }
+
+                document.getElementById('domains-tbody').innerHTML = domains.map(d => {
+                    const stateClass = d.state === 'active' ? 'badge-running' : 'badge-pending';
+                    const created = d.created_at ? new Date(d.created_at).toLocaleDateString() : '-';
+                    const region = d.region || 'US';
+                    const regionClass = region === 'EU' ? 'bg-info' : 'bg-primary';
+                    return '<tr>' +
+                        '<td><strong>' + d.name + '</strong></td>' +
+                        '<td><span class="badge ' + regionClass + '">' + region + '</span></td>' +
+                        '<td><span class="badge-status ' + stateClass + '">' + (d.state || 'unknown') + '</span></td>' +
+                        '<td>' + (d.type || 'custom') + '</td>' +
+                        '<td>' + created + '</td>' +
+                        '<td>' +
+                            '<div class="btn-group btn-group-sm">' +
+                                '<button class="btn btn-outline-info" title="DNS & Credentials" onclick="selectDomain(\'' + d.name + '\', \'' + region.toLowerCase() + '\')">' +
+                                    '<i class="bi bi-shield-check"></i>' +
+                                '</button>' +
+                                '<button class="btn btn-outline-danger" title="Delete" onclick="deleteDomain(\'' + d.name + '\', \'' + region.toLowerCase() + '\')">' +
+                                    '<i class="bi bi-trash"></i>' +
+                                '</button>' +
+                            '</div>' +
+                        '</td>' +
+                    '</tr>';
+                }).join('');
+            })
+            .catch(err => {
+                document.getElementById('domains-tbody').innerHTML =
+                    '<tr><td colspan="6" class="text-danger text-center py-4">Failed to load - check Mailgun credentials in Settings</td></tr>';
+            });
+    }
+
+    function addDomain() {
+        const name = document.getElementById('new-domain-name').value.trim();
+        const region = document.getElementById('new-domain-region').value;
+        if (!name) { alert('Enter a domain name'); return; }
+
+        fetch('/api/email/domains', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({name: name, region: region})
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.error) { alert(data.error); return; }
+            bootstrap.Modal.getInstance(document.getElementById('addDomainModal')).hide();
+            document.getElementById('new-domain-name').value = '';
+            loadDomains();
+            selectDomain(name, region);
+        })
+        .catch(err => alert('Error: ' + err));
+    }
+
+    function deleteDomain(name, region) {
+        if (!confirm('Delete domain ' + name + '? This cannot be undone.')) return;
+
+        fetch('/api/email/domains/' + name + '?region=' + region, {method: 'DELETE'})
+            .then(r => r.json())
+            .then(data => {
+                if (data.error) { alert(data.error); return; }
+                if (currentDomain === name) {
+                    currentDomain = null;
+                    currentDomainRegion = null;
+                    document.getElementById('domain-detail').style.display = 'none';
+                }
+                loadDomains();
+            })
+            .catch(err => alert('Error: ' + err));
+    }
+
+    function selectDomain(name, region) {
+        currentDomain = name;
+        currentDomainRegion = region || 'us';
+        document.getElementById('detail-domain-name').textContent = name;
+        document.getElementById('smtp-domain-suffix').textContent = '@' + name;
+        document.getElementById('domain-detail').style.display = '';
+        loadDomainDetails();
+        loadSmtpCredentials();
+    }
+
+    function loadDomainDetails() {
+        if (!currentDomain) return;
+
+        document.getElementById('sending-records-tbody').innerHTML =
+            '<tr><td colspan="5" class="text-muted">Loading...</td></tr>';
+        document.getElementById('receiving-records-tbody').innerHTML =
+            '<tr><td colspan="5" class="text-muted">Loading...</td></tr>';
+
+        fetch('/api/email/domains/' + currentDomain + '?region=' + currentDomainRegion)
+            .then(r => r.json())
+            .then(data => {
+                if (data.error) {
+                    document.getElementById('sending-records-tbody').innerHTML =
+                        '<tr><td colspan="5" class="text-danger">' + data.error + '</td></tr>';
+                    return;
+                }
+
+                const sending = data.sending_dns_records || [];
+                const receiving = data.receiving_dns_records || [];
+
+                if (sending.length === 0) {
+                    document.getElementById('sending-records-tbody').innerHTML =
+                        '<tr><td colspan="5" class="text-muted">No sending records</td></tr>';
+                } else {
+                    document.getElementById('sending-records-tbody').innerHTML = sending.map(r => {
+                        const valid = r.valid === 'valid';
+                        const statusBadge = valid
+                            ? '<span class="badge bg-success">Verified</span>'
+                            : '<span class="badge bg-warning text-dark">Pending</span>';
+                        return '<tr>' +
+                            '<td><span class="badge bg-secondary">' + r.record_type + '</span></td>' +
+                            '<td class="small">' + (r.name || '-') + '</td>' +
+                            '<td class="small text-truncate" style="max-width:300px" title="' + r.value + '">' + r.value + '</td>' +
+                            '<td>' + statusBadge + '</td>' +
+                            '<td><button class="btn btn-sm btn-outline-secondary" onclick="copyText(\'' + escapeForAttr(r.value) + '\')" title="Copy value"><i class="bi bi-clipboard"></i></button></td>' +
+                        '</tr>';
+                    }).join('');
+                }
+
+                if (receiving.length === 0) {
+                    document.getElementById('receiving-records-tbody').innerHTML =
+                        '<tr><td colspan="5" class="text-muted">No receiving records</td></tr>';
+                } else {
+                    document.getElementById('receiving-records-tbody').innerHTML = receiving.map(r => {
+                        const valid = r.valid === 'valid';
+                        const statusBadge = valid
+                            ? '<span class="badge bg-success">Verified</span>'
+                            : '<span class="badge bg-warning text-dark">Pending</span>';
+                        return '<tr>' +
+                            '<td><span class="badge bg-secondary">' + r.record_type + '</span></td>' +
+                            '<td>' + (r.priority || '-') + '</td>' +
+                            '<td class="small">' + r.value + '</td>' +
+                            '<td>' + statusBadge + '</td>' +
+                            '<td><button class="btn btn-sm btn-outline-secondary" onclick="copyText(\'' + escapeForAttr(r.value) + '\')" title="Copy value"><i class="bi bi-clipboard"></i></button></td>' +
+                        '</tr>';
+                    }).join('');
+                }
+            })
+            .catch(err => {
+                document.getElementById('sending-records-tbody').innerHTML =
+                    '<tr><td colspan="5" class="text-danger">Failed to load</td></tr>';
+            });
+    }
+
+    function verifyDomain() {
+        if (!currentDomain) return;
+
+        fetch('/api/email/domains/' + currentDomain + '/verify?region=' + currentDomainRegion, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({region: currentDomainRegion})
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.error) { alert(data.error); return; }
+            loadDomainDetails();
+            loadDomains();
+        })
+        .catch(err => alert('Error: ' + err));
+    }
+
+    // --- SMTP Credentials ---
+
+    function loadSmtpCredentials() {
+        if (!currentDomain) return;
+
+        document.getElementById('smtp-creds-tbody').innerHTML =
+            '<tr><td colspan="3" class="text-center text-muted py-3">Loading...</td></tr>';
+
+        fetch('/api/email/domains/' + currentDomain + '/credentials?region=' + currentDomainRegion)
+            .then(r => r.json())
+            .then(data => {
+                if (data.error) {
+                    document.getElementById('smtp-creds-tbody').innerHTML =
+                        '<tr><td colspan="3" class="text-danger text-center py-3">' + data.error + '</td></tr>';
+                    return;
+                }
+
+                const creds = data.credentials || [];
+                if (creds.length === 0) {
+                    document.getElementById('smtp-creds-tbody').innerHTML =
+                        '<tr><td colspan="3" class="text-center text-muted py-3">No SMTP credentials. Create one to start sending.</td></tr>';
+                    return;
+                }
+
+                document.getElementById('smtp-creds-tbody').innerHTML = creds.map(c => {
+                    const created = c.created_at ? new Date(c.created_at).toLocaleDateString() : '-';
+                    return '<tr>' +
+                        '<td><code>' + c.login + '</code></td>' +
+                        '<td>' + created + '</td>' +
+                        '<td>' +
+                            '<button class="btn btn-sm btn-outline-danger" onclick="deleteSmtpCredential(\'' + c.login + '\')">' +
+                                '<i class="bi bi-trash"></i>' +
+                            '</button>' +
+                        '</td>' +
+                    '</tr>';
+                }).join('');
+            })
+            .catch(err => {
+                document.getElementById('smtp-creds-tbody').innerHTML =
+                    '<tr><td colspan="3" class="text-danger text-center py-3">Failed to load</td></tr>';
+            });
+    }
+
+    function addSmtpCredential() {
+        if (!currentDomain) { alert('Select a domain first'); return; }
+
+        const login = document.getElementById('new-smtp-login').value.trim();
+        const password = document.getElementById('new-smtp-password').value;
+
+        if (!login || !password) {
+            alert('Login and password are required');
+            return;
+        }
+
+        if (password.length < 5) {
+            alert('Password must be at least 5 characters');
+            return;
+        }
+
+        fetch('/api/email/domains/' + currentDomain + '/credentials', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({login: login, password: password, region: currentDomainRegion})
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.error) { alert(data.error); return; }
+            bootstrap.Modal.getInstance(document.getElementById('addCredentialModal')).hide();
+            document.getElementById('new-smtp-login').value = '';
+            document.getElementById('new-smtp-password').value = '';
+            loadSmtpCredentials();
+        })
+        .catch(err => alert('Error: ' + err));
+    }
+
+    function deleteSmtpCredential(login) {
+        if (!confirm('Delete SMTP credential ' + login + '?')) return;
+
+        fetch('/api/email/domains/' + currentDomain + '/credentials/' + login + '?region=' + currentDomainRegion, {method: 'DELETE'})
+            .then(r => r.json())
+            .then(data => {
+                if (data.error) { alert(data.error); return; }
+                loadSmtpCredentials();
+            })
+            .catch(err => alert('Error: ' + err));
+    }
+
+    // --- Helpers ---
+
+    function escapeForAttr(str) {
+        return str.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+    }
+
+    function copyText(text) {
+        navigator.clipboard.writeText(text).then(() => {}).catch(() => {
+            const ta = document.createElement('textarea');
+            ta.value = text;
+            document.body.appendChild(ta);
+            ta.select();
+            document.execCommand('copy');
+            document.body.removeChild(ta);
+        });
+    }
+</script>
+{% endblock %}

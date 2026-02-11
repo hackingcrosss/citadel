@@ -1,0 +1,296 @@
+{% extends "base.html" %}
+
+{% block title %}Containers - InfraRed{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1 class="h3 mb-0">Docker Containers</h1>
+    <button class="btn btn-infrared" data-bs-toggle="modal" data-bs-target="#deployContainerModal">
+        <i class="bi bi-plus-circle"></i> Deploy Container
+    </button>
+</div>
+
+<!-- Quick Actions -->
+<div class="row g-3 mb-3">
+    <div class="col-md-3">
+        <div class="card-custom">
+            <div class="card-body text-center">
+                <i class="bi bi-play-circle text-success" style="font-size: 2rem;"></i>
+                <h5 class="mt-2 mb-0">8</h5>
+                <small class="text-muted">Running</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card-custom">
+            <div class="card-body text-center">
+                <i class="bi bi-stop-circle text-danger" style="font-size: 2rem;"></i>
+                <h5 class="mt-2 mb-0">3</h5>
+                <small class="text-muted">Stopped</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card-custom">
+            <div class="card-body text-center">
+                <i class="bi bi-arrow-clockwise text-warning" style="font-size: 2rem;"></i>
+                <h5 class="mt-2 mb-0">1</h5>
+                <small class="text-muted">Restarting</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card-custom">
+            <div class="card-body text-center">
+                <i class="bi bi-hdd text-primary" style="font-size: 2rem;"></i>
+                <h5 class="mt-2 mb-0">12.4 GB</h5>
+                <small class="text-muted">Total Size</small>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Containers List -->
+<div class="card-custom">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <span><i class="bi bi-box-seam"></i> All Containers</span>
+        <div>
+            <button class="btn btn-sm btn-outline-success me-2">
+                <i class="bi bi-play-fill"></i> Start All
+            </button>
+            <button class="btn btn-sm btn-outline-danger">
+                <i class="bi bi-stop-fill"></i> Stop All
+            </button>
+        </div>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Image</th>
+                        <th>Ports</th>
+                        <th>Status</th>
+                        <th>Created</th>
+                        <th>CPU</th>
+                        <th>Memory</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>
+                            <i class="bi bi-box"></i> <strong>phishing-site-1</strong>
+                            <br><small class="text-muted">a3c5f9d8b2e1</small>
+                        </td>
+                        <td>nginx:alpine</td>
+                        <td>
+                            <code>0.0.0.0:8080→80</code>
+                            <br><code>0.0.0.0:8443→443</code>
+                        </td>
+                        <td><span class="badge-status badge-running">Running</span></td>
+                        <td>2 days ago</td>
+                        <td>
+                            <div class="progress" style="height: 5px; width: 60px;">
+                                <div class="progress-bar bg-success" style="width: 25%"></div>
+                            </div>
+                            <small>25%</small>
+                        </td>
+                        <td>
+                            <div class="progress" style="height: 5px; width: 60px;">
+                                <div class="progress-bar bg-info" style="width: 45%"></div>
+                            </div>
+                            <small>128M/256M</small>
+                        </td>
+                        <td>
+                            <div class="btn-group btn-group-sm">
+                                <button class="btn btn-outline-danger" title="Stop">
+                                    <i class="bi bi-stop-fill"></i>
+                                </button>
+                                <button class="btn btn-outline-warning" title="Restart">
+                                    <i class="bi bi-arrow-clockwise"></i>
+                                </button>
+                                <button class="btn btn-outline-info" title="Logs">
+                                    <i class="bi bi-file-text"></i>
+                                </button>
+                                <button class="btn btn-outline-secondary" title="Terminal">
+                                    <i class="bi bi-terminal"></i>
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td>
+                            <i class="bi bi-box"></i> <strong>mail-server</strong>
+                            <br><small class="text-muted">b7d4e2a1c3f8</small>
+                        </td>
+                        <td>mailhog:latest</td>
+                        <td>
+                            <code>0.0.0.0:1025→1025</code>
+                            <br><code>0.0.0.0:8025→8025</code>
+                        </td>
+                        <td><span class="badge-status badge-running">Running</span></td>
+                        <td>5 days ago</td>
+                        <td>
+                            <div class="progress" style="height: 5px; width: 60px;">
+                                <div class="progress-bar bg-success" style="width: 15%"></div>
+                            </div>
+                            <small>15%</small>
+                        </td>
+                        <td>
+                            <div class="progress" style="height: 5px; width: 60px;">
+                                <div class="progress-bar bg-info" style="width: 30%"></div>
+                            </div>
+                            <small>76M/256M</small>
+                        </td>
+                        <td>
+                            <div class="btn-group btn-group-sm">
+                                <button class="btn btn-outline-danger" title="Stop">
+                                    <i class="bi bi-stop-fill"></i>
+                                </button>
+                                <button class="btn btn-outline-warning" title="Restart">
+                                    <i class="bi bi-arrow-clockwise"></i>
+                                </button>
+                                <button class="btn btn-outline-info" title="Logs">
+                                    <i class="bi bi-file-text"></i>
+                                </button>
+                                <button class="btn btn-outline-secondary" title="Terminal">
+                                    <i class="bi bi-terminal"></i>
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td>
+                            <i class="bi bi-box"></i> <strong>payload-delivery</strong>
+                            <br><small class="text-muted">c9f1a6e4b8d2</small>
+                        </td>
+                        <td>httpd:2.4</td>
+                        <td><code>0.0.0.0:8081→80</code></td>
+                        <td><span class="badge-status badge-running">Running</span></td>
+                        <td>1 week ago</td>
+                        <td>
+                            <div class="progress" style="height: 5px; width: 60px;">
+                                <div class="progress-bar bg-success" style="width: 20%"></div>
+                            </div>
+                            <small>20%</small>
+                        </td>
+                        <td>
+                            <div class="progress" style="height: 5px; width: 60px;">
+                                <div class="progress-bar bg-info" style="width: 60%"></div>
+                            </div>
+                            <small>153M/256M</small>
+                        </td>
+                        <td>
+                            <div class="btn-group btn-group-sm">
+                                <button class="btn btn-outline-danger" title="Stop">
+                                    <i class="bi bi-stop-fill"></i>
+                                </button>
+                                <button class="btn btn-outline-warning" title="Restart">
+                                    <i class="bi bi-arrow-clockwise"></i>
+                                </button>
+                                <button class="btn btn-outline-info" title="Logs">
+                                    <i class="bi bi-file-text"></i>
+                                </button>
+                                <button class="btn btn-outline-secondary" title="Terminal">
+                                    <i class="bi bi-terminal"></i>
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                    <tr class="table-secondary">
+                        <td>
+                            <i class="bi bi-box"></i> <strong>staging-env</strong>
+                            <br><small class="text-muted">d2e8f3b7a1c9</small>
+                        </td>
+                        <td>python:3.11-slim</td>
+                        <td><code>-</code></td>
+                        <td><span class="badge-status badge-stopped">Stopped</span></td>
+                        <td>3 days ago</td>
+                        <td>-</td>
+                        <td>-</td>
+                        <td>
+                            <div class="btn-group btn-group-sm">
+                                <button class="btn btn-outline-success" title="Start">
+                                    <i class="bi bi-play-fill"></i>
+                                </button>
+                                <button class="btn btn-outline-info" title="Logs">
+                                    <i class="bi bi-file-text"></i>
+                                </button>
+                                <button class="btn btn-outline-danger" title="Remove">
+                                    <i class="bi bi-trash"></i>
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Deploy Container Modal -->
+<div class="modal fade" id="deployContainerModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Deploy New Container</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form>
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label">Container Name</label>
+                            <input type="text" class="form-control" placeholder="my-container">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Docker Image</label>
+                            <input type="text" class="form-control" placeholder="nginx:latest">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Host Port</label>
+                            <input type="number" class="form-control" placeholder="8080">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Container Port</label>
+                            <input type="number" class="form-control" placeholder="80">
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label">Environment Variables (one per line)</label>
+                            <textarea class="form-control" rows="3" placeholder="KEY=value"></textarea>
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label">Volumes (one per line)</label>
+                            <textarea class="form-control" rows="2" placeholder="/host/path:/container/path"></textarea>
+                        </div>
+                        <div class="col-12">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="autoRestart" checked>
+                                <label class="form-check-label" for="autoRestart">
+                                    Auto-restart on failure
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-infrared">Deploy</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // Auto-refresh container stats
+    setInterval(() => {
+        console.log('Refreshing container stats...');
+        // Would fetch from API
+    }, 5000);
+</script>
+{% endblock %}

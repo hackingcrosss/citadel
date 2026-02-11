@@ -1,0 +1,478 @@
+{% extends "base.html" %}
+
+{% block title %}AWS EC2 - InfraRed{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1 class="h3 mb-0">AWS EC2</h1>
+    <div class="d-flex gap-2 align-items-center">
+        <select id="regionSelect" class="form-select form-select-sm" style="width: 200px;" onchange="loadInstances()">
+            <option value="us-east-1">US East (N. Virginia)</option>
+            <option value="us-east-2">US East (Ohio)</option>
+            <option value="us-west-1">US West (N. California)</option>
+            <option value="us-west-2">US West (Oregon)</option>
+            <option value="eu-west-1" selected>EU (Ireland)</option>
+            <option value="eu-west-2">EU (London)</option>
+            <option value="eu-west-3">EU (Paris)</option>
+            <option value="eu-central-1">EU (Frankfurt)</option>
+            <option value="eu-north-1">EU (Stockholm)</option>
+            <option value="ap-southeast-1">Asia Pacific (Singapore)</option>
+            <option value="ap-southeast-2">Asia Pacific (Sydney)</option>
+            <option value="ap-northeast-1">Asia Pacific (Tokyo)</option>
+            <option value="ap-northeast-2">Asia Pacific (Seoul)</option>
+            <option value="ap-south-1">Asia Pacific (Mumbai)</option>
+            <option value="sa-east-1">South America (São Paulo)</option>
+            <option value="ca-central-1">Canada (Central)</option>
+        </select>
+        <button class="btn btn-sm btn-outline-secondary" onclick="loadInstances()">
+            <i class="bi bi-arrow-clockwise"></i> Refresh
+        </button>
+    </div>
+</div>
+
+<!-- Stats Row -->
+<div class="row mb-4" id="statsRow">
+    <div class="col-md-3">
+        <div class="stat-card">
+            <div class="label">Total Instances</div>
+            <h3 id="statTotal">-</h3>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="stat-card">
+            <div class="label">Running</div>
+            <h3 id="statRunning" class="text-success">-</h3>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="stat-card">
+            <div class="label">Stopped</div>
+            <h3 id="statStopped" class="text-danger">-</h3>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="stat-card">
+            <div class="label">Other</div>
+            <h3 id="statOther" class="text-warning">-</h3>
+        </div>
+    </div>
+</div>
+
+<!-- Instances Table -->
+<div class="card-custom mb-4">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <span><i class="bi bi-hdd-stack"></i> EC2 Instances</span>
+        <div>
+            <button class="btn btn-sm btn-outline-success" onclick="bulkAction('start')" id="btnBulkStart" disabled>
+                <i class="bi bi-play-fill"></i> Start
+            </button>
+            <button class="btn btn-sm btn-outline-warning" onclick="bulkAction('stop')" id="btnBulkStop" disabled>
+                <i class="bi bi-stop-fill"></i> Stop
+            </button>
+            <button class="btn btn-sm btn-outline-info" onclick="bulkAction('reboot')" id="btnBulkReboot" disabled>
+                <i class="bi bi-arrow-repeat"></i> Reboot
+            </button>
+        </div>
+    </div>
+    <div class="card-body p-0">
+        <div id="instancesLoading" class="text-center py-4">
+            <div class="spinner-border text-secondary" role="status"></div>
+            <div class="text-muted mt-2">Loading instances...</div>
+        </div>
+        <div id="instancesEmpty" class="text-center py-4 d-none">
+            <i class="bi bi-cloud text-muted" style="font-size: 2rem;"></i>
+            <div class="text-muted mt-2">No instances found in this region</div>
+        </div>
+        <table class="table table-hover mb-0 d-none" id="instancesTable">
+            <thead class="table-light">
+                <tr>
+                    <th style="width: 30px;"><input type="checkbox" id="selectAll" onchange="toggleSelectAll()"></th>
+                    <th>Name</th>
+                    <th>Instance ID</th>
+                    <th>Type</th>
+                    <th>State</th>
+                    <th>Public IP</th>
+                    <th>Private IP</th>
+                    <th>AZ</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody id="instancesBody"></tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Instance Detail Modal -->
+<div class="modal fade" id="detailModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Instance Details</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="detailBody">
+                <div class="text-center py-3">
+                    <div class="spinner-border text-secondary" role="status"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Security Groups Modal -->
+<div class="modal fade" id="sgModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Security Group Details</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="sgBody">
+                <div class="text-center py-3">
+                    <div class="spinner-border text-secondary" role="status"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Terminate Confirm Modal -->
+<div class="modal fade" id="terminateModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-danger text-white">
+                <h5 class="modal-title"><i class="bi bi-exclamation-triangle"></i> Confirm Termination</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p>Are you sure you want to <strong>terminate</strong> this instance? This action <strong>cannot be undone</strong>.</p>
+                <p class="mb-0"><strong id="terminateTarget"></strong></p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-danger" id="confirmTerminateBtn">Terminate</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    let allInstances = [];
+    let selectedRegion = 'eu-west-1';
+
+    document.addEventListener('DOMContentLoaded', loadInstances);
+
+    function getRegion() {
+        return document.getElementById('regionSelect').value;
+    }
+
+    function loadInstances() {
+        selectedRegion = getRegion();
+        const loading = document.getElementById('instancesLoading');
+        const empty = document.getElementById('instancesEmpty');
+        const table = document.getElementById('instancesTable');
+
+        loading.classList.remove('d-none');
+        empty.classList.add('d-none');
+        table.classList.add('d-none');
+
+        fetch(`/api/aws/instances?region=${selectedRegion}`)
+            .then(r => r.json())
+            .then(data => {
+                loading.classList.add('d-none');
+                if (data.error) {
+                    empty.classList.remove('d-none');
+                    empty.querySelector('.text-muted:last-child').textContent = data.error;
+                    updateStats([]);
+                    return;
+                }
+                allInstances = data.instances || [];
+                updateStats(allInstances);
+                if (allInstances.length === 0) {
+                    empty.classList.remove('d-none');
+                } else {
+                    table.classList.remove('d-none');
+                    renderInstances(allInstances);
+                }
+            })
+            .catch(err => {
+                loading.classList.add('d-none');
+                empty.classList.remove('d-none');
+                empty.querySelector('.text-muted:last-child').textContent = 'Error: ' + err;
+                updateStats([]);
+            });
+    }
+
+    function updateStats(instances) {
+        document.getElementById('statTotal').textContent = instances.length;
+        document.getElementById('statRunning').textContent = instances.filter(i => i.state === 'running').length;
+        document.getElementById('statStopped').textContent = instances.filter(i => i.state === 'stopped').length;
+        document.getElementById('statOther').textContent = instances.filter(i => !['running', 'stopped'].includes(i.state)).length;
+    }
+
+    function renderInstances(instances) {
+        const tbody = document.getElementById('instancesBody');
+        tbody.innerHTML = instances.map(inst => `
+            <tr>
+                <td><input type="checkbox" class="inst-check" value="${inst.id}" onchange="updateBulkButtons()"></td>
+                <td><strong>${inst.name || '<em class="text-muted">No name</em>'}</strong></td>
+                <td><code class="text-primary" style="cursor:pointer" onclick="showDetail('${inst.id}')">${inst.id}</code></td>
+                <td><small>${inst.type}</small></td>
+                <td>${stateBadge(inst.state)}</td>
+                <td>${inst.public_ip ? `<code>${inst.public_ip}</code>` : '<span class="text-muted">-</span>'}</td>
+                <td><code>${inst.private_ip || '-'}</code></td>
+                <td><small>${inst.az}</small></td>
+                <td>
+                    <div class="btn-group btn-group-sm">
+                        ${inst.state === 'stopped' ? `<button class="btn btn-outline-success btn-sm" title="Start" onclick="instanceAction('start', '${inst.id}')"><i class="bi bi-play-fill"></i></button>` : ''}
+                        ${inst.state === 'running' ? `<button class="btn btn-outline-warning btn-sm" title="Stop" onclick="instanceAction('stop', '${inst.id}')"><i class="bi bi-stop-fill"></i></button>` : ''}
+                        ${inst.state === 'running' ? `<button class="btn btn-outline-info btn-sm" title="Reboot" onclick="instanceAction('reboot', '${inst.id}')"><i class="bi bi-arrow-repeat"></i></button>` : ''}
+                        <button class="btn btn-outline-danger btn-sm" title="Terminate" onclick="confirmTerminate('${inst.id}', '${(inst.name || inst.id).replace(/'/g, "\\'")}')"><i class="bi bi-trash"></i></button>
+                    </div>
+                </td>
+            </tr>
+        `).join('');
+    }
+
+    function stateBadge(state) {
+        const map = {
+            'running': 'badge-running',
+            'stopped': 'badge-stopped',
+            'pending': 'badge-pending',
+            'stopping': 'badge-pending',
+            'shutting-down': 'badge-stopped',
+            'terminated': 'badge-stopped',
+        };
+        return `<span class="badge-status ${map[state] || 'badge-pending'}">${state}</span>`;
+    }
+
+    // --- Bulk Actions ---
+
+    function toggleSelectAll() {
+        const checked = document.getElementById('selectAll').checked;
+        document.querySelectorAll('.inst-check').forEach(cb => cb.checked = checked);
+        updateBulkButtons();
+    }
+
+    function updateBulkButtons() {
+        const selected = document.querySelectorAll('.inst-check:checked').length;
+        document.getElementById('btnBulkStart').disabled = selected === 0;
+        document.getElementById('btnBulkStop').disabled = selected === 0;
+        document.getElementById('btnBulkReboot').disabled = selected === 0;
+    }
+
+    function getSelectedIds() {
+        return Array.from(document.querySelectorAll('.inst-check:checked')).map(cb => cb.value);
+    }
+
+    function bulkAction(action) {
+        const ids = getSelectedIds();
+        if (ids.length === 0) return;
+        if (!confirm(`${action.charAt(0).toUpperCase() + action.slice(1)} ${ids.length} instance(s)?`)) return;
+
+        fetch(`/api/aws/instances/${action}`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({instance_ids: ids, region: getRegion()})
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.error) {
+                alert('Error: ' + data.error);
+            } else {
+                setTimeout(loadInstances, 2000);
+            }
+        })
+        .catch(err => alert('Error: ' + err));
+    }
+
+    // --- Single Instance Actions ---
+
+    function instanceAction(action, instanceId) {
+        fetch(`/api/aws/instances/${action}`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({instance_ids: [instanceId], region: getRegion()})
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.error) {
+                alert('Error: ' + data.error);
+            } else {
+                setTimeout(loadInstances, 2000);
+            }
+        })
+        .catch(err => alert('Error: ' + err));
+    }
+
+    // --- Terminate ---
+
+    let terminateId = null;
+
+    function confirmTerminate(instanceId, name) {
+        terminateId = instanceId;
+        document.getElementById('terminateTarget').textContent = `${name} (${instanceId})`;
+        new bootstrap.Modal(document.getElementById('terminateModal')).show();
+    }
+
+    document.getElementById('confirmTerminateBtn').addEventListener('click', function() {
+        if (!terminateId) return;
+        fetch('/api/aws/instances/terminate', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({instance_ids: [terminateId], region: getRegion()})
+        })
+        .then(r => r.json())
+        .then(data => {
+            bootstrap.Modal.getInstance(document.getElementById('terminateModal')).hide();
+            if (data.error) {
+                alert('Error: ' + data.error);
+            } else {
+                setTimeout(loadInstances, 2000);
+            }
+        })
+        .catch(err => alert('Error: ' + err));
+    });
+
+    // --- Instance Detail ---
+
+    function showDetail(instanceId) {
+        const modal = new bootstrap.Modal(document.getElementById('detailModal'));
+        const body = document.getElementById('detailBody');
+        body.innerHTML = '<div class="text-center py-3"><div class="spinner-border text-secondary"></div></div>';
+        modal.show();
+
+        fetch(`/api/aws/instances/${instanceId}?region=${getRegion()}`)
+            .then(r => r.json())
+            .then(data => {
+                if (data.error) {
+                    body.innerHTML = `<div class="alert alert-danger">${data.error}</div>`;
+                    return;
+                }
+                const inst = data.instance;
+                body.innerHTML = `
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <table class="table table-sm">
+                                <tr><th style="width:40%">Instance ID</th><td><code>${inst.id}</code></td></tr>
+                                <tr><th>Name</th><td>${inst.name || '-'}</td></tr>
+                                <tr><th>State</th><td>${stateBadge(inst.state)}</td></tr>
+                                <tr><th>Type</th><td>${inst.type}</td></tr>
+                                <tr><th>Platform</th><td>${inst.platform}</td></tr>
+                                <tr><th>Architecture</th><td>${inst.architecture || '-'}</td></tr>
+                                <tr><th>AMI</th><td><code>${inst.ami}</code></td></tr>
+                                <tr><th>Key Name</th><td>${inst.key_name || '-'}</td></tr>
+                            </table>
+                        </div>
+                        <div class="col-md-6">
+                            <table class="table table-sm">
+                                <tr><th style="width:40%">Public IP</th><td>${inst.public_ip ? `<code>${inst.public_ip}</code>` : '-'}</td></tr>
+                                <tr><th>Private IP</th><td><code>${inst.private_ip || '-'}</code></td></tr>
+                                <tr><th>AZ</th><td>${inst.az}</td></tr>
+                                <tr><th>VPC</th><td><code>${inst.vpc_id || '-'}</code></td></tr>
+                                <tr><th>Subnet</th><td><code>${inst.subnet_id || '-'}</code></td></tr>
+                                <tr><th>Root Device</th><td>${inst.root_device || '-'}</td></tr>
+                                <tr><th>EBS Optimized</th><td>${inst.ebs_optimized ? 'Yes' : 'No'}</td></tr>
+                                <tr><th>Monitoring</th><td>${inst.monitoring || '-'}</td></tr>
+                                <tr><th>Launched</th><td>${inst.launch_time ? new Date(inst.launch_time).toLocaleString() : '-'}</td></tr>
+                            </table>
+                        </div>
+                    </div>
+                    ${inst.security_groups && inst.security_groups.length > 0 ? `
+                    <h6 class="mt-3 fw-bold">Security Groups</h6>
+                    <table class="table table-sm">
+                        <thead><tr><th>Group ID</th><th>Name</th><th></th></tr></thead>
+                        <tbody>
+                            ${inst.security_groups.map(sg => `
+                                <tr>
+                                    <td><code>${sg.id}</code></td>
+                                    <td>${sg.name}</td>
+                                    <td><button class="btn btn-sm btn-outline-primary" onclick="showSecurityGroup('${sg.id}')"><i class="bi bi-eye"></i></button></td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>` : ''}
+                    ${inst.tags && Object.keys(inst.tags).length > 0 ? `
+                    <h6 class="mt-3 fw-bold">Tags</h6>
+                    <table class="table table-sm">
+                        <thead><tr><th>Key</th><th>Value</th></tr></thead>
+                        <tbody>
+                            ${Object.entries(inst.tags).map(([k, v]) => `<tr><td><code>${k}</code></td><td>${v}</td></tr>`).join('')}
+                        </tbody>
+                    </table>` : ''}
+                `;
+            })
+            .catch(err => {
+                body.innerHTML = `<div class="alert alert-danger">Error: ${err}</div>`;
+            });
+    }
+
+    // --- Security Group Detail ---
+
+    function showSecurityGroup(groupId) {
+        // Close instance detail modal first
+        const detailModal = bootstrap.Modal.getInstance(document.getElementById('detailModal'));
+        if (detailModal) detailModal.hide();
+
+        const modal = new bootstrap.Modal(document.getElementById('sgModal'));
+        const body = document.getElementById('sgBody');
+        body.innerHTML = '<div class="text-center py-3"><div class="spinner-border text-secondary"></div></div>';
+        modal.show();
+
+        fetch(`/api/aws/security-groups/${groupId}?region=${getRegion()}`)
+            .then(r => r.json())
+            .then(data => {
+                if (data.error) {
+                    body.innerHTML = `<div class="alert alert-danger">${data.error}</div>`;
+                    return;
+                }
+                const sg = data.security_group;
+                body.innerHTML = `
+                    <table class="table table-sm mb-3">
+                        <tr><th style="width:30%">Group ID</th><td><code>${sg.id}</code></td></tr>
+                        <tr><th>Name</th><td>${sg.name}</td></tr>
+                        <tr><th>Description</th><td>${sg.description || '-'}</td></tr>
+                        <tr><th>VPC</th><td><code>${sg.vpc_id || '-'}</code></td></tr>
+                    </table>
+
+                    <h6 class="fw-bold">Inbound Rules</h6>
+                    ${sg.inbound_rules.length > 0 ? `
+                    <table class="table table-sm">
+                        <thead><tr><th>Protocol</th><th>Port Range</th><th>Source</th><th>Description</th></tr></thead>
+                        <tbody>
+                            ${sg.inbound_rules.map(r => `
+                                <tr>
+                                    <td>${r.protocol === '-1' ? 'All' : r.protocol.toUpperCase()}</td>
+                                    <td>${r.protocol === '-1' ? 'All' : (r.from_port === r.to_port ? r.from_port : r.from_port + '-' + r.to_port)}</td>
+                                    <td><code>${r.cidr}</code></td>
+                                    <td><small>${r.description || '-'}</small></td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>` : '<p class="text-muted">No inbound rules</p>'}
+
+                    <h6 class="fw-bold mt-3">Outbound Rules</h6>
+                    ${sg.outbound_rules.length > 0 ? `
+                    <table class="table table-sm">
+                        <thead><tr><th>Protocol</th><th>Port Range</th><th>Destination</th><th>Description</th></tr></thead>
+                        <tbody>
+                            ${sg.outbound_rules.map(r => `
+                                <tr>
+                                    <td>${r.protocol === '-1' ? 'All' : r.protocol.toUpperCase()}</td>
+                                    <td>${r.protocol === '-1' ? 'All' : (r.from_port === r.to_port ? r.from_port : r.from_port + '-' + r.to_port)}</td>
+                                    <td><code>${r.cidr}</code></td>
+                                    <td><small>${r.description || '-'}</small></td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>` : '<p class="text-muted">No outbound rules</p>'}
+                `;
+            })
+            .catch(err => {
+                body.innerHTML = `<div class="alert alert-danger">Error: ${err}</div>`;
+            });
+    }
+</script>
+{% endblock %}

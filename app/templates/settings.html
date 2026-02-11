@@ -1,0 +1,605 @@
+{% extends "base.html" %}
+
+{% block title %}Settings - InfraRed{% endblock %}
+
+{% block content %}
+<h1 class="h3 mb-4">Settings</h1>
+
+<div class="row">
+    <!-- Settings Navigation -->
+    <div class="col-md-3 mb-4">
+        <div class="card-custom">
+            <div class="list-group list-group-flush">
+                <a href="#credentials" class="list-group-item list-group-item-action active">
+                    <i class="bi bi-key"></i> API Credentials
+                </a>
+                <a href="#account" class="list-group-item list-group-item-action">
+                    <i class="bi bi-person"></i> Account
+                </a>
+                <a href="#security" class="list-group-item list-group-item-action">
+                    <i class="bi bi-shield-lock"></i> Security
+                </a>
+                <a href="#notifications" class="list-group-item list-group-item-action">
+                    <i class="bi bi-bell"></i> Notifications
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Settings Content -->
+    <div class="col-md-9">
+        <!-- API Credentials Section -->
+        <div class="card-custom mb-4" id="credentials">
+            <div class="card-header">
+                <i class="bi bi-key"></i> API Credentials
+            </div>
+            <div class="card-body">
+                <p class="text-muted">Manage your API keys and credentials. All values are encrypted at rest.</p>
+                
+                <!-- AWS Credentials -->
+                <div class="mb-4">
+                    <h6 class="fw-bold mb-3">
+                        <i class="bi bi-cloud text-warning"></i> AWS
+                    </h6>
+                    <div class="row g-3">
+                        <div class="col-md-4">
+                            <label class="form-label">Access Key ID</label>
+                            <div class="input-group">
+                                <input type="password" class="form-control" id="aws-access-key-id" placeholder="Enter AWS Access Key ID">
+                                <button class="btn btn-outline-secondary" type="button">
+                                    <i class="bi bi-eye"></i>
+                                </button>
+                            </div>
+                            <small class="text-muted" id="aws-access-key-id-status"></small>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Secret Access Key</label>
+                            <div class="input-group">
+                                <input type="password" class="form-control" id="aws-secret-access-key" placeholder="Enter AWS Secret Access Key">
+                                <button class="btn btn-outline-secondary" type="button">
+                                    <i class="bi bi-eye"></i>
+                                </button>
+                            </div>
+                            <small class="text-muted" id="aws-secret-access-key-status"></small>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Default Region</label>
+                            <input type="text" class="form-control" id="aws-default-region" placeholder="eu-west-1">
+                            <small class="text-muted" id="aws-default-region-status"></small>
+                        </div>
+                        <div class="col-12">
+                            <button class="btn btn-sm btn-outline-primary" onclick="saveAwsCredentials()">
+                                <i class="bi bi-pencil"></i> Update
+                            </button>
+                            <button class="btn btn-sm btn-outline-success" onclick="testAwsConnection()">
+                                <i class="bi bi-check-circle"></i> Test Connection
+                            </button>
+                            <span id="aws-test-result" class="ms-2"></span>
+                        </div>
+                    </div>
+                </div>
+
+                <hr>
+
+                <!-- Cloudflare Credentials -->
+                <div class="mb-4">
+                    <h6 class="fw-bold mb-3">
+                        <i class="bi bi-cloud-fog text-warning"></i> Cloudflare
+                    </h6>
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label">API Token</label>
+                            <div class="input-group">
+                                <input type="password" class="form-control" id="cf-api-token" placeholder="Enter Cloudflare API token">
+                                <button class="btn btn-outline-secondary" type="button">
+                                    <i class="bi bi-eye"></i>
+                                </button>
+                            </div>
+                            <small class="text-muted" id="cf-api-token-status"></small>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Zone ID (Optional)</label>
+                            <input type="text" class="form-control" id="cf-zone-id" placeholder="Leave blank to use all zones">
+                            <small class="text-muted" id="cf-zone-id-status"></small>
+                        </div>
+                        <div class="col-12">
+                            <button class="btn btn-sm btn-outline-primary" onclick="saveCloudflareCredentials()">
+                                <i class="bi bi-pencil"></i> Update
+                            </button>
+                            <button class="btn btn-sm btn-outline-success" onclick="testCloudflareConnection()">
+                                <i class="bi bi-check-circle"></i> Test Connection
+                            </button>
+                            <span id="cf-test-result" class="ms-2"></span>
+                        </div>
+                    </div>
+                </div>
+
+                <hr>
+
+                <!-- Mailgun Credentials -->
+                <div class="mb-4">
+                    <h6 class="fw-bold mb-3">
+                        <i class="bi bi-envelope text-danger"></i> Mailgun
+                    </h6>
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label">API Key</label>
+                            <div class="input-group">
+                                <input type="password" class="form-control" id="mg-api-key" placeholder="Enter Mailgun API key">
+                                <button class="btn btn-outline-secondary" type="button">
+                                    <i class="bi bi-eye"></i>
+                                </button>
+                            </div>
+                            <small class="text-muted" id="mg-api-key-status"></small>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Domain (Optional default)</label>
+                            <input type="text" class="form-control" id="mg-domain" placeholder="mg.example.com">
+                            <small class="text-muted" id="mg-domain-status"></small>
+                        </div>
+                        <div class="col-12">
+                            <button class="btn btn-sm btn-outline-primary" onclick="saveMailgunCredentials()">
+                                <i class="bi bi-pencil"></i> Update
+                            </button>
+                            <button class="btn btn-sm btn-outline-success" onclick="testMailgunConnection()">
+                                <i class="bi bi-check-circle"></i> Test Connection
+                            </button>
+                            <span id="mg-test-result" class="ms-2"></span>
+                        </div>
+                    </div>
+                </div>
+
+                <hr>
+
+                <!-- NPM (Nginx Proxy Manager) -->
+                <div class="mb-4">
+                    <h6 class="fw-bold mb-3">
+                        <i class="bi bi-hdd-network text-primary"></i> Nginx Proxy Manager
+                    </h6>
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label">API URL</label>
+                            <input type="text" class="form-control" id="npm-api-url" placeholder="http://npm.local:81/api">
+                            <small class="text-muted" id="npm-api-url-status"></small>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">API Token</label>
+                            <div class="input-group">
+                                <input type="password" class="form-control" id="npm-api-token" placeholder="Enter NPM API token">
+                                <button class="btn btn-outline-secondary" type="button">
+                                    <i class="bi bi-eye"></i>
+                                </button>
+                            </div>
+                            <small class="text-muted" id="npm-api-token-status"></small>
+                        </div>
+                        <div class="col-12">
+                            <button class="btn btn-sm btn-outline-primary" onclick="saveNpmCredentials()">
+                                <i class="bi bi-pencil"></i> Update
+                            </button>
+                            <button class="btn btn-sm btn-outline-success" onclick="testNpmConnection()">
+                                <i class="bi bi-check-circle"></i> Test Connection
+                            </button>
+                            <button class="btn btn-sm btn-outline-info" data-bs-toggle="collapse" data-bs-target="#npmAuthCollapse">
+                                <i class="bi bi-key"></i> Get Token via Login
+                            </button>
+                            <span id="npm-test-result" class="ms-2"></span>
+                        </div>
+                        <div class="col-12 collapse" id="npmAuthCollapse">
+                            <div class="card card-body bg-light">
+                                <small class="text-muted mb-2">Authenticate with NPM to automatically get and store a token</small>
+                                <div class="row g-2">
+                                    <div class="col-md-5">
+                                        <input type="email" class="form-control form-control-sm" id="npm-auth-email" placeholder="NPM email">
+                                    </div>
+                                    <div class="col-md-5">
+                                        <input type="password" class="form-control form-control-sm" id="npm-auth-password" placeholder="NPM password">
+                                    </div>
+                                    <div class="col-md-2">
+                                        <button class="btn btn-sm btn-infrared w-100" onclick="npmLogin()">Login</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="alert alert-info">
+                    <i class="bi bi-info-circle"></i> 
+                    All credentials are encrypted using AES-256 before being stored in the database.
+                </div>
+            </div>
+        </div>
+
+        <!-- Account Section -->
+        <div class="card-custom mb-4" id="account">
+            <div class="card-header">
+                <i class="bi bi-person"></i> Account Settings
+            </div>
+            <div class="card-body">
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label class="form-label">Email</label>
+                        <input type="email" class="form-control" value="admin@infrared.local">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Display Name</label>
+                        <input type="text" class="form-control" value="Administrator">
+                    </div>
+                    <div class="col-12">
+                        <button class="btn btn-infrared">Save Changes</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Security Section -->
+        <div class="card-custom mb-4" id="security">
+            <div class="card-header">
+                <i class="bi bi-shield-lock"></i> Security
+            </div>
+            <div class="card-body">
+                <h6 class="fw-bold mb-3">Change Password</h6>
+                <div class="row g-3 mb-4">
+                    <div class="col-md-4">
+                        <label class="form-label">Current Password</label>
+                        <input type="password" class="form-control">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">New Password</label>
+                        <input type="password" class="form-control">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Confirm Password</label>
+                        <input type="password" class="form-control">
+                    </div>
+                    <div class="col-12">
+                        <button class="btn btn-infrared">Update Password</button>
+                    </div>
+                </div>
+
+                <hr>
+
+                <h6 class="fw-bold mb-3">Two-Factor Authentication</h6>
+                <div class="alert alert-warning">
+                    <i class="bi bi-exclamation-triangle"></i> 2FA is not currently enabled
+                </div>
+                <button class="btn btn-outline-primary">
+                    <i class="bi bi-shield-check"></i> Enable 2FA
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // Toggle password visibility
+    document.querySelectorAll('.input-group button').forEach(btn => {
+        btn.addEventListener('click', function() {
+            const input = this.parentElement.querySelector('input');
+            if (input.type === 'password') {
+                input.type = 'text';
+                this.innerHTML = '<i class="bi bi-eye-slash"></i>';
+            } else {
+                input.type = 'password';
+                this.innerHTML = '<i class="bi bi-eye"></i>';
+            }
+        });
+    });
+
+    // Load existing credential status on page load
+    document.addEventListener('DOMContentLoaded', function() {
+        loadAwsStatus();
+        loadCloudflareStatus();
+        loadMailgunStatus();
+        loadNpmStatus();
+    });
+
+    // --- AWS ---
+
+    function loadAwsStatus() {
+        fetch('/api/credentials/aws')
+            .then(r => r.json())
+            .then(data => {
+                const creds = data.aws || {};
+                if (creds.access_key_id) {
+                    document.getElementById('aws-access-key-id').placeholder = creds.access_key_id.masked;
+                    document.getElementById('aws-access-key-id-status').textContent =
+                        'Last updated: ' + new Date(creds.access_key_id.updated_at).toLocaleString();
+                }
+                if (creds.secret_access_key) {
+                    document.getElementById('aws-secret-access-key').placeholder = creds.secret_access_key.masked;
+                    document.getElementById('aws-secret-access-key-status').textContent =
+                        'Last updated: ' + new Date(creds.secret_access_key.updated_at).toLocaleString();
+                }
+                if (creds.default_region) {
+                    document.getElementById('aws-default-region').placeholder = creds.default_region.masked;
+                    document.getElementById('aws-default-region-status').textContent =
+                        'Last updated: ' + new Date(creds.default_region.updated_at).toLocaleString();
+                }
+            })
+            .catch(err => console.error('Failed to load AWS credentials:', err));
+    }
+
+    function saveAwsCredentials() {
+        const accessKey = document.getElementById('aws-access-key-id').value;
+        const secretKey = document.getElementById('aws-secret-access-key').value;
+        const region = document.getElementById('aws-default-region').value;
+
+        const body = {};
+        if (accessKey) body.access_key_id = accessKey;
+        if (secretKey) body.secret_access_key = secretKey;
+        if (region) body.default_region = region;
+
+        if (Object.keys(body).length === 0) {
+            alert('Enter at least one value to save.');
+            return;
+        }
+
+        fetch('/api/credentials/aws', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(body)
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.saved) {
+                alert('Saved: ' + data.saved.join(', '));
+                document.getElementById('aws-access-key-id').value = '';
+                document.getElementById('aws-secret-access-key').value = '';
+                document.getElementById('aws-default-region').value = '';
+                loadAwsStatus();
+            }
+        })
+        .catch(err => alert('Error saving: ' + err));
+    }
+
+    function testAwsConnection() {
+        const resultEl = document.getElementById('aws-test-result');
+        resultEl.innerHTML = '<span class="text-muted"><i class="bi bi-hourglass-split"></i> Testing...</span>';
+
+        fetch('/api/credentials/aws/test', {method: 'POST'})
+            .then(r => r.json())
+            .then(data => {
+                if (data.success) {
+                    resultEl.innerHTML = '<span class="text-success"><i class="bi bi-check-circle-fill"></i> Connected (Account: ' + (data.result.account || 'OK') + ')</span>';
+                } else {
+                    resultEl.innerHTML = '<span class="text-danger"><i class="bi bi-x-circle-fill"></i> ' + data.error + '</span>';
+                }
+            })
+            .catch(err => {
+                resultEl.innerHTML = '<span class="text-danger"><i class="bi bi-x-circle-fill"></i> Request failed</span>';
+            });
+    }
+
+    function loadCloudflareStatus() {
+        fetch('/api/credentials/cloudflare')
+            .then(r => r.json())
+            .then(data => {
+                const creds = data.cloudflare || {};
+                if (creds.api_token) {
+                    document.getElementById('cf-api-token').placeholder = creds.api_token.masked;
+                    document.getElementById('cf-api-token-status').textContent =
+                        'Last updated: ' + new Date(creds.api_token.updated_at).toLocaleString();
+                }
+                if (creds.zone_id) {
+                    document.getElementById('cf-zone-id').placeholder = creds.zone_id.masked;
+                    document.getElementById('cf-zone-id-status').textContent =
+                        'Last updated: ' + new Date(creds.zone_id.updated_at).toLocaleString();
+                }
+            })
+            .catch(err => console.error('Failed to load Cloudflare credentials:', err));
+    }
+
+    function loadMailgunStatus() {
+        fetch('/api/credentials/mailgun')
+            .then(r => r.json())
+            .then(data => {
+                const creds = data.mailgun || {};
+                if (creds.api_key) {
+                    document.getElementById('mg-api-key').placeholder = creds.api_key.masked;
+                    document.getElementById('mg-api-key-status').textContent =
+                        'Last updated: ' + new Date(creds.api_key.updated_at).toLocaleString();
+                }
+                if (creds.domain) {
+                    document.getElementById('mg-domain').placeholder = creds.domain.masked;
+                    document.getElementById('mg-domain-status').textContent =
+                        'Last updated: ' + new Date(creds.domain.updated_at).toLocaleString();
+                }
+            })
+            .catch(err => console.error('Failed to load Mailgun credentials:', err));
+    }
+
+    function saveCloudflareCredentials() {
+        const token = document.getElementById('cf-api-token').value;
+        const zoneId = document.getElementById('cf-zone-id').value;
+
+        const body = {};
+        if (token) body.api_token = token;
+        if (zoneId) body.zone_id = zoneId;
+
+        if (Object.keys(body).length === 0) {
+            alert('Enter at least one value to save.');
+            return;
+        }
+
+        fetch('/api/credentials/cloudflare', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(body)
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.saved) {
+                alert('Saved: ' + data.saved.join(', '));
+                document.getElementById('cf-api-token').value = '';
+                document.getElementById('cf-zone-id').value = '';
+                loadCloudflareStatus();
+            }
+        })
+        .catch(err => alert('Error saving: ' + err));
+    }
+
+    function testCloudflareConnection() {
+        const resultEl = document.getElementById('cf-test-result');
+        resultEl.innerHTML = '<span class="text-muted"><i class="bi bi-hourglass-split"></i> Testing...</span>';
+
+        fetch('/api/credentials/cloudflare/test', {method: 'POST'})
+            .then(r => r.json())
+            .then(data => {
+                if (data.success) {
+                    resultEl.innerHTML = '<span class="text-success"><i class="bi bi-check-circle-fill"></i> Connected</span>';
+                } else {
+                    resultEl.innerHTML = '<span class="text-danger"><i class="bi bi-x-circle-fill"></i> ' + data.error + '</span>';
+                }
+            })
+            .catch(err => {
+                resultEl.innerHTML = '<span class="text-danger"><i class="bi bi-x-circle-fill"></i> Request failed</span>';
+            });
+    }
+
+    // --- Mailgun ---
+
+    function saveMailgunCredentials() {
+        const apiKey = document.getElementById('mg-api-key').value;
+        const domain = document.getElementById('mg-domain').value;
+
+        const body = {};
+        if (apiKey) body.api_key = apiKey;
+        if (domain) body.domain = domain;
+
+        if (Object.keys(body).length === 0) {
+            alert('Enter at least one value to save.');
+            return;
+        }
+
+        fetch('/api/credentials/mailgun', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(body)
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.saved) {
+                alert('Saved: ' + data.saved.join(', '));
+                document.getElementById('mg-api-key').value = '';
+                document.getElementById('mg-domain').value = '';
+                loadMailgunStatus();
+            }
+        })
+        .catch(err => alert('Error saving: ' + err));
+    }
+
+    function testMailgunConnection() {
+        const resultEl = document.getElementById('mg-test-result');
+        resultEl.innerHTML = '<span class="text-muted"><i class="bi bi-hourglass-split"></i> Testing...</span>';
+
+        fetch('/api/credentials/mailgun/test', {method: 'POST'})
+            .then(r => r.json())
+            .then(data => {
+                if (data.success) {
+                    resultEl.innerHTML = '<span class="text-success"><i class="bi bi-check-circle-fill"></i> Connected (' + (data.result.total_count || 0) + ' domains)</span>';
+                } else {
+                    resultEl.innerHTML = '<span class="text-danger"><i class="bi bi-x-circle-fill"></i> ' + data.error + '</span>';
+                }
+            })
+            .catch(err => {
+                resultEl.innerHTML = '<span class="text-danger"><i class="bi bi-x-circle-fill"></i> Request failed</span>';
+            });
+    }
+
+    // --- NPM ---
+
+    function loadNpmStatus() {
+        fetch('/api/credentials/npm')
+            .then(r => r.json())
+            .then(data => {
+                const creds = data.npm || {};
+                if (creds.api_url) {
+                    document.getElementById('npm-api-url').placeholder = creds.api_url.masked;
+                    document.getElementById('npm-api-url-status').textContent =
+                        'Last updated: ' + new Date(creds.api_url.updated_at).toLocaleString();
+                }
+                if (creds.api_token) {
+                    document.getElementById('npm-api-token').placeholder = creds.api_token.masked;
+                    document.getElementById('npm-api-token-status').textContent =
+                        'Last updated: ' + new Date(creds.api_token.updated_at).toLocaleString();
+                }
+            })
+            .catch(err => console.error('Failed to load NPM credentials:', err));
+    }
+
+    function saveNpmCredentials() {
+        const apiUrl = document.getElementById('npm-api-url').value;
+        const apiToken = document.getElementById('npm-api-token').value;
+
+        const body = {};
+        if (apiUrl) body.api_url = apiUrl;
+        if (apiToken) body.api_token = apiToken;
+
+        if (Object.keys(body).length === 0) {
+            alert('Enter at least one value to save.');
+            return;
+        }
+
+        fetch('/api/credentials/npm', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(body)
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.saved) {
+                alert('Saved: ' + data.saved.join(', '));
+                document.getElementById('npm-api-url').value = '';
+                document.getElementById('npm-api-token').value = '';
+                loadNpmStatus();
+            }
+        })
+        .catch(err => alert('Error saving: ' + err));
+    }
+
+    function testNpmConnection() {
+        const resultEl = document.getElementById('npm-test-result');
+        resultEl.innerHTML = '<span class="text-muted"><i class="bi bi-hourglass-split"></i> Testing...</span>';
+
+        fetch('/api/credentials/npm/test', {method: 'POST'})
+            .then(r => r.json())
+            .then(data => {
+                if (data.success) {
+                    resultEl.innerHTML = '<span class="text-success"><i class="bi bi-check-circle-fill"></i> Connected (' + (data.result.host_count || 0) + ' hosts)</span>';
+                } else {
+                    resultEl.innerHTML = '<span class="text-danger"><i class="bi bi-x-circle-fill"></i> ' + data.error + '</span>';
+                }
+            })
+            .catch(err => {
+                resultEl.innerHTML = '<span class="text-danger"><i class="bi bi-x-circle-fill"></i> Request failed</span>';
+            });
+    }
+
+    function npmLogin() {
+        const email = document.getElementById('npm-auth-email').value;
+        const password = document.getElementById('npm-auth-password').value;
+        if (!email || !password) { alert('Enter NPM email and password'); return; }
+
+        fetch('/api/npm/token', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({identity: email, secret: password})
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) {
+                alert('Token obtained and saved!');
+                document.getElementById('npm-auth-email').value = '';
+                document.getElementById('npm-auth-password').value = '';
+                loadNpmStatus();
+            } else {
+                alert('Login failed: ' + (data.error || 'Unknown error'));
+            }
+        })
+        .catch(err => alert('Error: ' + err));
+    }
+</script>
+{% endblock %}
