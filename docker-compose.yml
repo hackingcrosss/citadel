@@ -1,0 +1,83 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: infrared-postgres
+    environment:
+      POSTGRES_DB: infrared
+      POSTGRES_USER: infrared
+      POSTGRES_PASSWORD: infrared_password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    networks:
+      - infrared-network
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: infrared-redis
+    ports:
+      - "6379:6379"
+    networks:
+      - infrared-network
+    restart: unless-stopped
+
+  web:
+    build: .
+    container_name: infrared-web
+    command: gunicorn -b 0.0.0.0:5000 "app:create_app()" --reload
+    volumes:
+      - ./app:/app/app
+      - /var/run/docker.sock:/var/run/docker.sock
+    ports:
+      - "5000:5000"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    env_file:
+      - .env
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - infrared-network
+    restart: unless-stopped
+
+  celery:
+    build: .
+    container_name: infrared-celery
+    command: celery -A app.tasks.celery_app worker --loglevel=info
+    volumes:
+      - ./app:/app/app
+    env_file:
+      - .env
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - infrared-network
+    restart: unless-stopped
+
+  nginx:
+    image: nginx:alpine
+    container_name: infrared-nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./docker/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./docker/nginx/ssl:/etc/nginx/ssl:ro
+    depends_on:
+      - web
+    networks:
+      - infrared-network
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+
+networks:
+  infrared-network:
+    driver: bridge

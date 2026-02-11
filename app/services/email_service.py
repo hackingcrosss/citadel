@@ -1,0 +1,98 @@
+import requests
+from app.services.credential_service import get_credential
+
+MG_BASES = {
+    'us': 'https://api.mailgun.net/v3',
+    'eu': 'https://api.eu.mailgun.net/v3',
+}
+
+
+def _auth():
+    api_key = get_credential('mailgun', 'api_key')
+    if not api_key:
+        raise ValueError("Mailgun API key not configured. Set it in Settings.")
+    return ('api', api_key)
+
+
+def _request(method, path, region='us', **kwargs):
+    base = MG_BASES.get(region, MG_BASES['us'])
+    url = f'{base}{path}'
+    resp = requests.request(method, url, auth=_auth(), timeout=15, **kwargs)
+    if resp.status_code >= 400:
+        try:
+            err = resp.json().get('message', resp.text)
+        except Exception:
+            err = resp.text
+        raise Exception(f"Mailgun API error ({resp.status_code}): {err}")
+    return resp.json()
+
+
+# --- Verification ---
+
+def verify_api_key():
+    data = _request('GET', '/domains', params={'limit': 1})
+    return {'total_count': data.get('total_count', 0)}
+
+
+# --- Domains ---
+
+def list_domains(region=None):
+    if region and region in MG_BASES:
+        data = _request('GET', '/domains', region=region, params={'limit': 100})
+        items = data.get('items', [])
+        for d in items:
+            d['region'] = region.upper()
+        return items
+
+    # Fetch from both regions
+    all_domains = []
+    for r in ('us', 'eu'):
+        try:
+            data = _request('GET', '/domains', region=r, params={'limit': 100})
+            items = data.get('items', [])
+            for d in items:
+                d['region'] = r.upper()
+            all_domains.extend(items)
+        except Exception:
+            pass
+    return all_domains
+
+
+def add_domain(name, region='us'):
+    data = _request('POST', '/domains', region=region, data={'name': name})
+    return data
+
+
+def get_domain(name, region='us'):
+    data = _request('GET', f'/domains/{name}', region=region)
+    return data
+
+
+def delete_domain(name, region='us'):
+    data = _request('DELETE', f'/domains/{name}', region=region)
+    return data
+
+
+def verify_domain(name, region='us'):
+    data = _request('PUT', f'/domains/{name}/verify', region=region)
+    return data
+
+
+# --- SMTP Credentials ---
+
+def list_smtp_credentials(domain, region='us'):
+    data = _request('GET', f'/domains/{domain}/credentials', region=region, params={'limit': 100})
+    return data.get('items', [])
+
+
+def create_smtp_credential(domain, login, password, region='us'):
+    data = _request('POST', f'/domains/{domain}/credentials', region=region, data={
+        'login': login,
+        'password': password
+    })
+    return data
+
+
+def delete_smtp_credential(domain, login, region='us'):
+    data = _request('DELETE', f'/domains/{domain}/credentials/{login}', region=region)
+    return data
