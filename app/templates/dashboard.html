@@ -5,9 +5,15 @@
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-4">
     <h1 class="h3 mb-0">Dashboard</h1>
-    <button class="btn btn-infrared">
-        <i class="bi bi-plus-circle"></i> Quick Deploy
-    </button>
+    <div class="d-flex align-items-center gap-3">
+        <small class="text-muted" id="last-updated"></small>
+        <button class="btn btn-sm btn-outline-secondary" onclick="refreshAll()">
+            <i class="bi bi-arrow-clockwise"></i> Refresh
+        </button>
+        <button class="btn btn-infrared">
+            <i class="bi bi-plus-circle"></i> Quick Deploy
+        </button>
+    </div>
 </div>
 
 <!-- Stats Row -->
@@ -15,34 +21,34 @@
     <div class="col-md-3">
         <div class="stat-card">
             <div class="label">Active Domains</div>
-            <h3 id="domain-count">12</h3>
-            <small class="text-success"><i class="bi bi-arrow-up"></i> 2 this week</small>
+            <h3 id="domain-count">-</h3>
+            <small class="text-muted" id="domain-subtitle">Loading...</small>
         </div>
     </div>
     <div class="col-md-3">
         <div class="stat-card">
             <div class="label">Containers Running</div>
-            <h3 id="container-count">8</h3>
-            <small class="text-muted">3 stopped</small>
+            <h3 id="container-count">-</h3>
+            <small class="text-muted" id="container-subtitle">Loading...</small>
         </div>
     </div>
     <div class="col-md-3">
         <div class="stat-card">
             <div class="label">EC2 Instances</div>
-            <h3 id="ec2-count">4</h3>
-            <small class="text-success"><i class="bi bi-circle-fill" style="font-size: 0.5rem;"></i> All running</small>
+            <h3 id="ec2-count">-</h3>
+            <small class="text-muted" id="ec2-subtitle">Loading...</small>
         </div>
     </div>
     <div class="col-md-3">
         <div class="stat-card">
             <div class="label">NPM Entries</div>
-            <h3 id="npm-count">15</h3>
-            <small class="text-muted">Last updated 2h ago</small>
+            <h3 id="npm-count">-</h3>
+            <small class="text-muted" id="npm-subtitle">Loading...</small>
         </div>
     </div>
 </div>
 
-<!-- EC2 Instances & Recent Activity -->
+<!-- EC2 Instances & Active Containers -->
 <div class="row g-3">
     <!-- EC2 Instances -->
     <div class="col-md-6">
@@ -62,35 +68,14 @@
                             </tr>
                         </thead>
                         <tbody id="ec2-table">
-                            <tr>
-                                <td><i class="bi bi-server"></i> c2-primary</td>
-                                <td>t3.medium</td>
-                                <td>us-east-1</td>
-                                <td><span class="badge-status badge-running">Running</span></td>
-                            </tr>
-                            <tr>
-                                <td><i class="bi bi-server"></i> phishing-infra</td>
-                                <td>t3.small</td>
-                                <td>eu-west-1</td>
-                                <td><span class="badge-status badge-running">Running</span></td>
-                            </tr>
-                            <tr>
-                                <td><i class="bi bi-server"></i> staging-env</td>
-                                <td>t3.micro</td>
-                                <td>us-west-2</td>
-                                <td><span class="badge-status badge-stopped">Stopped</span></td>
-                            </tr>
-                            <tr>
-                                <td><i class="bi bi-server"></i> redirector-01</td>
-                                <td>t3.nano</td>
-                                <td>ap-southeast-1</td>
-                                <td><span class="badge-status badge-running">Running</span></td>
-                            </tr>
+                            <tr><td colspan="4" class="text-center text-muted py-3">
+                                <i class="bi bi-hourglass-split"></i> Loading EC2 instances...
+                            </td></tr>
                         </tbody>
                     </table>
                 </div>
                 <div class="text-end mt-2">
-                    <a href="#" class="text-decoration-none">View all <i class="bi bi-arrow-right"></i></a>
+                    <a href="{{ url_for('aws') }}" class="text-decoration-none">View all <i class="bi bi-arrow-right"></i></a>
                 </div>
             </div>
         </div>
@@ -114,30 +99,9 @@
                             </tr>
                         </thead>
                         <tbody id="container-table">
-                            <tr>
-                                <td><i class="bi bi-box"></i> phishing-site-1</td>
-                                <td>nginx:alpine</td>
-                                <td>8080</td>
-                                <td><span class="badge-status badge-running">Running</span></td>
-                            </tr>
-                            <tr>
-                                <td><i class="bi bi-box"></i> mail-server</td>
-                                <td>mailhog</td>
-                                <td>1025</td>
-                                <td><span class="badge-status badge-running">Running</span></td>
-                            </tr>
-                            <tr>
-                                <td><i class="bi bi-box"></i> payload-delivery</td>
-                                <td>apache2</td>
-                                <td>8081</td>
-                                <td><span class="badge-status badge-running">Running</span></td>
-                            </tr>
-                            <tr>
-                                <td><i class="bi bi-box"></i> landing-page-2</td>
-                                <td>nginx:latest</td>
-                                <td>8082</td>
-                                <td><span class="badge-status badge-pending">Starting</span></td>
-                            </tr>
+                            <tr><td colspan="4" class="text-center text-muted py-3">
+                                <i class="bi bi-hourglass-split"></i> Loading containers...
+                            </td></tr>
                         </tbody>
                     </table>
                 </div>
@@ -149,12 +113,12 @@
     </div>
 </div>
 
-<!-- Recent Domains -->
+<!-- Cloudflare Zones -->
 <div class="row g-3 mt-3">
     <div class="col-12">
         <div class="card-custom">
             <div class="card-header">
-                <i class="bi bi-globe"></i> Recent Domains
+                <i class="bi bi-globe"></i> Cloudflare Zones
             </div>
             <div class="card-body">
                 <div class="table-responsive">
@@ -162,47 +126,16 @@
                         <thead>
                             <tr>
                                 <th>Domain</th>
-                                <th>DNS Records</th>
-                                <th>Email Status</th>
-                                <th>Registrar</th>
-                                <th>Expiry</th>
+                                <th>Status</th>
+                                <th>Name Servers</th>
+                                <th>Plan</th>
                                 <th>Actions</th>
                             </tr>
                         </thead>
-                        <tbody>
-                            <tr>
-                                <td><strong>secure-login-portal.com</strong></td>
-                                <td><span class="badge bg-secondary">A</span> <span class="badge bg-secondary">MX</span> <span class="badge bg-secondary">TXT</span></td>
-                                <td><span class="badge-status badge-running">Configured</span></td>
-                                <td>Namecheap</td>
-                                <td>2026-08-15</td>
-                                <td>
-                                    <button class="btn btn-sm btn-outline-primary"><i class="bi bi-pencil"></i></button>
-                                    <button class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
-                                </td>
-                            </tr>
-                            <tr>
-                                <td><strong>verify-account-now.net</strong></td>
-                                <td><span class="badge bg-secondary">A</span> <span class="badge bg-secondary">MX</span></td>
-                                <td><span class="badge-status badge-pending">Pending</span></td>
-                                <td>GoDaddy</td>
-                                <td>2026-11-22</td>
-                                <td>
-                                    <button class="btn btn-sm btn-outline-primary"><i class="bi bi-pencil"></i></button>
-                                    <button class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
-                                </td>
-                            </tr>
-                            <tr>
-                                <td><strong>update-credentials-here.org</strong></td>
-                                <td><span class="badge bg-secondary">A</span></td>
-                                <td><span class="badge-status badge-stopped">Not Configured</span></td>
-                                <td>Cloudflare</td>
-                                <td>2026-05-30</td>
-                                <td>
-                                    <button class="btn btn-sm btn-outline-primary"><i class="bi bi-pencil"></i></button>
-                                    <button class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
-                                </td>
-                            </tr>
+                        <tbody id="domains-table">
+                            <tr><td colspan="5" class="text-center text-muted py-3">
+                                <i class="bi bi-hourglass-split"></i> Loading zones...
+                            </td></tr>
                         </tbody>
                     </table>
                 </div>
@@ -217,13 +150,220 @@
 
 {% block extra_js %}
 <script>
-    // Simulate live updates
-    function updateStats() {
-        // In production, this would fetch from API
-        console.log('Stats updated');
+    let refreshTimer = null;
+
+    document.addEventListener('DOMContentLoaded', function() {
+        refreshAll();
+        refreshTimer = setInterval(refreshAll, 30000);
+    });
+
+    function refreshAll() {
+        loadEC2();
+        loadContainers();
+        loadDomains();
+        loadNPM();
+        document.getElementById('last-updated').textContent =
+            'Updated ' + new Date().toLocaleTimeString();
     }
-    
-    // Update every 30 seconds
-    setInterval(updateStats, 30000);
+
+    // --- State Badge ---
+    function stateBadge(state) {
+        var map = {
+            'running': 'badge-running',
+            'stopped': 'badge-stopped',
+            'exited': 'badge-stopped',
+            'created': 'badge-pending',
+            'restarting': 'badge-pending',
+            'paused': 'badge-pending',
+            'pending': 'badge-pending',
+            'stopping': 'badge-pending',
+            'shutting-down': 'badge-stopped',
+            'terminated': 'badge-stopped'
+        };
+        var cls = map[state] || 'badge-pending';
+        var label = state.charAt(0).toUpperCase() + state.slice(1);
+        return '<span class="badge-status ' + cls + '">' + label + '</span>';
+    }
+
+    // --- EC2 Instances ---
+    function loadEC2() {
+        fetch('/api/aws/instances')
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (data.error) {
+                    showError('ec2', data.error);
+                    return;
+                }
+                var instances = data.instances || [];
+                var running = instances.filter(function(i) { return i.state === 'running'; }).length;
+                var stopped = instances.filter(function(i) { return i.state === 'stopped'; }).length;
+
+                document.getElementById('ec2-count').textContent = running;
+                var subtitle = document.getElementById('ec2-subtitle');
+                if (stopped > 0) {
+                    subtitle.innerHTML = '<span class="text-muted">' + stopped + ' stopped</span>';
+                } else if (running > 0) {
+                    subtitle.innerHTML = '<span class="text-success"><i class="bi bi-circle-fill" style="font-size: 0.5rem;"></i> All running</span>';
+                } else {
+                    subtitle.textContent = 'No instances';
+                }
+
+                var tbody = document.getElementById('ec2-table');
+                if (instances.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted py-3">No EC2 instances found</td></tr>';
+                    return;
+                }
+                tbody.innerHTML = instances.slice(0, 5).map(function(inst) {
+                    var region = inst.az ? inst.az.replace(/[a-z]$/, '') : '-';
+                    return '<tr>' +
+                        '<td><i class="bi bi-server"></i> ' + (inst.name || inst.id) + '</td>' +
+                        '<td>' + inst.type + '</td>' +
+                        '<td>' + region + '</td>' +
+                        '<td>' + stateBadge(inst.state) + '</td>' +
+                    '</tr>';
+                }).join('');
+            })
+            .catch(function() {
+                showError('ec2', 'Failed to load - check AWS credentials');
+            });
+    }
+
+    // --- Containers ---
+    function loadContainers() {
+        fetch('/api/containers')
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (data.error) {
+                    showError('container', data.error);
+                    return;
+                }
+                var containers = data.containers || [];
+                var running = containers.filter(function(c) { return c.state === 'running'; }).length;
+                var stopped = containers.length - running;
+
+                document.getElementById('container-count').textContent = running;
+                document.getElementById('container-subtitle').innerHTML =
+                    stopped > 0
+                        ? '<span class="text-muted">' + stopped + ' stopped</span>'
+                        : '<span class="text-success">All running</span>';
+
+                var tbody = document.getElementById('container-table');
+                if (containers.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted py-3">No containers found</td></tr>';
+                    return;
+                }
+                tbody.innerHTML = containers.slice(0, 5).map(function(c) {
+                    var portDisplay = '-';
+                    if (c.ports && c.ports.length > 0) {
+                        var parts = c.ports[0].split('->');
+                        var hostParts = parts[0].split(':');
+                        portDisplay = hostParts[hostParts.length - 1];
+                    }
+                    return '<tr>' +
+                        '<td><i class="bi bi-box"></i> ' + c.name + '</td>' +
+                        '<td>' + c.image.split(':')[0].split('/').pop() + '</td>' +
+                        '<td>' + portDisplay + '</td>' +
+                        '<td>' + stateBadge(c.state) + '</td>' +
+                    '</tr>';
+                }).join('');
+            })
+            .catch(function() {
+                showError('container', 'Failed to connect to Docker');
+            });
+    }
+
+    // --- Cloudflare Zones ---
+    function loadDomains() {
+        fetch('/api/domains/zones')
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (data.error) {
+                    showError('domain', data.error);
+                    return;
+                }
+                var zones = data.zones || [];
+                var active = zones.filter(function(z) { return z.status === 'active'; }).length;
+
+                document.getElementById('domain-count').textContent = active;
+                document.getElementById('domain-subtitle').innerHTML =
+                    '<span class="text-muted">' + zones.length + ' total zones</span>';
+
+                var tbody = document.getElementById('domains-table');
+                if (zones.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-3">No zones found</td></tr>';
+                    return;
+                }
+                tbody.innerHTML = zones.map(function(z) {
+                    var statusBadge = z.status === 'active'
+                        ? '<span class="badge-status badge-running">Active</span>'
+                        : '<span class="badge-status badge-pending">' + z.status + '</span>';
+                    var ns = (z.name_servers || []).slice(0, 2).join(', ');
+                    var plan = z.plan ? (z.plan.name || '-') : '-';
+                    return '<tr>' +
+                        '<td><strong>' + z.name + '</strong></td>' +
+                        '<td>' + statusBadge + '</td>' +
+                        '<td><small>' + ns + '</small></td>' +
+                        '<td>' + plan + '</td>' +
+                        '<td>' +
+                            '<a href="' + "{{ url_for('domains') }}" + '" class="btn btn-sm btn-outline-primary" title="Manage DNS">' +
+                                '<i class="bi bi-pencil"></i>' +
+                            '</a>' +
+                        '</td>' +
+                    '</tr>';
+                }).join('');
+            })
+            .catch(function() {
+                showError('domain', 'Failed to load - check Cloudflare credentials');
+            });
+    }
+
+    // --- NPM ---
+    function loadNPM() {
+        fetch('/api/npm/hosts')
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (data.error) {
+                    document.getElementById('npm-count').textContent = '!';
+                    document.getElementById('npm-subtitle').innerHTML =
+                        '<span class="text-danger">Not configured</span>';
+                    return;
+                }
+                var hosts = data.hosts || [];
+                var enabled = hosts.filter(function(h) { return h.enabled !== 0; }).length;
+
+                document.getElementById('npm-count').textContent = hosts.length;
+                document.getElementById('npm-subtitle').innerHTML =
+                    '<span class="text-muted">' + enabled + ' enabled</span>';
+            })
+            .catch(function() {
+                document.getElementById('npm-count').textContent = '!';
+                document.getElementById('npm-subtitle').innerHTML =
+                    '<span class="text-danger">Not configured</span>';
+            });
+    }
+
+    // --- Error Helper ---
+    function showError(section, message) {
+        var countEl = document.getElementById(section + '-count');
+        var subEl = document.getElementById(section + '-subtitle');
+        if (countEl) countEl.textContent = '!';
+        if (subEl) subEl.innerHTML = '<span class="text-danger" title="' + message + '">Not configured</span>';
+
+        var tableMap = {
+            'ec2': {id: 'ec2-table', cols: 4},
+            'container': {id: 'container-table', cols: 4},
+            'domain': {id: 'domains-table', cols: 5}
+        };
+        var table = tableMap[section];
+        if (table) {
+            var tbody = document.getElementById(table.id);
+            if (tbody) {
+                tbody.innerHTML = '<tr><td colspan="' + table.cols + '" class="text-center py-3">' +
+                    '<span class="text-danger"><i class="bi bi-exclamation-triangle"></i> ' + message + '</span>' +
+                    '<br><small><a href="' + "{{ url_for('settings') }}" + '">Configure in Settings</a></small>' +
+                    '</td></tr>';
+            }
+        }
+    }
 </script>
 {% endblock %}
