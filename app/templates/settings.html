@@ -298,6 +298,46 @@
                     </div>
                 </div>
 
+                <hr>
+
+                <!-- Cobalt Strike -->
+                <div class="mb-4">
+                    <h6 class="fw-bold mb-3">
+                        <i class="bi bi-crosshair text-danger"></i> Cobalt Strike
+                    </h6>
+                    <div class="row g-3">
+                        <div class="col-md-4">
+                            <label class="form-label">Teamserver URL</label>
+                            <input type="text" class="form-control" id="cs-api-url" placeholder="https://teamserver:50443">
+                            <small class="text-muted" id="cs-api-url-status"></small>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Username</label>
+                            <input type="text" class="form-control" id="cs-username" placeholder="Enter CS username">
+                            <small class="text-muted" id="cs-username-status"></small>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Password</label>
+                            <div class="input-group">
+                                <input type="password" class="form-control" id="cs-password" placeholder="Enter CS password">
+                                <button class="btn btn-outline-secondary" type="button">
+                                    <i class="bi bi-eye"></i>
+                                </button>
+                            </div>
+                            <small class="text-muted" id="cs-password-status"></small>
+                        </div>
+                        <div class="col-12">
+                            <button class="btn btn-sm btn-outline-primary" onclick="saveCobaltstrikeCredentials()">
+                                <i class="bi bi-pencil"></i> Update
+                            </button>
+                            <button class="btn btn-sm btn-outline-success" onclick="testCobaltstrikeConnection()">
+                                <i class="bi bi-check-circle"></i> Test Connection
+                            </button>
+                            <span id="cs-test-result" class="ms-2"></span>
+                        </div>
+                    </div>
+                </div>
+
                 <div class="alert alert-info">
                     <i class="bi bi-info-circle"></i>
                     All credentials are encrypted using AES-256 before being stored in the database.
@@ -391,6 +431,7 @@
         loadNpmStatus();
         loadDockerStatus();
         loadGophishStatus();
+        loadCobaltstrikeStatus();
         loadEc2ForNpm();
     });
 
@@ -814,6 +855,83 @@
             .then(data => {
                 if (data.success) {
                     resultEl.innerHTML = '<span class="text-success"><i class="bi bi-check-circle-fill"></i> Connected (' + (data.result.profile_count || 0) + ' profiles)</span>';
+                } else {
+                    resultEl.innerHTML = '<span class="text-danger"><i class="bi bi-x-circle-fill"></i> ' + data.error + '</span>';
+                }
+            })
+            .catch(err => {
+                resultEl.innerHTML = '<span class="text-danger"><i class="bi bi-x-circle-fill"></i> Request failed</span>';
+            });
+    }
+
+    // --- Cobalt Strike ---
+
+    function loadCobaltstrikeStatus() {
+        fetch('/api/credentials/cobaltstrike')
+            .then(r => r.json())
+            .then(data => {
+                const creds = data.cobaltstrike || {};
+                if (creds.api_url) {
+                    document.getElementById('cs-api-url').placeholder = creds.api_url.masked;
+                    document.getElementById('cs-api-url-status').textContent =
+                        'Last updated: ' + new Date(creds.api_url.updated_at).toLocaleString();
+                }
+                if (creds.username) {
+                    document.getElementById('cs-username').placeholder = creds.username.masked;
+                    document.getElementById('cs-username-status').textContent =
+                        'Last updated: ' + new Date(creds.username.updated_at).toLocaleString();
+                }
+                if (creds.password) {
+                    document.getElementById('cs-password').placeholder = creds.password.masked;
+                    document.getElementById('cs-password-status').textContent =
+                        'Last updated: ' + new Date(creds.password.updated_at).toLocaleString();
+                }
+            })
+            .catch(err => console.error('Failed to load CS credentials:', err));
+    }
+
+    function saveCobaltstrikeCredentials() {
+        const apiUrl = document.getElementById('cs-api-url').value;
+        const username = document.getElementById('cs-username').value;
+        const password = document.getElementById('cs-password').value;
+
+        const body = {};
+        if (apiUrl) body.api_url = apiUrl;
+        if (username) body.username = username;
+        if (password) body.password = password;
+
+        if (Object.keys(body).length === 0) {
+            alert('Enter at least one value to save.');
+            return;
+        }
+
+        fetch('/api/credentials/cobaltstrike', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(body)
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.saved) {
+                alert('Saved: ' + data.saved.join(', '));
+                document.getElementById('cs-api-url').value = '';
+                document.getElementById('cs-username').value = '';
+                document.getElementById('cs-password').value = '';
+                loadCobaltstrikeStatus();
+            }
+        })
+        .catch(err => alert('Error saving: ' + err));
+    }
+
+    function testCobaltstrikeConnection() {
+        const resultEl = document.getElementById('cs-test-result');
+        resultEl.innerHTML = '<span class="text-muted"><i class="bi bi-hourglass-split"></i> Testing...</span>';
+
+        fetch('/api/credentials/cobaltstrike/test', {method: 'POST'})
+            .then(r => r.json())
+            .then(data => {
+                if (data.success) {
+                    resultEl.innerHTML = '<span class="text-success"><i class="bi bi-check-circle-fill"></i> Connected (' + (data.result.listener_count || 0) + ' listeners)</span>';
                 } else {
                     resultEl.innerHTML = '<span class="text-danger"><i class="bi bi-x-circle-fill"></i> ' + data.error + '</span>';
                 }

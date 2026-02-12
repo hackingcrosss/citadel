@@ -150,6 +150,13 @@ def register_routes(app):
             return redirect(url_for('change_password'))
         return render_template('gophish.html')
 
+    @app.route('/cobaltstrike')
+    @login_required
+    def cobaltstrike():
+        if current_user.must_change_password:
+            return redirect(url_for('change_password'))
+        return render_template('cobaltstrike.html')
+
     @app.route('/settings')
     @login_required
     def settings():
