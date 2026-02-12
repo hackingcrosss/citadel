@@ -168,6 +168,9 @@
             <a class="nav-link {% if request.endpoint == 'npm' %}active{% endif %}" href="{{ url_for('npm') }}">
                 <i class="bi bi-hdd-network"></i> NPM
             </a>
+            <a class="nav-link {% if request.endpoint == 'operations' %}active{% endif %}" href="{{ url_for('operations') }}">
+                <i class="bi bi-diagram-3"></i> Operations
+            </a>
             <a class="nav-link {% if request.endpoint == 'settings' %}active{% endif %}" href="{{ url_for('settings') }}">
                 <i class="bi bi-gear"></i> Settings
             </a>

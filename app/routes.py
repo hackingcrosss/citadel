@@ -136,6 +136,13 @@ def register_routes(app):
             return redirect(url_for('change_password'))
         return render_template('aws.html')
 
+    @app.route('/operations')
+    @login_required
+    def operations():
+        if current_user.must_change_password:
+            return redirect(url_for('change_password'))
+        return render_template('operations.html')
+
     @app.route('/settings')
     @login_required
     def settings():

@@ -59,7 +59,22 @@ def list_domains(region=None):
 
 
 def add_domain(name, region='us'):
-    data = _request('POST', '/domains', region=region, data={'name': name})
+    # Check if domain already exists
+    try:
+        existing = _request('GET', f'/domains/{name}', region=region)
+        # Domain exists – return it with a flag
+        existing['already_existed'] = True
+        return existing
+    except Exception:
+        pass  # 404 means domain doesn't exist, proceed to create
+
+    data = _request('POST', '/domains', region=region, data={
+        'name': name,
+        'spam_action': 'disabled',
+        'wildcard': False,
+        'force_dkim_authority': True,
+        'dkim_key_size': 2048,
+    })
     return data
 
 
