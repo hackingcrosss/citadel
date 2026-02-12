@@ -125,6 +125,14 @@ def _format_container(container, detailed=False):
     image_tags = container.image.tags if container.image.tags else []
     image_name = image_tags[0] if image_tags else container.attrs.get('Config', {}).get('Image', 'unknown')
 
+    # Extract network IPs (always included for Operations page container picker)
+    net_settings = container.attrs.get('NetworkSettings', {}).get('Networks', {})
+    networks = {}
+    for net_name, net_info in net_settings.items():
+        ip = net_info.get('IPAddress', '')
+        if ip:
+            networks[net_name] = ip
+
     result = {
         'id': container.id,
         'short_id': container.short_id,
@@ -135,6 +143,7 @@ def _format_container(container, detailed=False):
         'ports': ports,
         'ports_display': ', '.join(ports) if ports else '-',
         'created': container.attrs.get('Created', ''),
+        'networks': networks,
     }
 
     if detailed:
@@ -147,10 +156,10 @@ def _format_container(container, detailed=False):
         result['volumes'] = host_config.get('Binds', [])
         result['restart_policy'] = host_config.get('RestartPolicy', {})
         result['network_mode'] = host_config.get('NetworkMode', '')
-        networks = container.attrs.get('NetworkSettings', {}).get('Networks', {})
+        # Override with detailed format including full network info
         result['networks'] = {
-            name: {'ip': net.get('IPAddress', '')}
-            for name, net in networks.items()
+            name: {'ip': net_info.get('IPAddress', '')}
+            for name, net_info in net_settings.items()
         }
 
     return result

@@ -63,96 +63,105 @@
         </div>
     </div>
 
-    <!-- 2. Point Domain to Server -->
+    <!-- 2. Point Domain -->
     <div class="card-custom mb-4">
         <div class="card-header">
-            <i class="bi bi-signpost-2"></i> Point Domain to Server
+            <i class="bi bi-signpost-2"></i> Point Domain
         </div>
         <div class="card-body">
-            <p class="text-muted small">Create an A record in Cloudflare pointing a domain to an EC2 instance's public IP.</p>
+            <p class="text-muted small">Create a DNS record pointing a domain to a target. For containers and internal services, also creates an NPM reverse proxy.</p>
             <div class="row g-3 mb-3">
-                <div class="col-md-3">
+                <div class="col-md-4">
                     <label class="form-label">Subdomain (optional)</label>
                     <div class="input-group">
-                        <input type="text" class="form-control" id="dns-subdomain" placeholder="www">
+                        <input type="text" class="form-control" id="point-subdomain" placeholder="www">
                         <span class="input-group-text dns-zone-suffix">.example.com</span>
                     </div>
                 </div>
-                <div class="col-md-4">
+                <div class="col-md-8">
+                    <label class="form-label">Target Type</label>
+                    <div class="d-flex gap-3 mt-1">
+                        <div class="form-check">
+                            <input class="form-check-input" type="radio" name="targetType" id="target-ec2" value="ec2" checked onchange="onTargetTypeChange()">
+                            <label class="form-check-label" for="target-ec2">EC2 Instance (direct)</label>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input" type="radio" name="targetType" id="target-service" value="service" onchange="onTargetTypeChange()">
+                            <label class="form-check-label" for="target-service">Service (via NPM reverse proxy)</label>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- EC2 Direct fields -->
+            <div id="ec2-fields" class="row g-3 mb-3">
+                <div class="col-md-5">
                     <label class="form-label">EC2 Instance</label>
                     <select class="form-select" id="dns-instance">
                         <option value="">Loading instances...</option>
                     </select>
                 </div>
-                <div class="col-md-2">
+                <div class="col-md-3">
                     <label class="form-label">Options</label>
                     <div class="form-check mt-2">
                         <input class="form-check-input" type="checkbox" id="dns-proxied">
-                        <label class="form-check-label" for="dns-proxied">Proxied (CF)</label>
+                        <label class="form-check-label" for="dns-proxied">Proxied through Cloudflare</label>
                     </div>
                 </div>
-                <div class="col-md-3 d-flex align-items-end">
-                    <button class="btn btn-infrared" id="btn-create-a" onclick="createARecord()">
-                        <i class="bi bi-plus-circle"></i> Create A Record
-                    </button>
-                </div>
             </div>
-            <div id="dns-log" class="border rounded p-2" style="max-height: 200px; overflow-y: auto; background: #f8f9fa; min-height: 40px;">
-                <small class="text-muted">Waiting for action...</small>
-            </div>
-        </div>
-    </div>
 
-    <!-- 3. Create Reverse Proxy -->
-    <div class="card-custom mb-4">
-        <div class="card-header">
-            <i class="bi bi-hdd-network"></i> Create Reverse Proxy
-        </div>
-        <div class="card-body">
-            <p class="text-muted small">Create an Nginx Proxy Manager host to reverse-proxy traffic for this domain.</p>
-            <div class="row g-3 mb-3">
-                <div class="col-md-3">
-                    <label class="form-label">Subdomain (optional)</label>
-                    <div class="input-group">
-                        <input type="text" class="form-control" id="proxy-subdomain" placeholder="app">
-                        <span class="input-group-text dns-zone-suffix">.example.com</span>
+            <!-- Service via NPM fields -->
+            <div id="service-fields" class="d-none">
+                <div id="npm-ip-warning" class="alert alert-warning small d-none mb-3">
+                    <i class="bi bi-exclamation-triangle"></i> NPM Public IP not configured. <a href="/settings#credentials">Set it in Settings</a> (NPM section).
+                </div>
+                <div id="npm-ip-info" class="small text-muted mb-2 d-none">
+                    <i class="bi bi-info-circle"></i> DNS will point to NPM host: <strong id="npm-ip-display"></strong>
+                </div>
+                <div class="row g-3 mb-3">
+                    <div class="col-md-4">
+                        <label class="form-label">Target</label>
+                        <select class="form-select" id="point-container" onchange="onContainerSelect()">
+                            <option value="">Select container or enter manually...</option>
+                        </select>
                     </div>
-                </div>
-                <div class="col-md-3">
-                    <label class="form-label">Forward Host</label>
-                    <input type="text" class="form-control" id="proxy-host" placeholder="10.0.0.5">
-                </div>
-                <div class="col-md-1">
-                    <label class="form-label">Port</label>
-                    <input type="number" class="form-control" id="proxy-port" placeholder="8080" value="80">
-                </div>
-                <div class="col-md-2">
-                    <label class="form-label">Scheme</label>
-                    <select class="form-select" id="proxy-scheme">
-                        <option value="http">HTTP</option>
-                        <option value="https">HTTPS</option>
-                    </select>
-                </div>
-                <div class="col-md-3">
-                    <label class="form-label">Options</label>
-                    <div>
-                        <div class="form-check form-check-inline">
-                            <input class="form-check-input" type="checkbox" id="proxy-ssl">
-                            <label class="form-check-label" for="proxy-ssl">Force SSL</label>
-                        </div>
-                        <div class="form-check form-check-inline">
-                            <input class="form-check-input" type="checkbox" id="proxy-ws">
-                            <label class="form-check-label" for="proxy-ws">WebSockets</label>
+                    <div class="col-md-3">
+                        <label class="form-label">Forward Host</label>
+                        <input type="text" class="form-control" id="point-host" placeholder="172.18.0.5">
+                    </div>
+                    <div class="col-md-1">
+                        <label class="form-label">Port</label>
+                        <input type="number" class="form-control" id="point-port" placeholder="80" value="80">
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label">Scheme</label>
+                        <select class="form-select" id="point-scheme">
+                            <option value="http">HTTP</option>
+                            <option value="https">HTTPS</option>
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label">Options</label>
+                        <div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="point-ssl">
+                                <label class="form-check-label small" for="point-ssl">Force SSL</label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="point-ws">
+                                <label class="form-check-label small" for="point-ws">WebSockets</label>
+                            </div>
                         </div>
                     </div>
-                </div>
-                <div class="col-12">
-                    <button class="btn btn-infrared" id="btn-create-proxy" onclick="createProxyHost()">
-                        <i class="bi bi-plus-circle"></i> Create Proxy Host
-                    </button>
                 </div>
             </div>
-            <div id="proxy-log" class="border rounded p-2" style="max-height: 200px; overflow-y: auto; background: #f8f9fa; min-height: 40px;">
+
+            <div class="mb-3">
+                <button class="btn btn-infrared" id="btn-point-domain" onclick="pointDomain()">
+                    <i class="bi bi-plus-circle"></i> Create
+                </button>
+            </div>
+            <div id="point-log" class="border rounded p-2" style="max-height: 200px; overflow-y: auto; background: #f8f9fa; min-height: 40px;">
                 <small class="text-muted">Waiting for action...</small>
             </div>
         </div>
@@ -166,6 +175,8 @@
     var selectedZoneId = '';
     var selectedZoneName = '';
     var allInstances = [];
+    var allContainers = [];
+    var npmPublicIp = '';
     var mailgunDnsRecords = null;
     var mailgunDomain = '';
     var mailgunRegion = 'us';
@@ -177,6 +188,8 @@
     function loadAll() {
         loadZones();
         loadInstances();
+        loadContainers();
+        loadNpmPublicIp();
     }
 
     // --- Helpers ---
@@ -282,7 +295,7 @@
         // Reset email workflow state and check if domain exists in Mailgun
         mailgunDnsRecords = null;
         mailgunDomain = '';
-        lastCheckedDomain = '';
+        lastCheckedKey = '';
         document.getElementById('btn-add-mailgun').disabled = false;
         document.getElementById('btn-push-dns').disabled = true;
         document.getElementById('btn-verify-email').disabled = true;
@@ -323,21 +336,22 @@
     // ===========================
 
     var checkMailgunTimer = null;
-    var lastCheckedDomain = '';
+    var lastCheckedKey = '';
 
     function checkMailgunDomain() {
         if (!selectedZoneName) return;
 
         var domain = buildDomain('email-subdomain');
         var region = document.getElementById('email-region').value;
+        var checkKey = domain + '|' + region;
 
-        // Don't re-check the same domain
-        if (domain === lastCheckedDomain) return;
+        // Don't re-check the same domain+region combination
+        if (checkKey === lastCheckedKey) return;
 
         // Debounce
         if (checkMailgunTimer) clearTimeout(checkMailgunTimer);
         checkMailgunTimer = setTimeout(function() {
-            lastCheckedDomain = domain;
+            lastCheckedKey = checkKey;
             mailgunDomain = domain;
             mailgunRegion = region;
             mailgunDnsRecords = null;
@@ -472,7 +486,7 @@
 
             // Domain now exists — disable Add, enable Push/Verify
             document.getElementById('btn-add-mailgun').disabled = true;
-            lastCheckedDomain = mailgunDomain;
+            lastCheckedKey = mailgunDomain + '|' + mailgunRegion;
         })
         .catch(function(err) {
             setButtonLoading('btn-add-mailgun', false);
@@ -627,97 +641,216 @@
     }
 
     // ===========================
-    // Workflow 2: Point Domain to Server
+    // Workflow 2: Point Domain
     // ===========================
 
-    function createARecord() {
-        if (!selectedZoneId) { alert('Select a zone first'); return; }
-
-        var publicIp = document.getElementById('dns-instance').value;
-        if (!publicIp) { alert('Select an EC2 instance'); return; }
-
-        var recordName = buildDomain('dns-subdomain');
-        var proxied = document.getElementById('dns-proxied').checked;
-
-        clearLog('dns-log');
-        setButtonLoading('btn-create-a', true);
-        logWarn('dns-log', 'Creating A record: <strong>' + recordName + '</strong> &rarr; ' + publicIp + (proxied ? ' (proxied)' : '') + '...');
-
-        fetch('/api/domains/zones/' + selectedZoneId + '/records', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({
-                type: 'A',
-                name: recordName,
-                content: publicIp,
-                ttl: 1,
-                proxied: proxied
+    function loadContainers() {
+        fetch('/api/containers?all=false')
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (data.error) return;
+                allContainers = data.containers || [];
+                var select = document.getElementById('point-container');
+                select.innerHTML = '<option value="">Select container or enter manually...</option>';
+                allContainers.forEach(function(c, idx) {
+                    var ip = '';
+                    var nets = c.networks || {};
+                    var netNames = Object.keys(nets);
+                    if (netNames.length > 0) {
+                        ip = nets[netNames[0]];
+                    }
+                    var port = '';
+                    if (c.ports && c.ports.length > 0) {
+                        // Extract first container port (e.g. "80/tcp" from "0.0.0.0:8080->80/tcp")
+                        var portStr = c.ports[0];
+                        var match = portStr.match(/->(\d+)/);
+                        if (match) {
+                            port = match[1];
+                        } else {
+                            var match2 = portStr.match(/^(\d+)/);
+                            if (match2) port = match2[1];
+                        }
+                    }
+                    var opt = document.createElement('option');
+                    opt.value = idx;
+                    opt.textContent = c.name + (ip ? ' (' + ip + ')' : '') + (port ? ' :' + port : '');
+                    opt.dataset.ip = ip;
+                    opt.dataset.port = port;
+                    select.appendChild(opt);
+                });
             })
-        })
-        .then(function(r) { return r.json(); })
-        .then(function(data) {
-            setButtonLoading('btn-create-a', false);
-            if (data.error) {
-                logErr('dns-log', 'Failed: ' + data.error);
-            } else {
-                logOk('dns-log', 'A record created: ' + recordName + ' &rarr; ' + publicIp);
-            }
-        })
-        .catch(function(err) {
-            setButtonLoading('btn-create-a', false);
-            logErr('dns-log', 'Request failed: ' + err);
-        });
+            .catch(function() {});
     }
 
-    // ===========================
-    // Workflow 3: Create Reverse Proxy
-    // ===========================
-
-    function createProxyHost() {
-        if (!selectedZoneName) { alert('Select a zone first'); return; }
-
-        var fullDomain = buildDomain('proxy-subdomain');
-        var forwardHost = document.getElementById('proxy-host').value.trim();
-        var forwardPort = parseInt(document.getElementById('proxy-port').value);
-        var scheme = document.getElementById('proxy-scheme').value;
-        var sslForced = document.getElementById('proxy-ssl').checked;
-        var websockets = document.getElementById('proxy-ws').checked;
-
-        if (!forwardHost) { alert('Enter a forward host'); return; }
-        if (!forwardPort) { alert('Enter a forward port'); return; }
-
-        clearLog('proxy-log');
-        setButtonLoading('btn-create-proxy', true);
-        logWarn('proxy-log', 'Creating proxy host: <strong>' + fullDomain + '</strong> &rarr; ' + scheme + '://' + forwardHost + ':' + forwardPort + '...');
-
-        fetch('/api/npm/hosts', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({
-                domain_names: [fullDomain],
-                forward_host: forwardHost,
-                forward_port: forwardPort,
-                forward_scheme: scheme,
-                ssl_forced: sslForced,
-                allow_websocket_upgrade: websockets
+    function loadNpmPublicIp() {
+        fetch('/api/credentials/npm/public_ip')
+            .then(function(r) {
+                if (r.status >= 400) return null;
+                return r.json();
             })
-        })
-        .then(function(r) { return r.json(); })
-        .then(function(data) {
-            setButtonLoading('btn-create-proxy', false);
-            if (data.error) {
-                logErr('proxy-log', 'Failed: ' + data.error);
-            } else {
-                logOk('proxy-log', 'Proxy host created: ' + fullDomain + ' &rarr; ' + scheme + '://' + forwardHost + ':' + forwardPort);
-                if (data.host && data.host.id) {
-                    logInfo('proxy-log', 'NPM Host ID: ' + data.host.id);
+            .then(function(data) {
+                if (data && data.value) {
+                    npmPublicIp = data.value;
+                    updateNpmIpDisplay();
                 }
+            })
+            .catch(function() {});
+    }
+
+    function onTargetTypeChange() {
+        var isService = document.getElementById('target-service').checked;
+        document.getElementById('ec2-fields').classList.toggle('d-none', isService);
+        document.getElementById('service-fields').classList.toggle('d-none', !isService);
+        if (isService) {
+            updateNpmIpDisplay();
+        }
+    }
+
+    function updateNpmIpDisplay() {
+        if (npmPublicIp) {
+            document.getElementById('npm-ip-warning').classList.add('d-none');
+            document.getElementById('npm-ip-info').classList.remove('d-none');
+            document.getElementById('npm-ip-display').textContent = npmPublicIp;
+        } else {
+            document.getElementById('npm-ip-warning').classList.remove('d-none');
+            document.getElementById('npm-ip-info').classList.add('d-none');
+        }
+    }
+
+    function onContainerSelect() {
+        var select = document.getElementById('point-container');
+        var idx = select.value;
+        if (idx === '') return;
+        var opt = select.options[select.selectedIndex];
+        if (opt.dataset.ip) {
+            document.getElementById('point-host').value = opt.dataset.ip;
+        }
+        if (opt.dataset.port) {
+            document.getElementById('point-port').value = opt.dataset.port;
+        }
+    }
+
+    function pointDomain() {
+        if (!selectedZoneId) { alert('Select a zone first'); return; }
+
+        var isService = document.getElementById('target-service').checked;
+        var recordName = buildDomain('point-subdomain');
+
+        clearLog('point-log');
+
+        if (!isService) {
+            // EC2 direct — create A record to instance public IP
+            var publicIp = document.getElementById('dns-instance').value;
+            if (!publicIp) { alert('Select an EC2 instance'); return; }
+            var proxied = document.getElementById('dns-proxied').checked;
+
+            setButtonLoading('btn-point-domain', true);
+            logWarn('point-log', 'Creating A record: <strong>' + recordName + '</strong> &rarr; ' + publicIp + (proxied ? ' (proxied)' : '') + '...');
+
+            fetch('/api/domains/zones/' + selectedZoneId + '/records', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    type: 'A',
+                    name: recordName,
+                    content: publicIp,
+                    ttl: 1,
+                    proxied: proxied
+                })
+            })
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                setButtonLoading('btn-point-domain', false);
+                if (data.error) {
+                    logErr('point-log', 'Failed: ' + data.error);
+                } else {
+                    logOk('point-log', 'A record created: ' + recordName + ' &rarr; ' + publicIp);
+                }
+            })
+            .catch(function(err) {
+                setButtonLoading('btn-point-domain', false);
+                logErr('point-log', 'Request failed: ' + err);
+            });
+        } else {
+            // Service via NPM — create A record to NPM host + proxy host
+            if (!npmPublicIp) {
+                alert('NPM Public IP not configured. Set it in Settings (NPM section).');
+                return;
             }
-        })
-        .catch(function(err) {
-            setButtonLoading('btn-create-proxy', false);
-            logErr('proxy-log', 'Request failed: ' + err);
-        });
+
+            var forwardHost = document.getElementById('point-host').value.trim();
+            var forwardPort = parseInt(document.getElementById('point-port').value);
+            var scheme = document.getElementById('point-scheme').value;
+            var sslForced = document.getElementById('point-ssl').checked;
+            var websockets = document.getElementById('point-ws').checked;
+
+            if (!forwardHost) { alert('Enter a forward host or select a container'); return; }
+            if (!forwardPort) { alert('Enter a forward port'); return; }
+
+            setButtonLoading('btn-point-domain', true);
+
+            // Step 1: Create A record pointing to NPM host
+            logWarn('point-log', 'Creating A record: <strong>' + recordName + '</strong> &rarr; ' + npmPublicIp + '...');
+
+            fetch('/api/domains/zones/' + selectedZoneId + '/records', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    type: 'A',
+                    name: recordName,
+                    content: npmPublicIp,
+                    ttl: 1,
+                    proxied: false
+                })
+            })
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (data.error) {
+                    if (data.error.toLowerCase().indexOf('already exists') !== -1) {
+                        logWarn('point-log', 'A record already exists for ' + recordName + ' — continuing to proxy setup');
+                    } else {
+                        logErr('point-log', 'Failed to create A record: ' + data.error);
+                        setButtonLoading('btn-point-domain', false);
+                        return;
+                    }
+                } else {
+                    logOk('point-log', 'A record created: ' + recordName + ' &rarr; ' + npmPublicIp);
+                }
+
+                // Step 2: Create NPM proxy host
+                logWarn('point-log', 'Creating NPM proxy: <strong>' + recordName + '</strong> &rarr; ' + scheme + '://' + forwardHost + ':' + forwardPort + '...');
+
+                return fetch('/api/npm/hosts', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        domain_names: [recordName],
+                        forward_host: forwardHost,
+                        forward_port: forwardPort,
+                        forward_scheme: scheme,
+                        ssl_forced: sslForced,
+                        allow_websocket_upgrade: websockets
+                    })
+                })
+                .then(function(r) { return r.json(); });
+            })
+            .then(function(data) {
+                setButtonLoading('btn-point-domain', false);
+                if (!data) return;
+                if (data.error) {
+                    logErr('point-log', 'Failed to create proxy: ' + data.error);
+                } else {
+                    logOk('point-log', 'Proxy host created: ' + recordName + ' &rarr; ' + scheme + '://' + forwardHost + ':' + forwardPort);
+                    if (data.host && data.host.id) {
+                        logInfo('point-log', 'NPM Host ID: ' + data.host.id);
+                    }
+                }
+            })
+            .catch(function(err) {
+                setButtonLoading('btn-point-domain', false);
+                logErr('point-log', 'Request failed: ' + err);
+            });
+        }
     }
 </script>
 {% endblock %}
