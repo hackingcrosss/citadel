@@ -85,7 +85,8 @@ def _request(method, path, **kwargs):
     if resp.status_code >= 400:
         error = resp.text
         try:
-            error = resp.json().get('message', resp.text)
+            err_json = resp.json()
+            error = err_json.get('detail') or err_json.get('message') or err_json.get('title') or resp.text
         except Exception:
             pass
         raise Exception(f'Cobalt Strike API error ({resp.status_code}): {error}')
@@ -106,13 +107,13 @@ def list_listeners():
     return _request('GET', '/api/v1/listeners')
 
 
-def get_listener(listener_id):
-    return _request('GET', f'/api/v1/listeners/{listener_id}')
+def get_listener(listener_name):
+    return _request('GET', f'/api/v1/listeners/{listener_name}')
 
 
 def create_listener(data):
     return _request('POST', '/api/v1/listeners', json=data)
 
 
-def delete_listener(listener_id):
-    return _request('DELETE', f'/api/v1/listeners/{listener_id}')
+def delete_listener(listener_name):
+    return _request('DELETE', f'/api/v1/listeners/{listener_name}')
