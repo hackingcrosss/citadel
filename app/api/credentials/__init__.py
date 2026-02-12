@@ -36,6 +36,7 @@ def test_credentials(provider):
         'npm': _test_npm,
         'aws': _test_aws,
         'docker': _test_docker,
+        'gophish': _test_gophish,
     }
 
     tester = testers.get(provider)
@@ -96,3 +97,9 @@ def _test_docker():
     from app.services import docker_service
     containers = docker_service.list_containers()
     return {'container_count': len(containers)}
+
+
+def _test_gophish():
+    from app.services import gophish_service
+    result = gophish_service.verify_connection()
+    return result

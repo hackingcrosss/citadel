@@ -263,6 +263,41 @@
                     </div>
                 </div>
 
+                <hr>
+
+                <!-- GoPhish -->
+                <div class="mb-4">
+                    <h6 class="fw-bold mb-3">
+                        <i class="bi bi-fish text-success"></i> GoPhish
+                    </h6>
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label">API URL</label>
+                            <input type="text" class="form-control" id="gophish-api-url" placeholder="https://gophish.example.com">
+                            <small class="text-muted" id="gophish-api-url-status"></small>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">API Key</label>
+                            <div class="input-group">
+                                <input type="password" class="form-control" id="gophish-api-key" placeholder="Enter GoPhish API key">
+                                <button class="btn btn-outline-secondary" type="button">
+                                    <i class="bi bi-eye"></i>
+                                </button>
+                            </div>
+                            <small class="text-muted" id="gophish-api-key-status"></small>
+                        </div>
+                        <div class="col-12">
+                            <button class="btn btn-sm btn-outline-primary" onclick="saveGophishCredentials()">
+                                <i class="bi bi-pencil"></i> Update
+                            </button>
+                            <button class="btn btn-sm btn-outline-success" onclick="testGophishConnection()">
+                                <i class="bi bi-check-circle"></i> Test Connection
+                            </button>
+                            <span id="gophish-test-result" class="ms-2"></span>
+                        </div>
+                    </div>
+                </div>
+
                 <div class="alert alert-info">
                     <i class="bi bi-info-circle"></i>
                     All credentials are encrypted using AES-256 before being stored in the database.
@@ -355,6 +390,7 @@
         loadMailgunStatus();
         loadNpmStatus();
         loadDockerStatus();
+        loadGophishStatus();
         loadEc2ForNpm();
     });
 
@@ -717,6 +753,77 @@
                 resultEl.innerHTML = '<span class="text-danger"><i class="bi bi-x-circle-fill"></i> Request failed</span>';
             });
     }
+
+    // --- GoPhish ---
+
+    function loadGophishStatus() {
+        fetch('/api/credentials/gophish')
+            .then(r => r.json())
+            .then(data => {
+                const creds = data.gophish || {};
+                if (creds.api_url) {
+                    document.getElementById('gophish-api-url').placeholder = creds.api_url.masked;
+                    document.getElementById('gophish-api-url-status').textContent =
+                        'Last updated: ' + new Date(creds.api_url.updated_at).toLocaleString();
+                }
+                if (creds.api_key) {
+                    document.getElementById('gophish-api-key').placeholder = creds.api_key.masked;
+                    document.getElementById('gophish-api-key-status').textContent =
+                        'Last updated: ' + new Date(creds.api_key.updated_at).toLocaleString();
+                }
+            })
+            .catch(err => console.error('Failed to load GoPhish credentials:', err));
+    }
+
+    function saveGophishCredentials() {
+        const apiUrl = document.getElementById('gophish-api-url').value;
+        const apiKey = document.getElementById('gophish-api-key').value;
+
+        const body = {};
+        if (apiUrl) body.api_url = apiUrl;
+        if (apiKey) body.api_key = apiKey;
+
+        if (Object.keys(body).length === 0) {
+            alert('Enter at least one value to save.');
+            return;
+        }
+
+        fetch('/api/credentials/gophish', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(body)
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.saved) {
+                alert('Saved: ' + data.saved.join(', '));
+                document.getElementById('gophish-api-url').value = '';
+                document.getElementById('gophish-api-key').value = '';
+                loadGophishStatus();
+            }
+        })
+        .catch(err => alert('Error saving: ' + err));
+    }
+
+    function testGophishConnection() {
+        const resultEl = document.getElementById('gophish-test-result');
+        resultEl.innerHTML = '<span class="text-muted"><i class="bi bi-hourglass-split"></i> Testing...</span>';
+
+        fetch('/api/credentials/gophish/test', {method: 'POST'})
+            .then(r => r.json())
+            .then(data => {
+                if (data.success) {
+                    resultEl.innerHTML = '<span class="text-success"><i class="bi bi-check-circle-fill"></i> Connected (' + (data.result.profile_count || 0) + ' profiles)</span>';
+                } else {
+                    resultEl.innerHTML = '<span class="text-danger"><i class="bi bi-x-circle-fill"></i> ' + data.error + '</span>';
+                }
+            })
+            .catch(err => {
+                resultEl.innerHTML = '<span class="text-danger"><i class="bi bi-x-circle-fill"></i> Request failed</span>';
+            });
+    }
+
+    // --- NPM EC2 Picker ---
 
     function loadEc2ForNpm() {
         fetch('/api/aws/instances')
