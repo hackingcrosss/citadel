@@ -143,6 +143,13 @@ def register_routes(app):
             return redirect(url_for('change_password'))
         return render_template('operations.html')
 
+    @app.route('/gophish')
+    @login_required
+    def gophish():
+        if current_user.must_change_password:
+            return redirect(url_for('change_password'))
+        return render_template('gophish.html')
+
     @app.route('/settings')
     @login_required
     def settings():

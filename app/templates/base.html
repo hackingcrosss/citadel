@@ -171,6 +171,9 @@
             <a class="nav-link {% if request.endpoint == 'operations' %}active{% endif %}" href="{{ url_for('operations') }}">
                 <i class="bi bi-diagram-3"></i> Operations
             </a>
+            <a class="nav-link {% if request.endpoint == 'gophish' %}active{% endif %}" href="{{ url_for('gophish') }}">
+                <i class="bi bi-fish"></i> GoPhish
+            </a>
             <a class="nav-link {% if request.endpoint == 'settings' %}active{% endif %}" href="{{ url_for('settings') }}">
                 <i class="bi bi-gear"></i> Settings
             </a>
