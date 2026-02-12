@@ -96,6 +96,7 @@ The `web` container mounts `/var/run/docker.sock` for direct Docker container ma
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | GET    | `/api/credentials/<provider>` | Get credentials for provider (masked) |
+| GET    | `/api/credentials/<provider>/<key_name>` | Get single credential (unmasked) |
 | POST   | `/api/credentials/<provider>` | Save credentials |
 | POST   | `/api/credentials/<provider>/test` | Test credentials |
 | DELETE | `/api/credentials/<provider>/<key_name>` | Delete credential |
@@ -200,14 +201,16 @@ Each section loads independently. If a service's credentials aren't configured, 
 - Zone selector loads all Cloudflare zones; all workflows operate against the selected zone
 - **Setup Email Domain**: Select a zone and optionally enter a subdomain, then:
   1. Auto-checks if the domain already exists in Mailgun (disables "Add" button if so, enables "Push DNS" directly)
-  2. Adds domain to Mailgun with DKIM authority and 2048-bit key size
-  3. Fetches `sending_dns_records` (SPF, DKIM, CNAME) and `receiving_dns_records` (MX) from Mailgun
-  4. Pushes all DNS records to the selected Cloudflare zone one by one, handling "already exists" gracefully
-  5. Verifies domain with Mailgun after DNS propagation
-- **Point Domain to Server**: Create an A record pointing a subdomain to an EC2 instance's public IP, with optional Cloudflare proxy
-- **Create Reverse Proxy**: Create an NPM proxy host for the domain, with forward host/port, scheme, SSL, and WebSocket options
+  2. Re-checks automatically when the subdomain or Mailgun region (US/EU) is changed
+  3. Adds domain to Mailgun with DKIM authority and 2048-bit key size
+  4. Fetches `sending_dns_records` (SPF, DKIM, CNAME) and `receiving_dns_records` (MX) from Mailgun
+  5. Pushes all DNS records to the selected Cloudflare zone one by one, handling "already exists" gracefully
+  6. Verifies domain with Mailgun after DNS propagation
+- **Point Domain**: Unified card with target type selector:
+  - **EC2 Instance (direct)**: Creates an A record pointing to the instance's public IP, with optional Cloudflare proxy
+  - **Service (via NPM reverse proxy)**: Creates an A record pointing to the NPM host's public IP (configured in Settings), then creates an NPM proxy host forwarding to the target. Target can be selected from a container dropdown (auto-fills IP and port) or entered manually.
 - Step log in each card shows real-time progress with status icons (success, in-progress, error)
-- All workflows chain existing API endpoints from frontend JavaScript — no additional backend routes required
+- All workflows chain existing API endpoints from frontend JavaScript
 
 ## Configuration
 
@@ -215,7 +218,7 @@ API credentials are configured in the Settings page (`/settings`):
 - **AWS**: Access Key ID, Secret Access Key, Default Region
 - **Cloudflare**: API Token
 - **Mailgun**: API Key
-- **NPM**: API URL, API Token (or authenticate via email/password)
+- **NPM**: API URL, API Token (or authenticate via email/password), Public IP (for DNS records in Operations)
 - **Docker**: Remote host URL (optional), TLS certificates (optional)
 
 All credentials are encrypted with Fernet (AES-256) before being stored in the database.
