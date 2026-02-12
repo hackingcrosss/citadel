@@ -129,12 +129,26 @@ The dashboard fetches live data from each service independently. If a section sh
 - Test with: `docker compose exec web python -c "from app.services.aws_service import verify_credentials; print(verify_credentials())"`
 
 **Containers — "Failed to connect to Docker"**
-- The Docker socket must be mounted. Check docker-compose.yml has:
+
+For local Docker socket:
+- Check docker-compose.yml mounts the socket:
   ```yaml
   volumes:
     - /var/run/docker.sock:/var/run/docker.sock
   ```
 - Check socket permissions: `ls -la /var/run/docker.sock`
+
+For remote Docker host:
+- Verify the Docker Host URL is set in Settings (e.g. `tcp://remote:2375`)
+- If using an SSH tunnel, make sure it's running and bound to `0.0.0.0` (not just localhost):
+  ```bash
+  ssh -nNT -L 0.0.0.0:2375:localhost:2375 user@remote-host
+  ```
+- The `web` service needs `extra_hosts` in docker-compose.yml:
+  ```yaml
+  extra_hosts:
+    - "host.docker.internal:host-gateway"
+  ```
 - Test with: `docker compose exec web python -c "from app.services.docker_service import list_containers; print(len(list_containers()), 'containers')"`
 
 **Cloudflare Zones — "Failed to load - check Cloudflare credentials"**
@@ -150,6 +164,33 @@ The dashboard fetches live data from each service independently. If a section sh
 **Mailgun — no dashboard section but used by email page**
 - Configure API Key in Settings
 - Test with: `docker compose exec web python -c "from app.services.email_service import verify_api_key; print(verify_api_key())"`
+
+## Remote Docker Daemon Won't Start
+
+### "Start request repeated too quickly"
+The `hosts` setting in `/etc/docker/daemon.json` conflicts with the `-H fd://` flag in the systemd unit file.
+
+Fix: remove the `-H fd://` from the main unit file:
+```bash
+sudo sed -i 's|ExecStart=/usr/bin/dockerd.*|ExecStart=/usr/bin/dockerd|' /usr/lib/systemd/system/docker.service
+sudo systemctl daemon-reload
+sudo systemctl restart docker
+```
+
+### "Service has more than one ExecStart= setting"
+A systemd drop-in override file has a duplicate `ExecStart`. Either fix the override or delete it and edit the main unit file directly:
+```bash
+sudo rm -rf /etc/systemd/system/docker.service.d/
+sudo systemctl daemon-reload
+sudo systemctl restart docker
+```
+
+### Verify remote Docker is listening
+```bash
+# On the remote host
+curl http://localhost:2375/version
+sudo ss -tlnp | grep 2375
+```
 
 ## Docker Socket Permission Denied
 

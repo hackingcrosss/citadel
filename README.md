@@ -6,8 +6,8 @@ A web application for managing red team infrastructure including domains, Docker
 
 - **Dashboard**: Live overview pulling real-time data from all integrated services, auto-refreshing every 30 seconds
 - **Domain Management**: Cloudflare DNS zone and record management, SSL settings
-- **Container Management**: Docker container listing, start/stop/restart, logs, and resource stats via local Docker socket
-- **AWS EC2 Monitoring**: Multi-region instance management, security groups, key pairs, start/stop/reboot/terminate
+- **Container Management**: Docker container listing, start/stop/restart/remove, logs viewer, detail inspector, with status and name filtering. Supports local socket or remote Docker host via TCP/TLS
+- **AWS EC2 Monitoring**: Multi-region instance management, security groups, key pairs, start/stop/reboot/terminate, with status and name/ID filtering
 - **Nginx Proxy Manager**: Proxy host CRUD, enable/disable, certificates, redirections
 - **Email (Mailgun)**: Domain management, DNS verification, SMTP credential management, multi-region support
 - **Secure Credential Storage**: All API keys encrypted with Fernet (AES-256) before database storage
@@ -133,6 +133,7 @@ The `web` container mounts `/var/run/docker.sock` for direct Docker container ma
 | POST   | `/api/containers/<id>/start` | Start container |
 | POST   | `/api/containers/<id>/stop` | Stop container |
 | POST   | `/api/containers/<id>/restart` | Restart container |
+| DELETE | `/api/containers/<id>` | Remove container (optional `?force=true` to kill running) |
 | GET    | `/api/containers/<id>/logs` | Container logs (optional `?tail=100`) |
 | GET    | `/api/containers/<id>/stats` | Container CPU/memory stats |
 
@@ -173,6 +174,26 @@ The dashboard fetches live data from all services on page load and auto-refreshe
 
 Each section loads independently. If a service's credentials aren't configured, that section shows a "Not configured" message with a link to Settings. Other sections continue to work normally.
 
+## Page Features
+
+### Containers (`/containers`)
+- Live list of all Docker containers with name, image, ports, status, and creation time
+- Stat cards: running, stopped, restarting, and total counts
+- Actions: start, stop, restart, and remove (with force option for running containers)
+- Logs viewer modal with configurable tail count (50/100/500/1000 lines)
+- Detail inspector showing full container config (command, volumes, networks, env vars, labels)
+- Frontend filters: status dropdown and name search
+- Auto-refreshes every 15 seconds
+
+### AWS EC2 (`/aws`)
+- Multi-region instance listing with region selector
+- Stat cards: total, running, stopped, and other instance counts
+- Single and bulk instance actions: start, stop, reboot, terminate (with confirmation)
+- Instance detail modal with full metadata, security groups, and tags
+- Security group drill-down showing inbound/outbound rules
+- Frontend filters: status dropdown and name/ID search
+- Checkbox selection for bulk operations
+
 ## Configuration
 
 API credentials are configured in the Settings page (`/settings`):
@@ -180,8 +201,55 @@ API credentials are configured in the Settings page (`/settings`):
 - **Cloudflare**: API Token
 - **Mailgun**: API Key
 - **NPM**: API URL, API Token (or authenticate via email/password)
+- **Docker**: Remote host URL (optional), TLS certificates (optional)
 
 All credentials are encrypted with Fernet (AES-256) before being stored in the database.
+
+### Remote Docker Host
+
+By default the app manages containers on the local Docker socket. To manage containers on a remote machine, configure a remote Docker host in Settings.
+
+**Option 1: Expose Docker TCP on the remote host**
+
+Edit `/etc/docker/daemon.json` on the remote host:
+```json
+{
+  "hosts": ["unix:///var/run/docker.sock", "tcp://0.0.0.0:2375"]
+}
+```
+
+If the remote Docker service uses systemd, remove the `-H fd://` flag from the main unit file:
+```bash
+sudo sed -i 's|ExecStart=/usr/bin/dockerd.*|ExecStart=/usr/bin/dockerd|' /usr/lib/systemd/system/docker.service
+sudo systemctl daemon-reload
+sudo systemctl restart docker
+```
+
+Then in Settings, set Docker Host URL to `tcp://<remote-ip>:2375`.
+
+For TLS (port 2376), generate CA + client certificates and paste them in the TLS section in Settings.
+
+**Option 2: SSH tunnel**
+
+Create a tunnel on the InfraRed host that forwards the remote Docker socket:
+```bash
+ssh -nNT -L 0.0.0.0:2375:localhost:2375 user@remote-host
+```
+
+Add `extra_hosts` to the `web` service in `docker-compose.yml` so the container can reach the host:
+```yaml
+services:
+  web:
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+```
+
+Then in Settings, set Docker Host URL to `tcp://host.docker.internal:2375`.
+
+Restrict tunnel binding to the Docker bridge for security:
+```bash
+ssh -nNT -L 172.17.0.1:2375:localhost:2375 user@remote-host
+```
 
 ## Development
 

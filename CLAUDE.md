@@ -91,7 +91,7 @@ services:
 - `/domains` - Domain management interface
 - `/containers` - Docker container management
 - `/settings` - API credential configuration
-- `/api/*` - REST endpoints (to be implemented)
+- `/api/*` - REST endpoints for all services
 
 ## Database Models
 
@@ -205,39 +205,43 @@ docker compose exec web python init_db.py
 - All API credentials encrypted before database storage
 - Use HTTPS in production (configure nginx SSL)
 
+## Implemented Services
+
+### Backend Services (all complete)
+- `app/services/dns_service.py` - Cloudflare DNS management (zones, records, SSL)
+- `app/services/docker_service.py` - Docker SDK (list, start/stop/restart/remove, logs, stats, remote host support)
+- `app/services/aws_service.py` - boto3 EC2 management (instances, security groups, key pairs, multi-region)
+- `app/services/email_service.py` - Mailgun integration (domains, SMTP credentials, multi-region)
+- `app/services/npm_service.py` - Nginx Proxy Manager API (proxy hosts, certificates, redirections)
+- `app/services/credential_service.py` - Fernet encryption/decryption for all stored credentials
+
+### API Endpoints (all complete)
+- `/api/credentials` - Credential CRUD + test for all providers (aws, cloudflare, mailgun, npm, docker)
+- `/api/domains` - Cloudflare zone and DNS record management
+- `/api/containers` - Docker container management (list, details, start/stop/restart/remove, logs, stats)
+- `/api/aws` - EC2 instance management (list, details, start/stop/reboot/terminate, security groups, key pairs)
+- `/api/npm` - Nginx Proxy Manager proxy hosts, certificates, redirections
+- `/api/email` - Mailgun domain and SMTP credential management
+
+### Frontend (all complete)
+- Dashboard with live data from all services, auto-refresh every 30 seconds
+- Containers page with logs viewer, detail inspector, status/name filters, auto-refresh
+- AWS EC2 page with instance detail/security group modals, bulk actions, status/name filters
+- Domains page with zone selector, DNS record editor, SSL settings
+- Email page with domain management, DNS verification, SMTP credentials
+- NPM page with proxy host management
+- Settings page with credential management for all providers including Docker remote host
+
 ## Next Steps (To Be Implemented)
 
-### Backend Services
-- `app/services/dns_service.py` - Cloudflare DNS management
-- `app/services/docker_service.py` - Docker SDK integration
-- `app/services/aws_service.py` - boto3 EC2 management
-- `app/services/email_service.py` - Mailgun integration
-- `app/services/npm_service.py` - Nginx Proxy Manager API
-- `app/services/credential_service.py` - Encryption/decryption handler
-
 ### Celery Tasks
-- `app/tasks/celery_app.py` - Celery instance
+- `app/tasks/celery_app.py` - Celery instance configuration
 - `app/tasks/dns_tasks.py` - Async DNS updates
 - `app/tasks/container_tasks.py` - Async container deployment
 
-### API Endpoints
-- Domain CRUD operations
-- Container management (start/stop/deploy/logs)
-- EC2 status monitoring
-- NPM entry management
-- Credential management (encrypted storage/retrieval)
-
 ### Database Models (To Add)
 - Domain model (name, registrar, dns_records, email_status)
-- Container model (name, image, ports, status)
-- Credential model (provider, encrypted_value)
 - DNSRecord model (domain_id, type, value)
-
-### Frontend Enhancements
-- Real-time updates via AJAX
-- Container logs viewer
-- DNS record editor
-- EC2 instance controls
 
 ## Common Issues & Solutions
 
