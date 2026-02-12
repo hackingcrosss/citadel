@@ -1,10 +1,42 @@
 import docker
 from docker.errors import NotFound, APIError
+from app.services.credential_service import get_credential
 
 
 def _get_client():
-    """Get Docker client connected to local socket."""
+    """Get Docker client. Uses remote host from Settings if configured,
+    otherwise falls back to local socket."""
+    docker_host = get_credential('docker', 'host')
+    if docker_host:
+        tls_config = None
+        if docker_host.startswith('tcp://') and ':2376' in docker_host:
+            # Port 2376 conventionally means TLS
+            ca = get_credential('docker', 'tls_ca')
+            cert = get_credential('docker', 'tls_cert')
+            key = get_credential('docker', 'tls_key')
+            if ca and cert and key:
+                import tempfile, os
+                # Write certs to temp files for the TLS config
+                ca_path = _write_temp(ca, 'ca.pem')
+                cert_path = _write_temp(cert, 'cert.pem')
+                key_path = _write_temp(key, 'key.pem')
+                tls_config = docker.tls.TLSConfig(
+                    ca_cert=ca_path,
+                    client_cert=(cert_path, key_path),
+                    verify=True
+                )
+        return docker.DockerClient(base_url=docker_host, tls=tls_config)
     return docker.from_env()
+
+
+def _write_temp(content, name):
+    """Write credential content to a temp file and return the path."""
+    import tempfile, os
+    path = os.path.join(tempfile.gettempdir(), f'infrared-docker-{name}')
+    with open(path, 'w') as f:
+        f.write(content)
+    os.chmod(path, 0o600)
+    return path
 
 
 # --- List / Get ---
@@ -47,6 +79,15 @@ def restart_container(container_id):
     container.restart(timeout=10)
     container.reload()
     return {'id': container.short_id, 'name': container.name, 'status': container.status}
+
+
+def remove_container(container_id, force=False):
+    client = _get_client()
+    container = client.containers.get(container_id)
+    name = container.name
+    short_id = container.short_id
+    container.remove(force=force)
+    return {'id': short_id, 'name': name, 'removed': True}
 
 
 # --- Logs ---

@@ -203,8 +203,58 @@
                     </div>
                 </div>
 
+                <hr>
+
+                <!-- Docker Remote Host -->
+                <div class="mb-4">
+                    <h6 class="fw-bold mb-3">
+                        <i class="bi bi-box-seam text-info"></i> Docker (Remote Host)
+                    </h6>
+                    <p class="text-muted small">Leave empty to use the local Docker socket. Set a remote host to manage containers on another machine.</p>
+                    <div class="row g-3">
+                        <div class="col-md-12">
+                            <label class="form-label">Docker Host URL</label>
+                            <input type="text" class="form-control" id="docker-host" placeholder="tcp://remote-host:2375 or tcp://remote-host:2376 for TLS">
+                            <small class="text-muted" id="docker-host-status"></small>
+                        </div>
+                        <div class="col-12">
+                            <a class="small text-decoration-none" data-bs-toggle="collapse" href="#dockerTlsCollapse" role="button">
+                                <i class="bi bi-lock"></i> TLS Certificates (for port 2376)
+                            </a>
+                        </div>
+                        <div class="col-12 collapse" id="dockerTlsCollapse">
+                            <div class="card card-body bg-light">
+                                <small class="text-muted mb-2">Paste the contents of each PEM file. Required when connecting to port 2376 with TLS.</small>
+                                <div class="row g-2">
+                                    <div class="col-md-4">
+                                        <label class="form-label small">CA Certificate (ca.pem)</label>
+                                        <textarea class="form-control form-control-sm" id="docker-tls-ca" rows="3" placeholder="-----BEGIN CERTIFICATE-----"></textarea>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <label class="form-label small">Client Certificate (cert.pem)</label>
+                                        <textarea class="form-control form-control-sm" id="docker-tls-cert" rows="3" placeholder="-----BEGIN CERTIFICATE-----"></textarea>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <label class="form-label small">Client Key (key.pem)</label>
+                                        <textarea class="form-control form-control-sm" id="docker-tls-key" rows="3" placeholder="-----BEGIN RSA PRIVATE KEY-----"></textarea>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-12">
+                            <button class="btn btn-sm btn-outline-primary" onclick="saveDockerCredentials()">
+                                <i class="bi bi-pencil"></i> Update
+                            </button>
+                            <button class="btn btn-sm btn-outline-success" onclick="testDockerConnection()">
+                                <i class="bi bi-check-circle"></i> Test Connection
+                            </button>
+                            <span id="docker-test-result" class="ms-2"></span>
+                        </div>
+                    </div>
+                </div>
+
                 <div class="alert alert-info">
-                    <i class="bi bi-info-circle"></i> 
+                    <i class="bi bi-info-circle"></i>
                     All credentials are encrypted using AES-256 before being stored in the database.
                 </div>
             </div>
@@ -294,6 +344,7 @@
         loadCloudflareStatus();
         loadMailgunStatus();
         loadNpmStatus();
+        loadDockerStatus();
     });
 
     // --- AWS ---
@@ -569,6 +620,76 @@
             .then(data => {
                 if (data.success) {
                     resultEl.innerHTML = '<span class="text-success"><i class="bi bi-check-circle-fill"></i> Connected (' + (data.result.host_count || 0) + ' hosts)</span>';
+                } else {
+                    resultEl.innerHTML = '<span class="text-danger"><i class="bi bi-x-circle-fill"></i> ' + data.error + '</span>';
+                }
+            })
+            .catch(err => {
+                resultEl.innerHTML = '<span class="text-danger"><i class="bi bi-x-circle-fill"></i> Request failed</span>';
+            });
+    }
+
+    // --- Docker ---
+
+    function loadDockerStatus() {
+        fetch('/api/credentials/docker')
+            .then(r => r.json())
+            .then(data => {
+                const creds = data.docker || {};
+                if (creds.host) {
+                    document.getElementById('docker-host').placeholder = creds.host.masked;
+                    document.getElementById('docker-host-status').textContent =
+                        'Last updated: ' + new Date(creds.host.updated_at).toLocaleString();
+                }
+            })
+            .catch(err => console.error('Failed to load Docker credentials:', err));
+    }
+
+    function saveDockerCredentials() {
+        const host = document.getElementById('docker-host').value;
+        const tlsCa = document.getElementById('docker-tls-ca').value;
+        const tlsCert = document.getElementById('docker-tls-cert').value;
+        const tlsKey = document.getElementById('docker-tls-key').value;
+
+        const body = {};
+        if (host) body.host = host;
+        if (tlsCa) body.tls_ca = tlsCa;
+        if (tlsCert) body.tls_cert = tlsCert;
+        if (tlsKey) body.tls_key = tlsKey;
+
+        if (Object.keys(body).length === 0) {
+            alert('Enter at least the Docker Host URL.');
+            return;
+        }
+
+        fetch('/api/credentials/docker', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(body)
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.saved) {
+                alert('Saved: ' + data.saved.join(', '));
+                document.getElementById('docker-host').value = '';
+                document.getElementById('docker-tls-ca').value = '';
+                document.getElementById('docker-tls-cert').value = '';
+                document.getElementById('docker-tls-key').value = '';
+                loadDockerStatus();
+            }
+        })
+        .catch(err => alert('Error saving: ' + err));
+    }
+
+    function testDockerConnection() {
+        const resultEl = document.getElementById('docker-test-result');
+        resultEl.innerHTML = '<span class="text-muted"><i class="bi bi-hourglass-split"></i> Testing...</span>';
+
+        fetch('/api/credentials/docker/test', {method: 'POST'})
+            .then(r => r.json())
+            .then(data => {
+                if (data.success) {
+                    resultEl.innerHTML = '<span class="text-success"><i class="bi bi-check-circle-fill"></i> Connected (' + (data.result.container_count || 0) + ' containers)</span>';
                 } else {
                     resultEl.innerHTML = '<span class="text-danger"><i class="bi bi-x-circle-fill"></i> ' + data.error + '</span>';
                 }

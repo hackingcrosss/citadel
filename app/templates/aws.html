@@ -58,6 +58,34 @@
     </div>
 </div>
 
+<!-- Filters -->
+<div class="card-custom mb-3">
+    <div class="card-body py-2">
+        <div class="row g-2 align-items-center">
+            <div class="col-auto">
+                <label class="form-label mb-0 small fw-bold">Filter:</label>
+            </div>
+            <div class="col-md-3">
+                <select class="form-select form-select-sm" id="filter-status" onchange="applyFilters()">
+                    <option value="">All statuses</option>
+                    <option value="running">Running</option>
+                    <option value="stopped">Stopped</option>
+                    <option value="pending">Pending</option>
+                    <option value="stopping">Stopping</option>
+                    <option value="shutting-down">Shutting down</option>
+                    <option value="terminated">Terminated</option>
+                </select>
+            </div>
+            <div class="col-md-3">
+                <input type="text" class="form-control form-control-sm" id="filter-name" placeholder="Search by name or ID..." oninput="applyFilters()">
+            </div>
+            <div class="col-auto">
+                <small class="text-muted" id="filter-count"></small>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- Instances Table -->
 <div class="card-custom mb-4">
     <div class="card-header d-flex justify-content-between align-items-center">
@@ -194,7 +222,7 @@
                     empty.classList.remove('d-none');
                 } else {
                     table.classList.remove('d-none');
-                    renderInstances(allInstances);
+                    applyFilters();
                 }
             })
             .catch(err => {
@@ -210,6 +238,29 @@
         document.getElementById('statRunning').textContent = instances.filter(i => i.state === 'running').length;
         document.getElementById('statStopped').textContent = instances.filter(i => i.state === 'stopped').length;
         document.getElementById('statOther').textContent = instances.filter(i => !['running', 'stopped'].includes(i.state)).length;
+    }
+
+    function applyFilters() {
+        const status = document.getElementById('filter-status').value;
+        const name = document.getElementById('filter-name').value.toLowerCase();
+
+        const filtered = allInstances.filter(inst => {
+            if (status && inst.state !== status) return false;
+            if (name) {
+                const match = (inst.name || '').toLowerCase().indexOf(name) !== -1 ||
+                              inst.id.toLowerCase().indexOf(name) !== -1;
+                if (!match) return false;
+            }
+            return true;
+        });
+
+        renderInstances(filtered);
+        const countEl = document.getElementById('filter-count');
+        if (status || name) {
+            countEl.textContent = `Showing ${filtered.length} of ${allInstances.length}`;
+        } else {
+            countEl.textContent = '';
+        }
     }
 
     function renderInstances(instances) {

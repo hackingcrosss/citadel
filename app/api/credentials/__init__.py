@@ -35,6 +35,7 @@ def test_credentials(provider):
         'mailgun': _test_mailgun,
         'npm': _test_npm,
         'aws': _test_aws,
+        'docker': _test_docker,
     }
 
     tester = testers.get(provider)
@@ -79,3 +80,9 @@ def _test_aws():
     from app.services import aws_service
     result = aws_service.verify_credentials()
     return result
+
+
+def _test_docker():
+    from app.services import docker_service
+    containers = docker_service.list_containers()
+    return {'container_count': len(containers)}
