@@ -45,7 +45,7 @@
                         <option value="eu">EU</option>
                     </select>
                 </div>
-                <div class="col-md-6 d-flex align-items-end gap-2">
+                <div class="col-md-6 d-flex align-items-end gap-2 flex-wrap">
                     <button class="btn btn-infrared" id="btn-add-mailgun" onclick="setupEmail()">
                         <i class="bi bi-1-circle"></i> Add to Mailgun
                     </button>
@@ -54,6 +54,20 @@
                     </button>
                     <button class="btn btn-outline-success" id="btn-verify-email" onclick="verifyEmailDomain()" disabled>
                         <i class="bi bi-3-circle"></i> Verify Domain
+                    </button>
+                </div>
+            </div>
+            <div class="row g-3 mb-3" id="gophish-row">
+                <div class="col-md-3">
+                    <label class="form-label">SMTP Username</label>
+                    <div class="input-group">
+                        <input type="text" class="form-control" id="email-smtp-username" placeholder="postmaster">
+                        <span class="input-group-text" id="email-smtp-suffix">@example.com</span>
+                    </div>
+                </div>
+                <div class="col-md-3 d-flex align-items-end">
+                    <button class="btn btn-outline-warning" id="btn-add-gophish" onclick="addToGophish()" disabled>
+                        <i class="bi bi-4-circle"></i> Add to GoPhish
                     </button>
                 </div>
             </div>
@@ -288,6 +302,7 @@
 
         // Update zone suffix labels
         document.getElementById('email-zone-suffix').textContent = '.' + selectedZoneName;
+        document.getElementById('email-smtp-suffix').textContent = '@' + selectedZoneName;
         document.querySelectorAll('.dns-zone-suffix').forEach(function(el) {
             el.textContent = '.' + selectedZoneName;
         });
@@ -299,6 +314,7 @@
         document.getElementById('btn-add-mailgun').disabled = false;
         document.getElementById('btn-push-dns').disabled = true;
         document.getElementById('btn-verify-email').disabled = true;
+        document.getElementById('btn-add-gophish').disabled = true;
         checkMailgunDomain();
     }
 
@@ -377,6 +393,7 @@
                         document.getElementById('btn-add-mailgun').disabled = false;
                         document.getElementById('btn-push-dns').disabled = true;
                         document.getElementById('btn-verify-email').disabled = true;
+                        document.getElementById('btn-add-gophish').disabled = true;
                         return;
                     }
 
@@ -405,6 +422,10 @@
                     document.getElementById('btn-add-mailgun').disabled = true;
                     document.getElementById('btn-push-dns').disabled = false;
                     document.getElementById('btn-verify-email').disabled = false;
+
+                    // Enable GoPhish button if all sending records are verified
+                    updateGophishButton();
+                    updateSmtpSuffix();
                 })
                 .catch(function() {
                     // Network error or Mailgun not configured — allow add
@@ -412,6 +433,7 @@
                     document.getElementById('btn-add-mailgun').disabled = false;
                     document.getElementById('btn-push-dns').disabled = true;
                     document.getElementById('btn-verify-email').disabled = true;
+                    document.getElementById('btn-add-gophish').disabled = true;
                 });
         }, 400);
     }
@@ -426,6 +448,7 @@
         setButtonLoading('btn-add-mailgun', true);
         document.getElementById('btn-push-dns').disabled = true;
         document.getElementById('btn-verify-email').disabled = true;
+        document.getElementById('btn-add-gophish').disabled = true;
 
         logWarn('email-log', 'Adding <strong>' + mailgunDomain + '</strong> to Mailgun (' + mailgunRegion.toUpperCase() + ')...');
 
@@ -487,6 +510,8 @@
             // Domain now exists — disable Add, enable Push/Verify
             document.getElementById('btn-add-mailgun').disabled = true;
             lastCheckedKey = mailgunDomain + '|' + mailgunRegion;
+            updateGophishButton();
+            updateSmtpSuffix();
         })
         .catch(function(err) {
             setButtonLoading('btn-add-mailgun', false);
@@ -621,8 +646,8 @@
         })
         .then(function(r) { return r.json(); })
         .then(function(data) {
-            setButtonLoading('btn-verify-email', false);
             if (data.error) {
+                setButtonLoading('btn-verify-email', false);
                 logErr('email-log', 'Verification failed: ' + data.error);
                 return;
             }
@@ -633,10 +658,125 @@
             } else {
                 logWarn('email-log', 'Domain state: ' + state + ' — DNS propagation may still be in progress. Try again later.');
             }
+
+            // Re-fetch domain to get updated DNS record validity
+            return fetch('/api/email/domains/' + encodeURIComponent(mailgunDomain) + '?region=' + mailgunRegion)
+                .then(function(r) { return r.json(); });
+        })
+        .then(function(data) {
+            setButtonLoading('btn-verify-email', false);
+            if (!data || data.error) return;
+
+            var sending = data.sending_dns_records || [];
+            var receiving = data.receiving_dns_records || [];
+            mailgunDnsRecords = {sending: sending, receiving: receiving};
+            updateGophishButton();
         })
         .catch(function(err) {
             setButtonLoading('btn-verify-email', false);
             logErr('email-log', 'Request failed: ' + err);
+        });
+    }
+
+    function updateSmtpSuffix() {
+        var domain = mailgunDomain || selectedZoneName;
+        document.getElementById('email-smtp-suffix').textContent = '@' + domain;
+    }
+
+    function isDomainVerified() {
+        if (!mailgunDnsRecords) return false;
+        var sending = mailgunDnsRecords.sending || [];
+        if (sending.length === 0) return false;
+        return sending.every(function(rec) {
+            return rec.valid === 'valid';
+        });
+    }
+
+    function updateGophishButton() {
+        document.getElementById('btn-add-gophish').disabled = !isDomainVerified();
+        if (isDomainVerified()) {
+            logOk('email-log', 'Domain DNS verified — GoPhish sending profile can be created');
+        }
+    }
+
+    function generatePassword(length) {
+        var chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*';
+        var result = '';
+        var array = new Uint8Array(length);
+        crypto.getRandomValues(array);
+        for (var i = 0; i < length; i++) {
+            result += chars[array[i] % chars.length];
+        }
+        return result;
+    }
+
+    function addToGophish() {
+        if (!mailgunDomain) { alert('Setup email domain first'); return; }
+        if (!isDomainVerified()) { alert('Domain must be verified first'); return; }
+
+        var username = document.getElementById('email-smtp-username').value.trim();
+        if (!username) { alert('Enter an SMTP username'); return; }
+
+        var fullLogin = username + '@' + mailgunDomain;
+        var password = generatePassword(24);
+        var smtpHost = mailgunRegion === 'eu' ? 'smtp.eu.mailgun.org' : 'smtp.mailgun.org';
+        var smtpHostPort = smtpHost + ':587';
+
+        setButtonLoading('btn-add-gophish', true);
+
+        // Step 1: Create SMTP credential on Mailgun
+        logWarn('email-log', 'Creating SMTP credential <strong>' + fullLogin + '</strong> on Mailgun...');
+
+        fetch('/api/email/domains/' + encodeURIComponent(mailgunDomain) + '/credentials', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                login: username,
+                password: password,
+                region: mailgunRegion
+            })
+        })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            if (data.error) {
+                setButtonLoading('btn-add-gophish', false);
+                logErr('email-log', 'Failed to create SMTP credential: ' + data.error);
+                return Promise.reject('stop');
+            }
+            logOk('email-log', 'SMTP credential created: ' + fullLogin);
+
+            // Step 2: Create GoPhish sending profile
+            logWarn('email-log', 'Creating GoPhish sending profile...');
+
+            return fetch('/api/gophish/profiles', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    name: mailgunDomain + ' (' + username + ')',
+                    from_address: fullLogin,
+                    host: smtpHostPort,
+                    username: fullLogin,
+                    password: password,
+                    ignore_cert_errors: true
+                })
+            })
+            .then(function(r) { return r.json(); });
+        })
+        .then(function(data) {
+            setButtonLoading('btn-add-gophish', false);
+            if (!data) return;
+            if (data.error) {
+                logErr('email-log', 'Failed to create GoPhish profile: ' + data.error);
+                return;
+            }
+            logOk('email-log', 'GoPhish sending profile created: <strong>' + mailgunDomain + ' (' + username + ')</strong>');
+            logInfo('email-log', 'SMTP: ' + fullLogin + ' via ' + smtpHostPort);
+        })
+        .catch(function(err) {
+            setButtonLoading('btn-add-gophish', false);
+            if (err !== 'stop') {
+                logErr('email-log', 'Request failed: ' + err);
+            }
         });
     }
 
