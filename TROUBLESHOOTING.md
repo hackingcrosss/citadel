@@ -165,6 +165,25 @@ For remote Docker host:
 - Configure API Key in Settings
 - Test with: `docker compose exec web python -c "from app.services.email_service import verify_api_key; print(verify_api_key())"`
 
+## Operations Page Issues
+
+### "Add to Mailgun" button is disabled
+The page automatically checks if the domain already exists in Mailgun when you select a zone, change the subdomain, or change the region. If the domain is found, "Add to Mailgun" is disabled and "Push DNS to Cloudflare" is enabled — skip straight to pushing DNS records.
+
+### No DNS records returned after adding to Mailgun
+The Operations page does a separate `GET /api/email/domains/{name}` after creating the domain to fetch DNS records. Mailgun returns `sending_dns_records` (SPF, DKIM) and `receiving_dns_records` (MX) at the root level of the response. If no records appear:
+1. Check the Mailgun API key is valid in Settings
+2. Verify the domain was actually created: go to the Email page and check the domain list
+3. Try clicking "Push DNS to Cloudflare" — it will attempt to re-fetch records from Mailgun
+
+### DNS records fail to push to Cloudflare
+- "Already exists" warnings are expected if records were previously created — the workflow continues with remaining records
+- Other errors typically mean the Cloudflare API token lacks write permissions for the zone
+- Verify the token has `Zone:DNS:Edit` permission
+
+### Verify step shows "unverified" after pushing DNS
+DNS propagation can take minutes to hours. Wait and retry the "Verify Domain" button later. Mailgun checks propagation on their side.
+
 ## Remote Docker Daemon Won't Start
 
 ### "Start request repeated too quickly"
