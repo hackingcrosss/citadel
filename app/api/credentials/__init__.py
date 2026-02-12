@@ -37,6 +37,7 @@ def test_credentials(provider):
         'aws': _test_aws,
         'docker': _test_docker,
         'gophish': _test_gophish,
+        'cobaltstrike': _test_cobaltstrike,
     }
 
     tester = testers.get(provider)
@@ -102,4 +103,10 @@ def _test_docker():
 def _test_gophish():
     from app.services import gophish_service
     result = gophish_service.verify_connection()
+    return result
+
+
+def _test_cobaltstrike():
+    from app.services import cobaltstrike_service
+    result = cobaltstrike_service.verify_connection()
     return result
