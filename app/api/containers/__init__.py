@@ -61,6 +61,17 @@ def restart_container(container_id):
         return jsonify({'error': str(e)}), 400
 
 
+@api_bp.route('/containers/<container_id>', methods=['DELETE'])
+@login_required
+def remove_container(container_id):
+    force = request.args.get('force', 'false').lower() == 'true'
+    try:
+        result = docker_service.remove_container(container_id, force=force)
+        return jsonify({'result': result})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 400
+
+
 # --- Logs ---
 
 @api_bp.route('/containers/<container_id>/logs', methods=['GET'])
