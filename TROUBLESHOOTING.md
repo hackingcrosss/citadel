@@ -168,7 +168,10 @@ For remote Docker host:
 ## Operations Page Issues
 
 ### "Add to Mailgun" button is disabled
-The page automatically checks if the domain already exists in Mailgun when you select a zone, change the subdomain, or change the region. If the domain is found, "Add to Mailgun" is disabled and "Push DNS to Cloudflare" is enabled — skip straight to pushing DNS records.
+The page automatically checks if the domain already exists in Mailgun when you select a zone, change the subdomain, or change the region. The check uses the domain+region combination, so switching from US to EU will re-check. If the domain is found, "Add to Mailgun" is disabled and "Push DNS to Cloudflare" is enabled — skip straight to pushing DNS records.
+
+### Domain not found in wrong region
+Mailgun US and EU are separate environments. A domain added in US won't be found when checking EU, and vice versa. Make sure the region selector matches where the domain was originally added.
 
 ### No DNS records returned after adding to Mailgun
 The Operations page does a separate `GET /api/email/domains/{name}` after creating the domain to fetch DNS records. Mailgun returns `sending_dns_records` (SPF, DKIM) and `receiving_dns_records` (MX) at the root level of the response. If no records appear:
@@ -183,6 +186,15 @@ The Operations page does a separate `GET /api/email/domains/{name}` after creati
 
 ### Verify step shows "unverified" after pushing DNS
 DNS propagation can take minutes to hours. Wait and retry the "Verify Domain" button later. Mailgun checks propagation on their side.
+
+### "NPM Public IP not configured" warning
+The "Service (via NPM reverse proxy)" target mode requires the NPM host's public IP to create the DNS A record. Set it in **Settings** → NPM section → "Public IP" field. You can select an EC2 instance from the dropdown to auto-fill its IP.
+
+### Container dropdown is empty
+The container dropdown only shows running containers (`?all=false`). If no containers are running or Docker credentials aren't configured, the dropdown will be empty. Enter the forward host and port manually instead.
+
+### Point Domain creates A record but proxy fails
+The workflow creates the A record first, then the NPM proxy host. If the proxy step fails (e.g. NPM credentials not configured), the A record will still exist. Fix the NPM credentials in Settings and retry — the "already exists" warning for the A record is handled gracefully.
 
 ## Remote Docker Daemon Won't Start
 

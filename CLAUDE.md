@@ -218,14 +218,14 @@ docker compose exec web python init_db.py
 
 ### Backend Services (all complete)
 - `app/services/dns_service.py` - Cloudflare DNS management (zones, records, SSL)
-- `app/services/docker_service.py` - Docker SDK (list, start/stop/restart/remove, logs, stats, remote host support)
+- `app/services/docker_service.py` - Docker SDK (list, start/stop/restart/remove, logs, stats, remote host support, network IPs in listing)
 - `app/services/aws_service.py` - boto3 EC2 management (instances, security groups, key pairs, multi-region)
 - `app/services/email_service.py` - Mailgun integration (domains, SMTP credentials, multi-region)
 - `app/services/npm_service.py` - Nginx Proxy Manager API (proxy hosts, certificates, redirections)
 - `app/services/credential_service.py` - Fernet encryption/decryption for all stored credentials
 
 ### API Endpoints (all complete)
-- `/api/credentials` - Credential CRUD + test for all providers (aws, cloudflare, mailgun, npm, docker)
+- `/api/credentials` - Credential CRUD + test for all providers, single credential GET (aws, cloudflare, mailgun, npm, docker)
 - `/api/domains` - Cloudflare zone and DNS record management
 - `/api/containers` - Docker container management (list, details, start/stop/restart/remove, logs, stats)
 - `/api/aws` - EC2 instance management (list, details, start/stop/reboot/terminate, security groups, key pairs)
@@ -239,8 +239,8 @@ docker compose exec web python init_db.py
 - Domains page with zone selector, DNS record editor, SSL settings
 - Email page with domain management, DNS verification, SMTP credentials
 - NPM page with proxy host management
-- Operations page with cross-service orchestration (email domain setup, DNS pointing, reverse proxy creation)
-- Settings page with credential management for all providers including Docker remote host
+- Operations page with cross-service orchestration: email domain setup (region-aware), unified Point Domain card (EC2 direct or Service via NPM with container picker)
+- Settings page with credential management for all providers including Docker remote host and NPM public IP (with EC2 instance picker)
 
 ## Next Steps (To Be Implemented)
 
