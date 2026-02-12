@@ -10,6 +10,7 @@ A web application for managing red team infrastructure including domains, Docker
 - **AWS EC2 Monitoring**: Multi-region instance management, security groups, key pairs, start/stop/reboot/terminate, with status and name/ID filtering
 - **Nginx Proxy Manager**: Proxy host CRUD, enable/disable, certificates, redirections
 - **Email (Mailgun)**: Domain management, DNS verification, SMTP credential management, multi-region support
+- **Operations**: Cross-service orchestration — setup email domains (Mailgun + Cloudflare DNS), point domains to EC2 instances, create NPM reverse proxies, all from a single domain-centric page
 - **Secure Credential Storage**: All API keys encrypted with Fernet (AES-256) before database storage
 
 ## Quick Start
@@ -193,6 +194,20 @@ Each section loads independently. If a service's credentials aren't configured, 
 - Security group drill-down showing inbound/outbound rules
 - Frontend filters: status dropdown and name/ID search
 - Checkbox selection for bulk operations
+
+### Operations (`/operations`)
+- Domain-centric cross-service orchestration page
+- Zone selector loads all Cloudflare zones; all workflows operate against the selected zone
+- **Setup Email Domain**: Select a zone and optionally enter a subdomain, then:
+  1. Auto-checks if the domain already exists in Mailgun (disables "Add" button if so, enables "Push DNS" directly)
+  2. Adds domain to Mailgun with DKIM authority and 2048-bit key size
+  3. Fetches `sending_dns_records` (SPF, DKIM, CNAME) and `receiving_dns_records` (MX) from Mailgun
+  4. Pushes all DNS records to the selected Cloudflare zone one by one, handling "already exists" gracefully
+  5. Verifies domain with Mailgun after DNS propagation
+- **Point Domain to Server**: Create an A record pointing a subdomain to an EC2 instance's public IP, with optional Cloudflare proxy
+- **Create Reverse Proxy**: Create an NPM proxy host for the domain, with forward host/port, scheme, SSL, and WebSocket options
+- Step log in each card shows real-time progress with status icons (success, in-progress, error)
+- All workflows chain existing API endpoints from frontend JavaScript — no additional backend routes required
 
 ## Configuration
 

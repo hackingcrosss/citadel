@@ -38,6 +38,7 @@ infrared/
 │   │   ├── containers/
 │   │   ├── aws/
 │   │   ├── npm/
+│   │   ├── email/
 │   │   └── credentials/
 │   ├── templates/            # Jinja2 HTML templates
 │   │   ├── base.html         # Base template with sidebar
@@ -46,6 +47,10 @@ infrared/
 │   │   ├── dashboard.html    # Main dashboard
 │   │   ├── domains.html      # Domain management
 │   │   ├── containers.html   # Container management
+│   │   ├── email.html        # Mailgun email management
+│   │   ├── aws.html          # AWS EC2 management
+│   │   ├── npm.html          # Nginx Proxy Manager
+│   │   ├── operations.html   # Cross-service orchestration
 │   │   └── settings.html     # API credentials config
 │   └── static/               # CSS, JS, images
 ├── docker/
@@ -90,6 +95,10 @@ services:
 - `/dashboard` - Main overview (EC2, containers, domains)
 - `/domains` - Domain management interface
 - `/containers` - Docker container management
+- `/email` - Mailgun domain and SMTP credential management
+- `/aws` - AWS EC2 instance management
+- `/npm` - Nginx Proxy Manager host management
+- `/operations` - Cross-service orchestration (email setup, DNS pointing, reverse proxy)
 - `/settings` - API credential configuration
 - `/api/*` - REST endpoints for all services
 
@@ -230,6 +239,7 @@ docker compose exec web python init_db.py
 - Domains page with zone selector, DNS record editor, SSL settings
 - Email page with domain management, DNS verification, SMTP credentials
 - NPM page with proxy host management
+- Operations page with cross-service orchestration (email domain setup, DNS pointing, reverse proxy creation)
 - Settings page with credential management for all providers including Docker remote host
 
 ## Next Steps (To Be Implemented)
