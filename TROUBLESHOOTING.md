@@ -193,8 +193,40 @@ The "Service (via NPM reverse proxy)" target mode requires the NPM host's public
 ### Container dropdown is empty
 The container dropdown only shows running containers (`?all=false`). If no containers are running or Docker credentials aren't configured, the dropdown will be empty. Enter the forward host and port manually instead.
 
+### "Add to GoPhish" button stays disabled
+The button is only enabled when all sending DNS records (SPF, DKIM) are verified by Mailgun. This means:
+1. The domain must exist in Mailgun
+2. DNS records must be pushed to Cloudflare
+3. The domain must pass Mailgun verification (all sending records show "valid")
+
+If records show "not verified", wait for DNS propagation and click "Verify Domain" again. After successful verification, the page re-fetches domain data and enables the button if all sending records are now valid.
+
+### "Add to GoPhish" fails at SMTP credential step
+- Check that the Mailgun API key in Settings has write permissions
+- The SMTP login format is `username@domain` — the username field should be just the local part (e.g., `postmaster`, not `postmaster@domain.com`)
+- If the credential already exists in Mailgun, the API will return an error
+
+### "Add to GoPhish" fails at sending profile step
+- Verify GoPhish credentials are configured in Settings (API URL and API Key)
+- Test the GoPhish connection in Settings first
+- The GoPhish API URL should include the scheme (e.g., `https://gophish.example.com:3333`)
+- The API key is the one shown in GoPhish's admin panel under Settings
+
 ### Point Domain creates A record but proxy fails
 The workflow creates the A record first, then the NPM proxy host. If the proxy step fails (e.g. NPM credentials not configured), the A record will still exist. Fix the NPM credentials in Settings and retry — the "already exists" warning for the A record is handled gracefully.
+
+## GoPhish Page Issues
+
+### "GoPhish credentials not configured"
+Configure the GoPhish API URL and API Key in **Settings** → GoPhish section. The API URL should include the port if non-standard (e.g., `https://gophish.example.com:3333`). The API Key is found in GoPhish admin panel under Settings.
+
+### Sending profiles not loading
+- Verify the GoPhish instance is reachable from the InfraRed server
+- GoPhish uses self-signed certificates by default — the service layer disables SSL verification (`verify=False`)
+- Test with: `docker compose exec web python -c "from app.services.gophish_service import verify_connection; print(verify_connection())"`
+
+### Creating a sending profile fails
+The GoPhish API requires: `name`, `host` (with port, e.g., `smtp.mailgun.org:587`), `from_address`, `username`, `password`. The `interface_type` is set to `"SMTP"` automatically. Check that all fields are filled in the create modal.
 
 ## Remote Docker Daemon Won't Start
 
