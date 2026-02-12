@@ -49,6 +49,16 @@ def test_credentials(provider):
         return jsonify({'success': False, 'error': str(e)}), 400
 
 
+@api_bp.route('/credentials/<provider>/<key_name>', methods=['GET'])
+@login_required
+def get_single_credential(provider, key_name):
+    """Get a single credential value (unmasked). Used for non-secret config like NPM public IP."""
+    value = credential_service.get_credential(provider, key_name)
+    if value is None:
+        return jsonify({'error': 'Not found'}), 404
+    return jsonify({'provider': provider, 'key': key_name, 'value': value})
+
+
 @api_bp.route('/credentials/<provider>/<key_name>', methods=['DELETE'])
 @login_required
 def delete_credential(provider, key_name):

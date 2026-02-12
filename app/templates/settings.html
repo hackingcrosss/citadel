@@ -172,6 +172,16 @@
                             </div>
                             <small class="text-muted" id="npm-api-token-status"></small>
                         </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Public IP <small class="text-muted">(for DNS records)</small></label>
+                            <div class="input-group">
+                                <input type="text" class="form-control" id="npm-public-ip" placeholder="e.g. 1.2.3.4">
+                                <select class="form-select" id="npm-ip-from-ec2" style="max-width: 200px;" onchange="onNpmEc2Select()">
+                                    <option value="">Set from EC2...</option>
+                                </select>
+                            </div>
+                            <small class="text-muted" id="npm-public-ip-status">Public IP of the NPM host. Used by Operations for A records.</small>
+                        </div>
                         <div class="col-12">
                             <button class="btn btn-sm btn-outline-primary" onclick="saveNpmCredentials()">
                                 <i class="bi bi-pencil"></i> Update
@@ -345,6 +355,7 @@
         loadMailgunStatus();
         loadNpmStatus();
         loadDockerStatus();
+        loadEc2ForNpm();
     });
 
     // --- AWS ---
@@ -577,6 +588,11 @@
                     document.getElementById('npm-api-token-status').textContent =
                         'Last updated: ' + new Date(creds.api_token.updated_at).toLocaleString();
                 }
+                if (creds.public_ip) {
+                    document.getElementById('npm-public-ip').placeholder = creds.public_ip.masked;
+                    document.getElementById('npm-public-ip-status').textContent =
+                        'Last updated: ' + new Date(creds.public_ip.updated_at).toLocaleString();
+                }
             })
             .catch(err => console.error('Failed to load NPM credentials:', err));
     }
@@ -584,10 +600,12 @@
     function saveNpmCredentials() {
         const apiUrl = document.getElementById('npm-api-url').value;
         const apiToken = document.getElementById('npm-api-token').value;
+        const publicIp = document.getElementById('npm-public-ip').value;
 
         const body = {};
         if (apiUrl) body.api_url = apiUrl;
         if (apiToken) body.api_token = apiToken;
+        if (publicIp) body.public_ip = publicIp;
 
         if (Object.keys(body).length === 0) {
             alert('Enter at least one value to save.');
@@ -605,6 +623,7 @@
                 alert('Saved: ' + data.saved.join(', '));
                 document.getElementById('npm-api-url').value = '';
                 document.getElementById('npm-api-token').value = '';
+                document.getElementById('npm-public-ip').value = '';
                 loadNpmStatus();
             }
         })
@@ -697,6 +716,32 @@
             .catch(err => {
                 resultEl.innerHTML = '<span class="text-danger"><i class="bi bi-x-circle-fill"></i> Request failed</span>';
             });
+    }
+
+    function loadEc2ForNpm() {
+        fetch('/api/aws/instances')
+            .then(r => r.json())
+            .then(data => {
+                if (data.error) return;
+                const instances = (data.instances || []).filter(i => i.public_ip);
+                const select = document.getElementById('npm-ip-from-ec2');
+                select.innerHTML = '<option value="">Set from EC2...</option>';
+                instances.forEach(inst => {
+                    const opt = document.createElement('option');
+                    opt.value = inst.public_ip;
+                    opt.textContent = (inst.name || inst.id) + ' (' + inst.public_ip + ')';
+                    select.appendChild(opt);
+                });
+            })
+            .catch(() => {});
+    }
+
+    function onNpmEc2Select() {
+        const select = document.getElementById('npm-ip-from-ec2');
+        if (select.value) {
+            document.getElementById('npm-public-ip').value = select.value;
+        }
+        select.value = '';
     }
 
     function npmLogin() {
