@@ -10,7 +10,8 @@ A web application for managing red team infrastructure including domains, Docker
 - **AWS EC2 Monitoring**: Multi-region instance management, security groups, key pairs, start/stop/reboot/terminate, with status and name/ID filtering
 - **Nginx Proxy Manager**: Proxy host CRUD, enable/disable, certificates, redirections
 - **Email (Mailgun)**: Domain management, DNS verification, SMTP credential management, multi-region support
-- **Operations**: Cross-service orchestration — setup email domains (Mailgun + Cloudflare DNS), point domains to EC2 instances, create NPM reverse proxies, all from a single domain-centric page
+- **GoPhish**: Sending profile management — view, create, and delete SMTP sending profiles
+- **Operations**: Cross-service orchestration — setup email domains (Mailgun + Cloudflare DNS), push SMTP credentials to GoPhish, point domains to EC2 instances, create NPM reverse proxies, all from a single domain-centric page
 - **Secure Credential Storage**: All API keys encrypted with Fernet (AES-256) before database storage
 
 ## Quick Start
@@ -165,6 +166,14 @@ The `web` container mounts `/var/run/docker.sock` for direct Docker container ma
 | POST   | `/api/email/domains/<name>/credentials` | Create SMTP credential |
 | DELETE | `/api/email/domains/<name>/credentials/<login>` | Delete SMTP credential |
 
+### GoPhish (`/api/gophish`)
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET    | `/api/gophish/profiles` | List sending profiles |
+| GET    | `/api/gophish/profiles/<id>` | Get sending profile |
+| POST   | `/api/gophish/profiles` | Create sending profile |
+| DELETE | `/api/gophish/profiles/<id>` | Delete sending profile |
+
 ## Dashboard
 
 The dashboard fetches live data from all services on page load and auto-refreshes every 30 seconds:
@@ -206,6 +215,7 @@ Each section loads independently. If a service's credentials aren't configured, 
   4. Fetches `sending_dns_records` (SPF, DKIM, CNAME) and `receiving_dns_records` (MX) from Mailgun
   5. Pushes all DNS records to the selected Cloudflare zone one by one, handling "already exists" gracefully
   6. Verifies domain with Mailgun after DNS propagation
+  7. Once all sending DNS records are verified, enables "Add to GoPhish" button which creates a Mailgun SMTP credential and a GoPhish sending profile in one step (auto-generates password, uses region-aware SMTP host)
 - **Point Domain**: Unified card with target type selector:
   - **EC2 Instance (direct)**: Creates an A record pointing to the instance's public IP, with optional Cloudflare proxy
   - **Service (via NPM reverse proxy)**: Creates an A record pointing to the NPM host's public IP (configured in Settings), then creates an NPM proxy host forwarding to the target. Target can be selected from a container dropdown (auto-fills IP and port) or entered manually.
@@ -219,6 +229,7 @@ API credentials are configured in the Settings page (`/settings`):
 - **Cloudflare**: API Token
 - **Mailgun**: API Key
 - **NPM**: API URL, API Token (or authenticate via email/password), Public IP (for DNS records in Operations)
+- **GoPhish**: API URL, API Key
 - **Docker**: Remote host URL (optional), TLS certificates (optional)
 
 All credentials are encrypted with Fernet (AES-256) before being stored in the database.

@@ -39,6 +39,7 @@ infrared/
 │   │   ├── aws/
 │   │   ├── npm/
 │   │   ├── email/
+│   │   ├── gophish/
 │   │   └── credentials/
 │   ├── templates/            # Jinja2 HTML templates
 │   │   ├── base.html         # Base template with sidebar
@@ -51,6 +52,7 @@ infrared/
 │   │   ├── aws.html          # AWS EC2 management
 │   │   ├── npm.html          # Nginx Proxy Manager
 │   │   ├── operations.html   # Cross-service orchestration
+│   │   ├── gophish.html      # GoPhish sending profiles
 │   │   └── settings.html     # API credentials config
 │   └── static/               # CSS, JS, images
 ├── docker/
@@ -98,7 +100,8 @@ services:
 - `/email` - Mailgun domain and SMTP credential management
 - `/aws` - AWS EC2 instance management
 - `/npm` - Nginx Proxy Manager host management
-- `/operations` - Cross-service orchestration (email setup, DNS pointing, reverse proxy)
+- `/operations` - Cross-service orchestration (email setup, DNS pointing, reverse proxy, GoPhish integration)
+- `/gophish` - GoPhish sending profile management
 - `/settings` - API credential configuration
 - `/api/*` - REST endpoints for all services
 
@@ -222,15 +225,17 @@ docker compose exec web python init_db.py
 - `app/services/aws_service.py` - boto3 EC2 management (instances, security groups, key pairs, multi-region)
 - `app/services/email_service.py` - Mailgun integration (domains, SMTP credentials, multi-region)
 - `app/services/npm_service.py` - Nginx Proxy Manager API (proxy hosts, certificates, redirections)
+- `app/services/gophish_service.py` - GoPhish API (sending profiles CRUD, connection verification)
 - `app/services/credential_service.py` - Fernet encryption/decryption for all stored credentials
 
 ### API Endpoints (all complete)
-- `/api/credentials` - Credential CRUD + test for all providers, single credential GET (aws, cloudflare, mailgun, npm, docker)
+- `/api/credentials` - Credential CRUD + test for all providers, single credential GET (aws, cloudflare, mailgun, npm, docker, gophish)
 - `/api/domains` - Cloudflare zone and DNS record management
 - `/api/containers` - Docker container management (list, details, start/stop/restart/remove, logs, stats)
 - `/api/aws` - EC2 instance management (list, details, start/stop/reboot/terminate, security groups, key pairs)
 - `/api/npm` - Nginx Proxy Manager proxy hosts, certificates, redirections
 - `/api/email` - Mailgun domain and SMTP credential management
+- `/api/gophish` - GoPhish sending profile management (list, create, delete)
 
 ### Frontend (all complete)
 - Dashboard with live data from all services, auto-refresh every 30 seconds
@@ -239,8 +244,9 @@ docker compose exec web python init_db.py
 - Domains page with zone selector, DNS record editor, SSL settings
 - Email page with domain management, DNS verification, SMTP credentials
 - NPM page with proxy host management
-- Operations page with cross-service orchestration: email domain setup (region-aware), unified Point Domain card (EC2 direct or Service via NPM with container picker)
-- Settings page with credential management for all providers including Docker remote host and NPM public IP (with EC2 instance picker)
+- Operations page with cross-service orchestration: email domain setup (region-aware) with GoPhish integration (auto-creates Mailgun SMTP credential + GoPhish sending profile), unified Point Domain card (EC2 direct or Service via NPM with container picker)
+- GoPhish page with sending profile table (view, create via modal, delete)
+- Settings page with credential management for all providers including Docker remote host, NPM public IP (with EC2 instance picker), and GoPhish API credentials
 
 ## Next Steps (To Be Implemented)
 
