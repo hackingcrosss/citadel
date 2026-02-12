@@ -40,6 +40,7 @@ infrared/
 │   │   ├── npm/
 │   │   ├── email/
 │   │   ├── gophish/
+│   │   ├── cobaltstrike/
 │   │   └── credentials/
 │   ├── templates/            # Jinja2 HTML templates
 │   │   ├── base.html         # Base template with sidebar
@@ -53,6 +54,7 @@ infrared/
 │   │   ├── npm.html          # Nginx Proxy Manager
 │   │   ├── operations.html   # Cross-service orchestration
 │   │   ├── gophish.html      # GoPhish sending profiles
+│   │   ├── cobaltstrike.html # Cobalt Strike listener management
 │   │   └── settings.html     # API credentials config
 │   └── static/               # CSS, JS, images
 ├── docker/
@@ -102,6 +104,7 @@ services:
 - `/npm` - Nginx Proxy Manager host management
 - `/operations` - Cross-service orchestration (email setup, DNS pointing, reverse proxy, GoPhish integration)
 - `/gophish` - GoPhish sending profile management
+- `/cobaltstrike` - Cobalt Strike listener management
 - `/settings` - API credential configuration
 - `/api/*` - REST endpoints for all services
 
@@ -226,16 +229,18 @@ docker compose exec web python init_db.py
 - `app/services/email_service.py` - Mailgun integration (domains, SMTP credentials, multi-region)
 - `app/services/npm_service.py` - Nginx Proxy Manager API (proxy hosts, certificates, redirections)
 - `app/services/gophish_service.py` - GoPhish API (sending profiles CRUD, connection verification)
+- `app/services/cobaltstrike_service.py` - Cobalt Strike REST API (JWT auth with token caching, listener CRUD)
 - `app/services/credential_service.py` - Fernet encryption/decryption for all stored credentials
 
 ### API Endpoints (all complete)
-- `/api/credentials` - Credential CRUD + test for all providers, single credential GET (aws, cloudflare, mailgun, npm, docker, gophish)
+- `/api/credentials` - Credential CRUD + test for all providers, single credential GET (aws, cloudflare, mailgun, npm, docker, gophish, cobaltstrike)
 - `/api/domains` - Cloudflare zone and DNS record management
 - `/api/containers` - Docker container management (list, details, start/stop/restart/remove, logs, stats)
 - `/api/aws` - EC2 instance management (list, details, start/stop/reboot/terminate, security groups, key pairs)
 - `/api/npm` - Nginx Proxy Manager proxy hosts, certificates, redirections
 - `/api/email` - Mailgun domain and SMTP credential management
 - `/api/gophish` - GoPhish sending profile management (list, create, delete)
+- `/api/cobaltstrike` - Cobalt Strike listener management (list, create, delete with type-aware validation)
 
 ### Frontend (all complete)
 - Dashboard with live data from all services, auto-refresh every 30 seconds
@@ -246,7 +251,8 @@ docker compose exec web python init_db.py
 - NPM page with proxy host management
 - Operations page with cross-service orchestration: email domain setup (region-aware) with GoPhish integration (auto-creates Mailgun SMTP credential + GoPhish sending profile), unified Point Domain card (EC2 direct or Service via NPM with container picker)
 - GoPhish page with sending profile table (view, create via modal, delete)
-- Settings page with credential management for all providers including Docker remote host, NPM public IP (with EC2 instance picker), and GoPhish API credentials
+- Cobalt Strike page with listener table and dynamic create modal (fields adapt per listener type: HTTP, HTTPS, DNS, SMB, TCP, Foreign)
+- Settings page with credential management for all providers including Docker remote host, NPM public IP (with EC2 instance picker), GoPhish API credentials, and Cobalt Strike teamserver credentials
 
 ## Next Steps (To Be Implemented)
 

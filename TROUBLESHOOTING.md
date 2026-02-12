@@ -228,6 +228,35 @@ Configure the GoPhish API URL and API Key in **Settings** → GoPhish section. T
 ### Creating a sending profile fails
 The GoPhish API requires: `name`, `host` (with port, e.g., `smtp.mailgun.org:587`), `from_address`, `username`, `password`. The `interface_type` is set to `"SMTP"` automatically. Check that all fields are filled in the create modal.
 
+## Cobalt Strike Page Issues
+
+### "Cobalt Strike credentials not configured"
+Configure the Teamserver URL, username, and password in **Settings** → Cobalt Strike section. The URL should include the scheme and port (e.g., `https://teamserver:50443`). The REST API runs on port 50443 by default (CS 4.12+).
+
+### Authentication fails
+- Verify the username and password are correct for the teamserver
+- The REST API uses JWT authentication — the service authenticates automatically and caches the token
+- If the token expires, the service re-authenticates on the next request (401 retry)
+- Ensure the teamserver was started with REST API support enabled
+
+### Listeners not loading
+- Verify the teamserver is reachable from the InfraRed server on port 50443
+- CS teamservers use self-signed certificates — the service disables SSL verification
+- Test with: `docker compose exec web python -c "from app.services.cobaltstrike_service import verify_connection; print(verify_connection())"`
+
+### Creating a listener fails
+- The required fields depend on the listener type:
+  - **HTTP/HTTPS**: name, host, port
+  - **DNS**: name, host, port
+  - **SMB**: name, pipename
+  - **TCP**: name, host, port
+  - **Foreign**: name, host, port
+- Check that the teamserver doesn't already have a listener with the same name or port
+- Verify the port is not in use on the teamserver
+
+### Dynamic form fields don't appear
+Select a listener type from the dropdown — the form fields are generated dynamically based on the selected type. If the dropdown shows "Select type..." no fields will appear.
+
 ## Remote Docker Daemon Won't Start
 
 ### "Start request repeated too quickly"

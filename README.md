@@ -11,6 +11,7 @@ A web application for managing red team infrastructure including domains, Docker
 - **Nginx Proxy Manager**: Proxy host CRUD, enable/disable, certificates, redirections
 - **Email (Mailgun)**: Domain management, DNS verification, SMTP credential management, multi-region support
 - **GoPhish**: Sending profile management — view, create, and delete SMTP sending profiles
+- **Cobalt Strike**: Listener management — view, create (HTTP, HTTPS, DNS, SMB, TCP, Foreign), and delete listeners via the CS REST API (4.12+) with JWT authentication
 - **Operations**: Cross-service orchestration — setup email domains (Mailgun + Cloudflare DNS), push SMTP credentials to GoPhish, point domains to EC2 instances, create NPM reverse proxies, all from a single domain-centric page
 - **Secure Credential Storage**: All API keys encrypted with Fernet (AES-256) before database storage
 
@@ -174,6 +175,14 @@ The `web` container mounts `/var/run/docker.sock` for direct Docker container ma
 | POST   | `/api/gophish/profiles` | Create sending profile |
 | DELETE | `/api/gophish/profiles/<id>` | Delete sending profile |
 
+### Cobalt Strike (`/api/cobaltstrike`)
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET    | `/api/cobaltstrike/listeners` | List listeners |
+| GET    | `/api/cobaltstrike/listeners/<id>` | Get listener details |
+| POST   | `/api/cobaltstrike/listeners` | Create listener (type-aware validation) |
+| DELETE | `/api/cobaltstrike/listeners/<id>` | Stop and delete listener |
+
 ## Dashboard
 
 The dashboard fetches live data from all services on page load and auto-refreshes every 30 seconds:
@@ -230,6 +239,7 @@ API credentials are configured in the Settings page (`/settings`):
 - **Mailgun**: API Key
 - **NPM**: API URL, API Token (or authenticate via email/password), Public IP (for DNS records in Operations)
 - **GoPhish**: API URL, API Key
+- **Cobalt Strike**: Teamserver URL, Username, Password (JWT authentication)
 - **Docker**: Remote host URL (optional), TLS certificates (optional)
 
 All credentials are encrypted with Fernet (AES-256) before being stored in the database.
