@@ -1,2 +1,3 @@
 from app.models.user import User
 from app.models.credential import Credential
+from app.models.domain import Domain, DNSRecord

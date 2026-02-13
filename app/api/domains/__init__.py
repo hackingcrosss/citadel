@@ -2,9 +2,136 @@ from flask import request, jsonify
 from flask_login import login_required
 from app.api import api_bp
 from app.services import dns_service
+from app import db
+from app.models.domain import Domain, DNSRecord
+from datetime import datetime
 
 
-# --- Zones ---
+# --- Local Domain Management ---
+
+@api_bp.route('/domains', methods=['GET'])
+@login_required
+def list_local_domains():
+    """List all locally tracked domains."""
+    domains = Domain.query.order_by(Domain.name).all()
+    return jsonify({'domains': [d.to_dict() for d in domains]})
+
+
+@api_bp.route('/domains', methods=['POST'])
+@login_required
+def create_local_domain():
+    """Track a new domain locally."""
+    data = request.get_json()
+    if not data or not data.get('name'):
+        return jsonify({'error': 'Domain name is required'}), 400
+
+    name = data['name'].strip().lower()
+    existing = Domain.query.filter_by(name=name).first()
+    if existing:
+        return jsonify({'error': 'Domain already tracked', 'domain': existing.to_dict()}), 409
+
+    domain = Domain(
+        name=name,
+        cloudflare_zone_id=data.get('cloudflare_zone_id'),
+        registrar=data.get('registrar'),
+        status=data.get('status', 'active'),
+        purpose=data.get('purpose'),
+        notes=data.get('notes'),
+        mailgun_region=data.get('mailgun_region'),
+    )
+    db.session.add(domain)
+    db.session.commit()
+    return jsonify({'domain': domain.to_dict()}), 201
+
+
+@api_bp.route('/domains/<int:domain_id>', methods=['GET'])
+@login_required
+def get_local_domain(domain_id):
+    """Get a locally tracked domain with its DNS records."""
+    domain = Domain.query.get_or_404(domain_id)
+    result = domain.to_dict()
+    result['dns_records'] = [r.to_dict() for r in domain.dns_records]
+    return jsonify({'domain': result})
+
+
+@api_bp.route('/domains/<int:domain_id>', methods=['PUT'])
+@login_required
+def update_local_domain(domain_id):
+    """Update a locally tracked domain."""
+    domain = Domain.query.get_or_404(domain_id)
+    data = request.get_json()
+    if not data:
+        return jsonify({'error': 'No data provided'}), 400
+
+    for field in ('registrar', 'status', 'purpose', 'notes', 'mailgun_region', 'cloudflare_zone_id'):
+        if field in data:
+            setattr(domain, field, data[field])
+
+    db.session.commit()
+    return jsonify({'domain': domain.to_dict()})
+
+
+@api_bp.route('/domains/<int:domain_id>', methods=['DELETE'])
+@login_required
+def delete_local_domain(domain_id):
+    """Remove a domain from local tracking (does not affect Cloudflare)."""
+    domain = Domain.query.get_or_404(domain_id)
+    db.session.delete(domain)
+    db.session.commit()
+    return jsonify({'deleted': True})
+
+
+@api_bp.route('/domains/<int:domain_id>/sync', methods=['POST'])
+@login_required
+def sync_domain(domain_id):
+    """Sync a domain's DNS records from Cloudflare into the local database."""
+    domain = Domain.query.get_or_404(domain_id)
+    if not domain.cloudflare_zone_id:
+        return jsonify({'error': 'Domain has no Cloudflare zone ID linked'}), 400
+
+    try:
+        records = dns_service.list_dns_records(domain.cloudflare_zone_id)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 400
+
+    existing = {r.cloudflare_record_id: r for r in domain.dns_records}
+    seen_ids = set()
+
+    for rec in records:
+        cf_id = rec['id']
+        seen_ids.add(cf_id)
+
+        if cf_id in existing:
+            db_rec = existing[cf_id]
+            db_rec.record_type = rec['type']
+            db_rec.name = rec['name']
+            db_rec.content = rec['content']
+            db_rec.ttl = rec.get('ttl', 1)
+            db_rec.proxied = rec.get('proxied', False)
+            db_rec.priority = rec.get('priority')
+        else:
+            db_rec = DNSRecord(
+                domain_id=domain.id,
+                cloudflare_record_id=cf_id,
+                record_type=rec['type'],
+                name=rec['name'],
+                content=rec['content'],
+                ttl=rec.get('ttl', 1),
+                proxied=rec.get('proxied', False),
+                priority=rec.get('priority'),
+            )
+            db.session.add(db_rec)
+
+    for cf_id, db_rec in existing.items():
+        if cf_id not in seen_ids:
+            db.session.delete(db_rec)
+
+    domain.last_synced_at = datetime.utcnow()
+    db.session.commit()
+    return jsonify({'synced': len(records), 'domain': domain.to_dict()})
+
+
+# --- Cloudflare Zones ---
 
 @api_bp.route('/domains/zones', methods=['GET'])
 @login_required
@@ -28,7 +155,7 @@ def get_zone(zone_id):
         return jsonify({'error': str(e)}), 400
 
 
-# --- DNS Records ---
+# --- DNS Records (Cloudflare) ---
 
 @api_bp.route('/domains/zones/<zone_id>/records', methods=['GET'])
 @login_required
@@ -63,6 +190,24 @@ def create_dns_record(zone_id):
             proxied=data.get('proxied', False),
             priority=data.get('priority')
         )
+
+        # Sync to local DB if domain is tracked
+        domain = Domain.query.filter_by(cloudflare_zone_id=zone_id).first()
+        if domain:
+            db_rec = DNSRecord(
+                domain_id=domain.id,
+                cloudflare_record_id=record['id'],
+                record_type=record['type'],
+                name=record['name'],
+                content=record['content'],
+                ttl=record.get('ttl', 1),
+                proxied=record.get('proxied', False),
+                priority=record.get('priority'),
+                managed_by='infrared',
+            )
+            db.session.add(db_rec)
+            db.session.commit()
+
         return jsonify({'record': record}), 201
     except Exception as e:
         return jsonify({'error': str(e)}), 400
@@ -89,6 +234,18 @@ def update_dns_record(zone_id, record_id):
             proxied=data.get('proxied', False),
             priority=data.get('priority')
         )
+
+        # Update local DB if tracked
+        db_rec = DNSRecord.query.filter_by(cloudflare_record_id=record_id).first()
+        if db_rec:
+            db_rec.record_type = record['type']
+            db_rec.name = record['name']
+            db_rec.content = record['content']
+            db_rec.ttl = record.get('ttl', 1)
+            db_rec.proxied = record.get('proxied', False)
+            db_rec.priority = record.get('priority')
+            db.session.commit()
+
         return jsonify({'record': record})
     except Exception as e:
         return jsonify({'error': str(e)}), 400
@@ -99,6 +256,13 @@ def update_dns_record(zone_id, record_id):
 def delete_dns_record(zone_id, record_id):
     try:
         dns_service.delete_dns_record(zone_id, record_id)
+
+        # Remove from local DB if tracked
+        db_rec = DNSRecord.query.filter_by(cloudflare_record_id=record_id).first()
+        if db_rec:
+            db.session.delete(db_rec)
+            db.session.commit()
+
         return jsonify({'deleted': True})
     except Exception as e:
         return jsonify({'error': str(e)}), 400
