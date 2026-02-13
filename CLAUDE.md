@@ -57,7 +57,8 @@ infrared/
 │   │   ├── email.html        # Mailgun email management
 │   │   ├── aws.html          # AWS EC2 management
 │   │   ├── npm.html          # Nginx Proxy Manager
-│   │   ├── operations.html   # Cross-service orchestration
+│   │   ├── operations.html   # Setup — cross-service orchestration (email, DNS, C2)
+│   │   ├── orchestration.html # C2 Deployments — active deployment management
 │   │   ├── gophish.html      # GoPhish sending profiles
 │   │   ├── cobaltstrike.html # Cobalt Strike listener management
 │   │   └── settings.html     # API credentials config
@@ -107,7 +108,8 @@ services:
 - `/email` - Mailgun domain and SMTP credential management
 - `/aws` - AWS EC2 instance management
 - `/npm` - Nginx Proxy Manager host management
-- `/operations` - Cross-service orchestration (email setup, DNS pointing, reverse proxy, GoPhish integration)
+- `/operations` - Setup — cross-service orchestration (email setup, DNS pointing, C2 setup)
+- `/orchestration` - C2 Deployments — view active deployments, teardown infrastructure
 - `/gophish` - GoPhish sending profile management
 - `/cobaltstrike` - Cobalt Strike listener management
 - `/settings` - API credential configuration
@@ -133,7 +135,7 @@ class User(UserMixin, db.Model):
 ```python
 class Credential(db.Model):
     id: int (primary key)
-    provider: str (indexed)         # aws, cloudflare, mailgun, npm, docker, gophish, cobaltstrike
+    provider: str (indexed)         # aws, cloudflare, mailgun, npm, docker, gophish, cobaltstrike, redwarden
     key_name: str
     enrypted_value: Text
     created_at: datetime
@@ -300,10 +302,12 @@ docker compose exec web python init_db.py
 - Domains page with zone selector, DNS record editor, SSL settings
 - Email page with domain management, DNS verification, SMTP credentials
 - NPM page with proxy host management
-- Operations page with cross-service orchestration: email domain setup (region-aware) with GoPhish integration (auto-creates Mailgun SMTP credential + GoPhish sending profile), unified Point Domain card (EC2 direct or Service via NPM with container picker), C2 Setup card (auto-creates CS listener with random bind port, NPM proxy, and Cloudflare DNS records pointing to RedWarden)
+- Setup page (formerly Operations) with cross-service orchestration: email domain setup (region-aware) with GoPhish integration (auto-creates Mailgun SMTP credential + GoPhish sending profile), unified Point Domain card (EC2 direct or Service via NPM with container picker), C2 Setup card (modal-based, mirrors CS create listener form; auto-creates CS listener with random bind port, NPM proxy forwarding to CS Listener IP, and Cloudflare DNS records pointing to RedWarden)
+- C2 Deployments page showing active infrastructure: cross-references CS listeners with NPM proxy hosts (matched by callback host overlap) and Cloudflare DNS A records (optional zone selector); supports inspect (JSON detail modal) and teardown (deletes CS listener + NPM hosts + DNS records with confirmation and real-time log)
 - GoPhish page with sending profile table (view, create via modal, delete)
-- Cobalt Strike page with listener table and dynamic create modal (fields adapt per listener type: http, https, dns, smb, tcp, foreignHttp, foreignHttps, externalC2, userDefinedC2; with conditional guardRails, httpProxy, and UDC2 file upload sections)
-- Settings page with credential management for all providers including Docker remote host, NPM public IP (with EC2 instance picker), GoPhish API credentials, Cobalt Strike teamserver credentials, and RedWarden IP (beacon reverse proxy)
+- Cobalt Strike page with listener table and dynamic create modal (fields adapt per listener type: http, https, dns, smb, tcp, foreignHttp, foreignHttps, externalC2, userDefinedC2; with conditional guardRails, httpProxy, and UDC2 file upload sections; host fields auto-populate from configured CS Listener IP)
+- Settings page with credential management for all providers including Docker remote host, NPM public IP (with EC2 instance picker), GoPhish API credentials, Cobalt Strike teamserver credentials (including Listener IP — private IP of teamserver EC2, with EC2 private IP picker), and RedWarden IP (beacon reverse proxy)
+- Sidebar organized into collapsible sections: Management (Domains, Email, Containers, AWS, NPM, GoPhish, Cobalt Strike) and Red Team Ops (Setup, Deployments), with Dashboard and Settings as top-level items; sections auto-expand for active page
 
 ### Celery Tasks (all complete)
 - `app/tasks/celery_app.py` - Celery instance with Flask app context integration
