@@ -69,7 +69,10 @@
                             <option value="dns">DNS</option>
                             <option value="smb">SMB</option>
                             <option value="tcp">TCP</option>
-                            <option value="foreign">Foreign</option>
+                            <option value="foreignHttp">Foreign HTTP</option>
+                            <option value="foreignHttps">Foreign HTTPS</option>
+                            <option value="externalC2">External C2</option>
+                            <option value="userDefinedC2">User Defined C2</option>
                         </select>
                     </div>
                     <div class="col-md-6">
@@ -80,6 +83,7 @@
 
                 <!-- Dynamic fields rendered by JS -->
                 <div id="type-fields"></div>
+                <div id="type-fields-guardrails"></div>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
@@ -112,91 +116,182 @@
 {% block extra_js %}
 <script>
     // ---- Field definitions per listener type ----
-    // IDs match actual Cobalt Strike REST API field names
+    // Field IDs match the Cobalt Strike REST API JSON field names
+    // POST /api/v1/listeners/{type} with body = { name, ...fields }
+    // GuardRails fields — shown for types that support them
+    var GUARDRAILS = [
+        {id: 'ipAddress', label: 'IP Address', type: 'text', placeholder: '123.123.*.*', col: 6},
+        {id: 'userName', label: 'Username', type: 'text', placeholder: 'admin*', col: 6},
+        {id: 'serverName', label: 'Server Name', type: 'text', placeholder: 'foo*', col: 6},
+        {id: 'domain', label: 'Domain Name', type: 'text', placeholder: '*bar.com', col: 6}
+    ];
+
+    // Types that support guardRails (foreign and externalC2 do not)
+    var GUARDRAIL_TYPES = {'http':1, 'https':1, 'dns':1, 'smb':1, 'tcp':1, 'userDefinedC2':1};
+
+    // Types that support httpProxy
+    var PROXY_TYPES = {'http':1, 'https':1};
+
+    // HTTP Proxy fields
+    var PROXY_FIELDS = [
+        {id: 'proxy-protocol', label: 'Protocol', type: 'select', options: ['', 'http', 'socks4', 'socks5'], col: 3},
+        {id: 'proxy-host', label: 'Proxy Host', type: 'text', placeholder: '10.0.0.1', col: 3},
+        {id: 'proxy-port', label: 'Proxy Port', type: 'number', placeholder: '8080', col: 2},
+        {id: 'proxy-userName', label: 'Proxy User', type: 'text', placeholder: '', col: 2},
+        {id: 'proxy-password', label: 'Proxy Pass', type: 'password', placeholder: '', col: 2}
+    ];
+
     var TYPE_FIELDS = {
         http: [
-            {id: 'host', label: 'Bind Address', type: 'text', placeholder: '0.0.0.0', required: true, col: 6},
-            {id: 'httpPort', label: 'Port', type: 'number', placeholder: '80', required: true, col: 3, defaultVal: '80'},
+            {id: 'host', label: 'Stager Host', type: 'text', placeholder: '0.0.0.0', required: true, col: 6},
+            {id: 'httpPort', label: 'Port (C2)', type: 'number', placeholder: '80', col: 3, defaultVal: '80'},
             {id: 'httpBindPort', label: 'Bind Port', type: 'number', placeholder: 'Same as port', col: 3},
             {id: 'hosts', label: 'Callback Hosts', type: 'text', placeholder: 'host1.com, host2.com', col: 6, isArray: true},
-            {id: 'althost', label: 'Host Header', type: 'text', placeholder: 'Domain fronting host', col: 6},
+            {id: 'httpHostHeader', label: 'Host Header', type: 'text', placeholder: 'Domain fronting host', col: 6},
             {id: 'profile', label: 'Profile', type: 'text', placeholder: 'default', col: 4},
-            {id: 'hostRotationStrategy', label: 'Host Rotation', type: 'select', options: ['', 'round-robin', 'failover-5x', 'failover-1x', 'failover-rr', 'rotate-1m', 'rotate-5m', 'rotate-15m', 'rotate-30m', 'rotate-1h'], col: 4},
-            {id: 'proxy', label: 'Proxy', type: 'text', placeholder: 'http://proxy:8080', col: 4}
+            {id: 'hostRotationStrategy', label: 'Host Rotation', type: 'select', options: ['', 'round-robin', 'random', 'failover-5x', 'failover-1x', 'failover-rr', 'rotate-1m', 'rotate-5m', 'rotate-15m', 'rotate-30m', 'rotate-1h'], col: 4},
+            {id: 'color', label: 'Color', type: 'text', placeholder: 'DEFAULT', col: 4, defaultVal: 'DEFAULT'},
+            {id: 'ignoreProxySettings', label: 'Ignore Proxy Settings', type: 'checkbox', col: 4},
+            {id: 'maxRetryStrategy', label: 'Max Retry Strategy', type: 'text', placeholder: 'exit-10-5-5m', col: 6, defaultVal: 'exit-10-5-5m'}
         ],
         https: [
-            {id: 'host', label: 'Bind Address', type: 'text', placeholder: '0.0.0.0', required: true, col: 6},
-            {id: 'httpPort', label: 'Port', type: 'number', placeholder: '443', required: true, col: 3, defaultVal: '443'},
+            {id: 'host', label: 'Stager Host', type: 'text', placeholder: '0.0.0.0', required: true, col: 6},
+            {id: 'httpPort', label: 'Port (C2)', type: 'number', placeholder: '443', col: 3, defaultVal: '443'},
             {id: 'httpBindPort', label: 'Bind Port', type: 'number', placeholder: 'Same as port', col: 3},
             {id: 'hosts', label: 'Callback Hosts', type: 'text', placeholder: 'host1.com, host2.com', col: 6, isArray: true},
-            {id: 'althost', label: 'Host Header', type: 'text', placeholder: 'Domain fronting host', col: 6},
+            {id: 'httpHostHeader', label: 'Host Header', type: 'text', placeholder: 'Domain fronting host', col: 6},
             {id: 'profile', label: 'Profile', type: 'text', placeholder: 'default', col: 4},
-            {id: 'hostRotationStrategy', label: 'Host Rotation', type: 'select', options: ['', 'round-robin', 'failover-5x', 'failover-1x', 'failover-rr', 'rotate-1m', 'rotate-5m', 'rotate-15m', 'rotate-30m', 'rotate-1h'], col: 4},
-            {id: 'proxy', label: 'Proxy', type: 'text', placeholder: 'http://proxy:8080', col: 4}
+            {id: 'hostRotationStrategy', label: 'Host Rotation', type: 'select', options: ['', 'round-robin', 'random', 'failover-5x', 'failover-1x', 'failover-rr', 'rotate-1m', 'rotate-5m', 'rotate-15m', 'rotate-30m', 'rotate-1h'], col: 4},
+            {id: 'color', label: 'Color', type: 'text', placeholder: 'DEFAULT', col: 4, defaultVal: 'DEFAULT'},
+            {id: 'ignoreProxySettings', label: 'Ignore Proxy Settings', type: 'checkbox', col: 4},
+            {id: 'maxRetryStrategy', label: 'Max Retry Strategy', type: 'text', placeholder: 'exit-10-5-5m', col: 6, defaultVal: 'exit-10-5-5m'}
         ],
         dns: [
-            {id: 'host', label: 'DNS Host', type: 'text', placeholder: 'ns1.example.com', required: true, col: 6},
-            {id: 'dnsPort', label: 'Port', type: 'number', placeholder: '53', required: true, col: 3, defaultVal: '53'},
-            {id: 'mode', label: 'Mode', type: 'select', options: ['hybrid', 'dns-only'], col: 3},
-            {id: 'hosts', label: 'Beacon Hosts', type: 'text', placeholder: 'host.example.com', col: 6, isArray: true},
-            {id: 'profile', label: 'Profile', type: 'text', placeholder: 'default', col: 6}
+            {id: 'host', label: 'DNS Stager Host', type: 'text', placeholder: 'ns1.example.com', required: true, col: 6},
+            {id: 'dnsBindPort', label: 'Port (Bind)', type: 'number', placeholder: '53', col: 3, defaultVal: '53'},
+            {id: 'hosts', label: 'DNS Callback Hosts', type: 'text', placeholder: 'host.example.com', col: 6, isArray: true},
+            {id: 'profile', label: 'Profile', type: 'text', placeholder: 'default', col: 3},
+            {id: 'color', label: 'Color', type: 'text', placeholder: 'DEFAULT', col: 6, defaultVal: 'DEFAULT'},
+            {id: 'hostRotationStrategy', label: 'Host Rotation', type: 'select', options: ['', 'round-robin', 'random', 'failover-5x', 'failover-1x', 'failover-rr', 'rotate-1m', 'rotate-5m', 'rotate-15m', 'rotate-30m', 'rotate-1h'], col: 4},
+            {id: 'dnsResolver', label: 'DNS Resolver', type: 'text', placeholder: 'host.example.com', col: 6},
+            {id: 'maxRetryStrategy', label: 'Max Retry Strategy', type: 'text', placeholder: 'exit-10-5-5m', col: 6, defaultVal: 'exit-10-5-5m'}
         ],
         smb: [
-            {id: 'pipeName', label: 'Pipe Name', type: 'text', placeholder: 'msagent_##', required: true, col: 6},
-            {id: 'profile', label: 'Profile', type: 'text', placeholder: 'default', col: 6}
+            {id: 'pipename', label: 'Pipe Name', type: 'text', placeholder: 'msagent_##', required: true, col: 6},
+            {id: 'color', label: 'Color', type: 'text', placeholder: 'DEFAULT', col: 6, defaultVal: 'DEFAULT'}
         ],
         tcp: [
-            {id: 'host', label: 'Host', type: 'text', placeholder: '0.0.0.0', required: true, col: 6},
-            {id: 'port', label: 'Port', type: 'number', placeholder: '4444', required: true, col: 3, defaultVal: '4444'},
-            {id: 'profile', label: 'Profile', type: 'text', placeholder: 'default', col: 3}
+            {id: 'port', label: 'Port (C2)', type: 'number', placeholder: '4444', required: true, col: 4, defaultVal: '4444'},
+            {id: 'localHostOnly', label: 'Bind to localhost only', type: 'checkbox', col: 4},
+            {id: 'color', label: 'Color', type: 'text', placeholder: 'DEFAULT', col: 4, defaultVal: 'DEFAULT'}
         ],
-        foreign: [
+        foreignHttp: [
             {id: 'host', label: 'Host', type: 'text', placeholder: '10.0.0.1', required: true, col: 6},
-            {id: 'port', label: 'Port', type: 'number', placeholder: '443', required: true, col: 3, defaultVal: '443'}
+            {id: 'port', label: 'Port', type: 'number', placeholder: '80', required: true, col: 3, defaultVal: '80'},
+            {id: 'color', label: 'Color', type: 'text', placeholder: 'DEFAULT', col: 3, defaultVal: 'DEFAULT'}
+        ],
+        foreignHttps: [
+            {id: 'host', label: 'Host', type: 'text', placeholder: '10.0.0.1', required: true, col: 6},
+            {id: 'port', label: 'Port', type: 'number', placeholder: '443', required: true, col: 3, defaultVal: '443'},
+            {id: 'color', label: 'Color', type: 'text', placeholder: 'DEFAULT', col: 3, defaultVal: 'DEFAULT'}
+        ],
+        externalC2: [
+            {id: 'port', label: 'Port', type: 'number', placeholder: '2222', required: true, col: 4, defaultVal: '2222'},
+            {id: 'localHostOnly', label: 'Bind to localhost only', type: 'checkbox', col: 4},
+            {id: 'color', label: 'Color', type: 'text', placeholder: 'DEFAULT', col: 4, defaultVal: 'DEFAULT'}
+        ],
+        userDefinedC2: [
+            {id: 'port', label: 'Port', type: 'number', placeholder: '2222', required: true, col: 4, defaultVal: '2222'},
+            {id: 'localHostOnly', label: 'Bind to localhost only', type: 'checkbox', col: 4},
+            {id: 'color', label: 'Color', type: 'text', placeholder: 'DEFAULT', col: 4, defaultVal: 'DEFAULT'},
+            {id: 'debugOnly', label: 'Debug Only', type: 'checkbox', col: 4},
+            {id: 'udc2Bof', label: 'UDC2 BOF Path', type: 'text', placeholder: '@files/udc2.x64.o', col: 6, required: true},
+            {id: 'udc2File', label: 'UDC2 BOF File', type: 'file', col: 6, accept: '.o'}
         ]
     };
+
+    // ---- Render a set of fields into HTML ----
+    function renderFields(fields, prefix) {
+        var html = '';
+        fields.forEach(function(f) {
+            var fid = prefix + f.id;
+            html += '<div class="col-md-' + (f.col || 6) + '">';
+
+            if (f.type === 'checkbox') {
+                html += '<div class="form-check mt-4">';
+                html += '<input class="form-check-input" type="checkbox" id="' + fid + '">';
+                html += '<label class="form-check-label" for="' + fid + '">' + f.label + '</label>';
+                html += '</div>';
+            } else if (f.type === 'file') {
+                html += '<label class="form-label">' + f.label + '</label>';
+                html += '<input type="file" class="form-control" id="' + fid + '"';
+                if (f.accept) html += ' accept="' + f.accept + '"';
+                html += '>';
+            } else {
+                html += '<label class="form-label">' + f.label;
+                if (f.required) html += ' <span class="text-danger">*</span>';
+                html += '</label>';
+
+                if (f.type === 'select') {
+                    html += '<select class="form-select" id="' + fid + '">';
+                    (f.options || []).forEach(function(opt) {
+                        if (opt === '') {
+                            html += '<option value="">Select...</option>';
+                        } else {
+                            html += '<option value="' + opt + '">' + opt + '</option>';
+                        }
+                    });
+                    html += '</select>';
+                } else {
+                    html += '<input type="' + (f.type || 'text') + '" class="form-control" id="' + fid + '"';
+                    html += ' placeholder="' + (f.placeholder || '') + '"';
+                    if (f.defaultVal) html += ' value="' + f.defaultVal + '"';
+                    html += '>';
+                }
+            }
+
+            html += '</div>';
+        });
+        return html;
+    }
 
     // ---- Render dynamic fields ----
     function onTypeChange() {
         var type = document.getElementById('new-type').value;
         var container = document.getElementById('type-fields');
+        var grContainer = document.getElementById('type-fields-guardrails');
 
         if (!type || !TYPE_FIELDS[type]) {
             container.innerHTML = '';
+            grContainer.innerHTML = '';
             return;
         }
 
-        var fields = TYPE_FIELDS[type];
+        // Type-specific fields
         var html = '<div class="row g-3">';
-
-        fields.forEach(function(f) {
-            html += '<div class="col-md-' + (f.col || 6) + '">';
-            html += '<label class="form-label">' + f.label;
-            if (f.required) html += ' <span class="text-danger">*</span>';
-            html += '</label>';
-
-            if (f.type === 'select') {
-                html += '<select class="form-select" id="new-' + f.id + '">';
-                (f.options || []).forEach(function(opt) {
-                    if (opt === '') {
-                        html += '<option value="">Select...</option>';
-                    } else {
-                        html += '<option value="' + opt + '">' + opt + '</option>';
-                    }
-                });
-                html += '</select>';
-            } else {
-                html += '<input type="' + f.type + '" class="form-control" id="new-' + f.id + '"';
-                html += ' placeholder="' + (f.placeholder || '') + '"';
-                if (f.defaultVal) html += ' value="' + f.defaultVal + '"';
-                html += '>';
-            }
-
-            html += '</div>';
-        });
-
+        html += renderFields(TYPE_FIELDS[type], 'new-');
         html += '</div>';
+
+        // HTTP Proxy section (http/https only)
+        if (PROXY_TYPES[type]) {
+            html += '<hr class="my-3"><h6 class="text-muted">HTTP Proxy (optional)</h6>';
+            html += '<div class="row g-3">';
+            html += renderFields(PROXY_FIELDS, 'new-');
+            html += '</div>';
+        }
+
         container.innerHTML = html;
+
+        // GuardRails section
+        if (GUARDRAIL_TYPES[type]) {
+            var grHtml = '<hr class="my-3"><h6 class="text-muted">GuardRails (optional)</h6>';
+            grHtml += '<div class="row g-3">';
+            grHtml += renderFields(GUARDRAILS, 'new-gr-');
+            grHtml += '</div>';
+            grContainer.innerHTML = grHtml;
+        } else {
+            grContainer.innerHTML = '';
+        }
     }
 
     // ---- CRUD ----
@@ -226,20 +321,22 @@
 
                 var html = '';
                 listeners.forEach(function(l, idx) {
-                    // Extract short type from payload (e.g. "windows/beacon_https/reverse_https" → "HTTPS")
+                    // Extract short type from payload string
                     var lType = '-';
                     var payload = l.payload || '';
                     if (payload.indexOf('beacon_https') !== -1) lType = 'HTTPS';
                     else if (payload.indexOf('beacon_http') !== -1) lType = 'HTTP';
-                    else if (payload.indexOf('beacon_dns') !== -1) lType = 'DNS';
-                    else if (payload.indexOf('beacon_smb') !== -1 || payload.indexOf('bind_pipe') !== -1) lType = 'SMB';
-                    else if (payload.indexOf('beacon_tcp') !== -1 || payload.indexOf('bind_tcp') !== -1) lType = 'TCP';
-                    else if (payload.indexOf('foreign') !== -1) lType = 'Foreign';
+                    else if (payload.indexOf('beacon_dns') !== -1 || payload.indexOf('dns') !== -1) lType = 'DNS';
+                    else if (payload.indexOf('bind_pipe') !== -1 || payload.indexOf('smb') !== -1) lType = 'SMB';
+                    else if (payload.indexOf('bind_tcp') !== -1 || payload.indexOf('tcp') !== -1) lType = 'TCP';
+                    else if (payload.indexOf('foreign') !== -1 && payload.indexOf('reverse_https') !== -1) lType = 'Foreign HTTPS';
+                    else if (payload.indexOf('foreign') !== -1) lType = 'Foreign HTTP';
+                    else if (payload.indexOf('extc2') !== -1) lType = 'External C2';
                     else if (payload) lType = payload;
 
-                    var lHost = l.host || l.pipeName || '-';
-                    var lPort = (l.httpPort != null) ? l.httpPort : (l.port != null) ? l.port : (l.dnsPort != null) ? l.dnsPort : '-';
-                    var lBindPort = (l.httpBindPort != null) ? l.httpBindPort : (l.bindPort != null) ? l.bindPort : '-';
+                    var lHost = l.host || l.pipename || '-';
+                    var lPort = l.httpPort || l.dnsBindPort || l.port || '-';
+                    var lBindPort = l.httpBindPort != null ? l.httpBindPort : '-';
                     var lBeacons = l.hosts || [];
                     if (Array.isArray(lBeacons)) lBeacons = lBeacons.join(', ');
                     if (!lBeacons) lBeacons = '-';
@@ -274,6 +371,19 @@
             });
     }
 
+    // Collect a field value from an element
+    function collectField(f, elId) {
+        var el = document.getElementById(elId);
+        if (!el) return undefined;
+        if (f.type === 'checkbox') return el.checked;
+        if (f.type === 'file') return undefined; // handled separately
+        var val = el.value.trim();
+        if (!val) return undefined;
+        if (f.isArray) return val.split(',').map(function(s) { return s.trim(); }).filter(Boolean);
+        if (f.type === 'number') return parseInt(val, 10);
+        return val;
+    }
+
     function createListener() {
         var type = document.getElementById('new-type').value;
         var name = document.getElementById('new-name').value.trim();
@@ -281,31 +391,77 @@
         if (!type) { alert('Select a listener type'); return; }
         if (!name) { alert('Enter a listener name'); return; }
 
+        // type goes in URL via backend, name + fields go in JSON body
         var payload = {type: type, name: name};
         var fields = TYPE_FIELDS[type] || [];
 
+        // Collect type-specific fields
         for (var i = 0; i < fields.length; i++) {
             var f = fields[i];
-            var el = document.getElementById('new-' + f.id);
-            if (!el) continue;
-            var val = el.value.trim();
+            if (f.type === 'file') continue; // handled below
 
-            if (f.required && !val) {
+            var val = collectField(f, 'new-' + f.id);
+            if (f.required && (val === undefined || val === '')) {
                 alert('Missing required field: ' + f.label);
                 return;
             }
-            if (val) {
-                if (f.isArray) {
-                    // Convert comma-separated string to array
-                    payload[f.id] = val.split(',').map(function(s) { return s.trim(); }).filter(Boolean);
-                } else if (f.type === 'number') {
-                    payload[f.id] = parseInt(val, 10);
+            if (val !== undefined) payload[f.id] = val;
+        }
+
+        // Collect httpProxy (http/https only)
+        if (PROXY_TYPES[type]) {
+            var proxy = {};
+            var hasProxy = false;
+            PROXY_FIELDS.forEach(function(pf) {
+                var el = document.getElementById('new-' + pf.id);
+                if (!el) return;
+                var val = el.value.trim();
+                var key = pf.id.replace('proxy-', '');
+                if (val) {
+                    proxy[key] = (pf.type === 'number') ? parseInt(val, 10) : val;
+                    hasProxy = true;
                 } else {
-                    payload[f.id] = val;
+                    proxy[key] = null;
                 }
+            });
+            if (hasProxy) payload.httpProxy = proxy;
+        }
+
+        // Collect guardRails
+        if (GUARDRAIL_TYPES[type]) {
+            var gr = {};
+            var hasGr = false;
+            GUARDRAILS.forEach(function(gf) {
+                var el = document.getElementById('new-gr-' + gf.id);
+                if (!el) return;
+                var val = el.value.trim();
+                if (val) { gr[gf.id] = val; hasGr = true; }
+            });
+            if (hasGr) payload.guardRails = gr;
+        }
+
+        // Handle UDC2 file upload — read as base64 then send
+        var fileField = fields.find(function(f) { return f.type === 'file'; });
+        if (fileField) {
+            var fileEl = document.getElementById('new-' + fileField.id);
+            if (fileEl && fileEl.files.length > 0) {
+                var reader = new FileReader();
+                reader.onload = function(e) {
+                    var base64 = e.target.result.split(',')[1] || e.target.result;
+                    var fileName = fileEl.files[0].name;
+                    payload.files = {};
+                    payload.files[fileName] = base64;
+                    sendCreateRequest(payload);
+                };
+                reader.readAsDataURL(fileEl.files[0]);
+                return;
             }
         }
 
+        sendCreateRequest(payload);
+    }
+
+    function sendCreateRequest(payload) {
         var btn = document.getElementById('btn-create');
         btn.disabled = true;
         btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Creating...';
@@ -332,6 +488,7 @@
             document.getElementById('new-type').value = '';
             document.getElementById('new-name').value = '';
             document.getElementById('type-fields').innerHTML = '';
+            document.getElementById('type-fields-guardrails').innerHTML = '';
 
             loadListeners();
         })

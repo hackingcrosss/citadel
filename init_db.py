@@ -6,6 +6,8 @@ Run this after starting the containers with: docker-compose exec web python init
 
 from app import create_app, db
 from app.models.user import User
+from app.models.credential import Credential
+from app.models.domain import Domain, DNSRecord
 
 def init_database():
     app = create_app()

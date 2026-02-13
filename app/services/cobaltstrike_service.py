@@ -91,7 +91,7 @@ def _request(method, path, **kwargs):
             pass
         raise Exception(f'Cobalt Strike API error ({resp.status_code}): {error}')
 
-    if resp.status_code == 204:
+    if resp.status_code == 204 or not resp.text.strip():
         return None
     return resp.json()
 
@@ -111,8 +111,11 @@ def get_listener(listener_name):
     return _request('GET', f'/api/v1/listeners/{listener_name}')
 
 
-def create_listener(data):
-    return _request('POST', '/api/v1/listeners', json=data)
+def create_listener(listener_type, data):
+    """Create a listener. The CS REST API uses type-specific endpoints:
+    POST /api/v1/listeners/{type}  with the listener config as JSON body.
+    The body must NOT include a 'payload' field — the type is in the URL."""
+    return _request('POST', f'/api/v1/listeners/{listener_type}', json=data)
 
 
 def delete_listener(listener_name):
