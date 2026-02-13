@@ -1,0 +1,153 @@
+UDC2
+{
+  "name": "udc2",
+  "color": "DEFAULT",
+  "port": 3333,
+  "localHostOnly": false,
+  "debugOnly": false,
+  "udc2Bof": "@files/udc2.x64.o or @artifacts/userDefinedC2/icmp/udc2.x64.o",
+  "files": {
+    "udc2.x64.o": "TVp..."
+  },
+  "guardRails": {
+    "ipAddress": "123.123.*.*",
+    "userName": "admin*",
+    "serverName": "foo*",
+    "domain": "*bar.com"
+  }
+}
+
+TCP
+{
+  "name": "tcp",
+  "color": "DEFAULT",
+  "port": 1234,
+  "localHostOnly": false,
+  "guardRails": {
+    "ipAddress": "123.123.*.*",
+    "userName": "admin*",
+    "serverName": "foo*",
+    "domain": "*bar.com"
+  }
+}
+
+SMB
+{
+  "name": "smb",
+  "color": "DEFAULT",
+  "pipename": "mypipe",
+  "guardRails": {
+    "ipAddress": "123.123.*.*",
+    "userName": "admin*",
+    "serverName": "foo*",
+    "domain": "*bar.com"
+  }
+}
+
+HTTPS
+{
+  "name": "https",
+  "color": "DEFAULT",
+  "hosts": [
+    "host1.example.com",
+    "host2.example.com"
+  ],
+  "host": "host1.example.com",
+  "httpPort": 443,
+  "httpBindPort": null,
+  "httpHostHeader": null,
+  "hostRotationStrategy": "round-robin",
+  "maxRetryStrategy": "exit-10-5-5m",
+  "profile": "default",
+  "ignoreProxySettings": false,
+  "httpProxy": {
+    "protocol": "http",
+    "host": null,
+    "port": null,
+    "userName": null,
+    "password": null
+  },
+  "guardRails": {
+    "ipAddress": "123.123.*.*",
+    "userName": "admin*",
+    "serverName": "foo*",
+    "domain": "*bar.com"
+  }
+}
+
+HTTP
+{
+  "name": "http",
+  "color": "DEFAULT",
+  "hosts": [
+    "host1.example.com",
+    "host2.example.com"
+  ],
+  "host": "host1.example.com",
+  "httpPort": 80,
+  "httpBindPort": null,
+  "httpHostHeader": null,
+  "hostRotationStrategy": "round-robin",
+  "maxRetryStrategy": "exit-10-5-5m",
+  "profile": "default",
+  "ignoreProxySettings": false,
+  "httpProxy": {
+    "protocol": "http",
+    "host": null,
+    "port": null,
+    "userName": null,
+    "password": null
+  },
+  "guardRails": {
+    "ipAddress": "123.123.*.*",
+    "userName": "admin*",
+    "serverName": "foo*",
+    "domain": "*bar.com"
+  }
+}
+
+Foreign HTTPS
+{
+  "name": "foreign-https",
+  "color": "DEFAULT",
+  "host": "host1.example.com",
+  "port": 443
+}
+
+Foreign HTTP
+{
+  "name": "foreign-http",
+  "color": "DEFAULT",
+  "host": "host1.example.com",
+  "port": 80
+}
+
+External C2
+{
+  "name": "extc2",
+  "color": "DEFAULT",
+  "port": 2222,
+  "localHostOnly": false
+}
+
+DNS
+{
+  "name": "dns",
+  "color": "DEFAULT",
+  "hosts": [
+    "host1.example.com",
+    "host2.example.com"
+  ],
+  "host": "host1.example.com",
+  "dnsBindPort": null,
+  "hostRotationStrategy": "round-robin",
+  "maxRetryStrategy": "exit-10-5-5m",
+  "profile": "default",
+  "dnsResolver": null,
+  "guardRails": {
+    "ipAddress": "123.123.*.*",
+    "userName": "admin*",
+    "serverName": "foo*",
+    "domain": "*bar.com"
+  }
+}

@@ -29,9 +29,14 @@ infrared/
 │   │   └── __init__.py       # Configuration classes
 │   ├── models/
 │   │   ├── __init__.py
-│   │   └── user.py           # User authentication model
+│   │   ├── user.py           # User authentication model
+│   │   ├── credential.py     # Encrypted credential storage model
+│   │   └── domain.py         # Domain and DNSRecord models
 │   ├── services/             # Business logic (DNS, Docker, AWS, etc.)
 │   ├── tasks/                # Celery async tasks
+│   │   ├── celery_app.py     # Celery instance with Flask context
+│   │   ├── dns_tasks.py      # Async DNS operations
+│   │   └── container_tasks.py # Async container operations
 │   ├── api/                  # REST API endpoints
 │   │   ├── __init__.py
 │   │   ├── domains/
@@ -81,7 +86,7 @@ services:
 - Flask-Login for session management
 - Password hashing with Werkzeug
 - Forced password change on first login (default: admin@infrared.local / admin)
-- `must_change_password` flag on User model
+- `must_change_password` flag on User model (enforced via `@app.before_request` hook)
 - Encrypted credential storage using Fernet (AES-256)
 - Master encryption key in environment variables
 
@@ -122,6 +127,52 @@ class User(UserMixin, db.Model):
     must_change_password: bool (default=True)
     created_at: datetime
     last_login: datetime
+```
+
+### Credential Model
+```python
+class Credential(db.Model):
+    id: int (primary key)
+    provider: str (indexed)         # aws, cloudflare, mailgun, npm, docker, gophish, cobaltstrike
+    key_name: str
+    enrypted_value: Text
+    created_at: datetime
+    updated_at: datetime
+    # Unique constraint on (provider, key_name)
+```
+
+### Domain Model
+```python
+class Domain(db.Model):
+    id: int (primary key)
+    name: str (unique, indexed)
+    cloudflare_zone_id: str (unique, indexed)
+    registrar: str
+    status: str                     # active, inactive, pending
+    purpose: str                    # phishing, c2, redirect, staging
+    notes: Text
+    mailgun_region: str             # us, eu
+    created_at: datetime
+    updated_at: datetime
+    last_synced_at: datetime
+    dns_records: relationship -> DNSRecord
+```
+
+### DNSRecord Model
+```python
+class DNSRecord(db.Model):
+    id: int (primary key)
+    domain_id: int (FK -> domains.id, indexed)
+    cloudflare_record_id: str (unique, indexed)
+    record_type: str                # A, AAAA, CNAME, MX, TXT, etc.
+    name: str
+    content: Text
+    ttl: int (default=1)
+    proxied: bool (default=False)
+    priority: int                   # for MX records
+    managed_by: str (default=manual) # manual, infrared, mailgun
+    created_at: datetime
+    updated_at: datetime
 ```
 
 ## Environment Variables
@@ -229,18 +280,18 @@ docker compose exec web python init_db.py
 - `app/services/email_service.py` - Mailgun integration (domains, SMTP credentials, multi-region)
 - `app/services/npm_service.py` - Nginx Proxy Manager API (proxy hosts, certificates, redirections)
 - `app/services/gophish_service.py` - GoPhish API (sending profiles CRUD, connection verification)
-- `app/services/cobaltstrike_service.py` - Cobalt Strike REST API (JWT auth with token caching, listener CRUD)
+- `app/services/cobaltstrike_service.py` - Cobalt Strike REST API v1 (JWT auth with token caching, listener CRUD via type-specific endpoints, empty-body response handling)
 - `app/services/credential_service.py` - Fernet encryption/decryption for all stored credentials
 
 ### API Endpoints (all complete)
 - `/api/credentials` - Credential CRUD + test for all providers, single credential GET (aws, cloudflare, mailgun, npm, docker, gophish, cobaltstrike)
-- `/api/domains` - Cloudflare zone and DNS record management
+- `/api/domains` - Local domain tracking (CRUD, sync with Cloudflare) + Cloudflare zone/DNS record management
 - `/api/containers` - Docker container management (list, details, start/stop/restart/remove, logs, stats)
 - `/api/aws` - EC2 instance management (list, details, start/stop/reboot/terminate, security groups, key pairs)
 - `/api/npm` - Nginx Proxy Manager proxy hosts, certificates, redirections
 - `/api/email` - Mailgun domain and SMTP credential management
 - `/api/gophish` - GoPhish sending profile management (list, create, delete)
-- `/api/cobaltstrike` - Cobalt Strike listener management (list, create, delete with type-aware validation)
+- `/api/cobaltstrike` - Cobalt Strike listener management (list, create, delete with type-aware validation for http, https, dns, smb, tcp, foreignHttp, foreignHttps, externalC2, userDefinedC2)
 
 ### Frontend (all complete)
 - Dashboard with live data from all services, auto-refresh every 30 seconds
@@ -251,19 +302,13 @@ docker compose exec web python init_db.py
 - NPM page with proxy host management
 - Operations page with cross-service orchestration: email domain setup (region-aware) with GoPhish integration (auto-creates Mailgun SMTP credential + GoPhish sending profile), unified Point Domain card (EC2 direct or Service via NPM with container picker)
 - GoPhish page with sending profile table (view, create via modal, delete)
-- Cobalt Strike page with listener table and dynamic create modal (fields adapt per listener type: HTTP, HTTPS, DNS, SMB, TCP, Foreign)
+- Cobalt Strike page with listener table and dynamic create modal (fields adapt per listener type: http, https, dns, smb, tcp, foreignHttp, foreignHttps, externalC2, userDefinedC2; with conditional guardRails, httpProxy, and UDC2 file upload sections)
 - Settings page with credential management for all providers including Docker remote host, NPM public IP (with EC2 instance picker), GoPhish API credentials, and Cobalt Strike teamserver credentials
 
-## Next Steps (To Be Implemented)
-
-### Celery Tasks
-- `app/tasks/celery_app.py` - Celery instance configuration
-- `app/tasks/dns_tasks.py` - Async DNS updates
-- `app/tasks/container_tasks.py` - Async container deployment
-
-### Database Models (To Add)
-- Domain model (name, registrar, dns_records, email_status)
-- DNSRecord model (domain_id, type, value)
+### Celery Tasks (all complete)
+- `app/tasks/celery_app.py` - Celery instance with Flask app context integration
+- `app/tasks/dns_tasks.py` - Async DNS record CRUD + zone sync to local DB
+- `app/tasks/container_tasks.py` - Async container start/stop/restart/remove
 
 ## Common Issues & Solutions
 
@@ -280,6 +325,18 @@ docker compose exec web python init_db.py
 ### Image Missing Files
 - Rebuild: `docker compose up -d --build`
 - Files added after initial build won't be in container
+
+### Cobalt Strike REST API Notes
+- **Docs**: https://hstechdocs.helpsystems.com/manuals/cobaltstrike/current/userguide/content/api/index.html
+- **Auth**: `POST /api/auth/login` → JWT `access_token`, passed as `Bearer` header
+- **Create listener**: `POST /api/v1/listeners/{type}` — type is the URL slug, NOT in the body
+- **Delete listener**: `DELETE /api/v1/listeners/{name}` — returns 200 with empty body
+- **List listeners**: `GET /api/v1/listeners`
+- **Get listener**: `GET /api/v1/listeners/{name}`
+- **Valid type slugs**: `http`, `https`, `dns`, `smb`, `tcp`, `foreignHttp`, `foreignHttps`, `externalC2`, `userDefinedC2`
+- **Field names are camelCase** except `pipename` (lowercase) for SMB
+- **Nested objects**: `guardRails` (http/https/dns/smb/tcp/userDefinedC2), `httpProxy` (http/https only), `files` (userDefinedC2 only — base64-encoded BOF)
+- **Body schemas** are documented in `schemas.txt` at project root
 
 See TROUBLESHOOTING.md for complete debug guide.
 
