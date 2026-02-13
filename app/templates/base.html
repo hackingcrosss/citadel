@@ -64,6 +64,53 @@
             width: 20px;
             margin-right: 10px;
         }
+
+        .sidebar .nav-section {
+            color: rgba(255,255,255,0.4);
+            padding: 10px 20px 6px;
+            font-size: 0.7rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            cursor: pointer;
+            transition: color 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            border: none;
+            background: none;
+            width: 100%;
+            text-align: left;
+        }
+
+        .sidebar .nav-section span i {
+            margin-right: 6px;
+        }
+
+        .sidebar .nav-section:hover {
+            color: rgba(255,255,255,0.7);
+        }
+
+        .sidebar .nav-section .bi-chevron-right {
+            font-size: 0.6rem;
+            transition: transform 0.2s;
+        }
+
+        .sidebar .nav-section:not(.collapsed) .bi-chevron-right {
+            transform: rotate(90deg);
+        }
+
+        .sidebar .nav-collapse .nav-link {
+            padding-left: 34px;
+            padding-top: 8px;
+            padding-bottom: 8px;
+            font-size: 0.9rem;
+        }
+
+        .sidebar .nav-divider {
+            border-top: 1px solid rgba(255,255,255,0.08);
+            margin: 6px 20px;
+        }
         
         .main-content {
             margin-left: var(--sidebar-width);
@@ -149,34 +196,62 @@
         <div class="brand">
             <h4><i class="bi bi-bullseye"></i> InfraRed</h4>
         </div>
+        {% set mgmt_pages = ['domains','email','containers','aws','npm','gophish','cobaltstrike'] %}
+        {% set ops_pages = ['operations','orchestration_mgmt'] %}
         <nav class="nav flex-column">
             <a class="nav-link {% if request.endpoint == 'dashboard' %}active{% endif %}" href="{{ url_for('dashboard') }}">
                 <i class="bi bi-speedometer2"></i> Dashboard
             </a>
-            <a class="nav-link {% if request.endpoint == 'domains' %}active{% endif %}" href="{{ url_for('domains') }}">
-                <i class="bi bi-globe"></i> Domains
-            </a>
-            <a class="nav-link {% if request.endpoint == 'email' %}active{% endif %}" href="{{ url_for('email') }}">
-                <i class="bi bi-envelope"></i> Email
-            </a>
-            <a class="nav-link {% if request.endpoint == 'containers' %}active{% endif %}" href="{{ url_for('containers') }}">
-                <i class="bi bi-box-seam"></i> Containers
-            </a>
-            <a class="nav-link {% if request.endpoint == 'aws' %}active{% endif %}" href="{{ url_for('aws') }}">
-                <i class="bi bi-cloud"></i> AWS EC2
-            </a>
-            <a class="nav-link {% if request.endpoint == 'npm' %}active{% endif %}" href="{{ url_for('npm') }}">
-                <i class="bi bi-hdd-network"></i> NPM
-            </a>
-            <a class="nav-link {% if request.endpoint == 'operations' %}active{% endif %}" href="{{ url_for('operations') }}">
-                <i class="bi bi-diagram-3"></i> Operations
-            </a>
-            <a class="nav-link {% if request.endpoint == 'gophish' %}active{% endif %}" href="{{ url_for('gophish') }}">
-                <i class="bi bi-fish"></i> GoPhish
-            </a>
-            <a class="nav-link {% if request.endpoint == 'cobaltstrike' %}active{% endif %}" href="{{ url_for('cobaltstrike') }}">
-                <i class="bi bi-crosshair"></i> Cobalt Strike
-            </a>
+
+            <div class="nav-divider"></div>
+
+            <!-- Management section -->
+            <button class="nav-section {% if request.endpoint not in mgmt_pages %}collapsed{% endif %}" data-bs-toggle="collapse" data-bs-target="#nav-mgmt">
+                <span><i class="bi bi-grid"></i> Management</span>
+                <i class="bi bi-chevron-right"></i>
+            </button>
+            <div class="collapse nav-collapse {% if request.endpoint in mgmt_pages %}show{% endif %}" id="nav-mgmt">
+                <a class="nav-link {% if request.endpoint == 'domains' %}active{% endif %}" href="{{ url_for('domains') }}">
+                    <i class="bi bi-globe"></i> Domains
+                </a>
+                <a class="nav-link {% if request.endpoint == 'email' %}active{% endif %}" href="{{ url_for('email') }}">
+                    <i class="bi bi-envelope"></i> Email
+                </a>
+                <a class="nav-link {% if request.endpoint == 'containers' %}active{% endif %}" href="{{ url_for('containers') }}">
+                    <i class="bi bi-box-seam"></i> Containers
+                </a>
+                <a class="nav-link {% if request.endpoint == 'aws' %}active{% endif %}" href="{{ url_for('aws') }}">
+                    <i class="bi bi-cloud"></i> AWS EC2
+                </a>
+                <a class="nav-link {% if request.endpoint == 'npm' %}active{% endif %}" href="{{ url_for('npm') }}">
+                    <i class="bi bi-hdd-network"></i> NPM
+                </a>
+                <a class="nav-link {% if request.endpoint == 'gophish' %}active{% endif %}" href="{{ url_for('gophish') }}">
+                    <i class="bi bi-fish"></i> GoPhish
+                </a>
+                <a class="nav-link {% if request.endpoint == 'cobaltstrike' %}active{% endif %}" href="{{ url_for('cobaltstrike') }}">
+                    <i class="bi bi-crosshair"></i> Cobalt Strike
+                </a>
+            </div>
+
+            <div class="nav-divider"></div>
+
+            <!-- Red Team Ops section -->
+            <button class="nav-section {% if request.endpoint not in ops_pages %}collapsed{% endif %}" data-bs-toggle="collapse" data-bs-target="#nav-ops">
+                <span><i class="bi bi-diagram-3"></i> Red Team Ops</span>
+                <i class="bi bi-chevron-right"></i>
+            </button>
+            <div class="collapse nav-collapse {% if request.endpoint in ops_pages %}show{% endif %}" id="nav-ops">
+                <a class="nav-link {% if request.endpoint == 'operations' %}active{% endif %}" href="{{ url_for('operations') }}">
+                    <i class="bi bi-tools"></i> Setup
+                </a>
+                <a class="nav-link {% if request.endpoint == 'orchestration_mgmt' %}active{% endif %}" href="{{ url_for('orchestration_mgmt') }}">
+                    <i class="bi bi-kanban"></i> Deployments
+                </a>
+            </div>
+
+            <div class="nav-divider"></div>
+
             <a class="nav-link {% if request.endpoint == 'settings' %}active{% endif %}" href="{{ url_for('settings') }}">
                 <i class="bi bi-gear"></i> Settings
             </a>

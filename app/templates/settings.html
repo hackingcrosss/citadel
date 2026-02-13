@@ -326,6 +326,16 @@
                             </div>
                             <small class="text-muted" id="cs-password-status"></small>
                         </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Listener IP <small class="text-muted">(private IP — stager host &amp; NPM forward target)</small></label>
+                            <div class="input-group">
+                                <input type="text" class="form-control" id="cs-listener-ip" placeholder="e.g. 172.31.0.10">
+                                <select class="form-select" id="cs-listener-ip-from-ec2" style="max-width: 200px;" onchange="onCsListenerIpEc2Select()">
+                                    <option value="">Set from EC2...</option>
+                                </select>
+                            </div>
+                            <small class="text-muted" id="cs-listener-ip-status">Private IP of the CS teamserver EC2 instance. Used as stager host and NPM forward target.</small>
+                        </div>
                         <div class="col-12">
                             <button class="btn btn-sm btn-outline-primary" onclick="saveCobaltstrikeCredentials()">
                                 <i class="bi bi-pencil"></i> Update
@@ -334,6 +344,32 @@
                                 <i class="bi bi-check-circle"></i> Test Connection
                             </button>
                             <span id="cs-test-result" class="ms-2"></span>
+                        </div>
+                    </div>
+                </div>
+
+                <hr>
+
+                <!-- RedWarden -->
+                <div class="mb-4">
+                    <h6 class="fw-bold mb-3">
+                        <i class="bi bi-shield-shaded text-warning"></i> RedWarden (Beacon Reverse Proxy)
+                    </h6>
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label">RedWarden IP <small class="text-muted">(for Cloudflare DNS records)</small></label>
+                            <div class="input-group">
+                                <input type="text" class="form-control" id="redwarden-ip" placeholder="e.g. 203.0.113.50">
+                                <select class="form-select" id="redwarden-ip-from-ec2" style="max-width: 200px;" onchange="onRedwardenEc2Select()">
+                                    <option value="">Set from EC2...</option>
+                                </select>
+                            </div>
+                            <small class="text-muted" id="redwarden-ip-status">Public IP of the RedWarden host. Used by Operations for C2 DNS records.</small>
+                        </div>
+                        <div class="col-12">
+                            <button class="btn btn-sm btn-outline-primary" onclick="saveRedwardenCredentials()">
+                                <i class="bi bi-pencil"></i> Update
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -432,6 +468,7 @@
         loadDockerStatus();
         loadGophishStatus();
         loadCobaltstrikeStatus();
+        loadRedwardenStatus();
         loadEc2ForNpm();
     });
 
@@ -886,6 +923,11 @@
                     document.getElementById('cs-password-status').textContent =
                         'Last updated: ' + new Date(creds.password.updated_at).toLocaleString();
                 }
+                if (creds.listener_ip) {
+                    document.getElementById('cs-listener-ip').placeholder = creds.listener_ip.masked;
+                    document.getElementById('cs-listener-ip-status').textContent =
+                        'Last updated: ' + new Date(creds.listener_ip.updated_at).toLocaleString();
+                }
             })
             .catch(err => console.error('Failed to load CS credentials:', err));
     }
@@ -894,11 +936,13 @@
         const apiUrl = document.getElementById('cs-api-url').value;
         const username = document.getElementById('cs-username').value;
         const password = document.getElementById('cs-password').value;
+        const listenerIp = document.getElementById('cs-listener-ip').value.trim();
 
         const body = {};
         if (apiUrl) body.api_url = apiUrl;
         if (username) body.username = username;
         if (password) body.password = password;
+        if (listenerIp) body.listener_ip = listenerIp;
 
         if (Object.keys(body).length === 0) {
             alert('Enter at least one value to save.');
@@ -917,6 +961,7 @@
                 document.getElementById('cs-api-url').value = '';
                 document.getElementById('cs-username').value = '';
                 document.getElementById('cs-password').value = '';
+                document.getElementById('cs-listener-ip').value = '';
                 loadCobaltstrikeStatus();
             }
         })
@@ -941,6 +986,42 @@
             });
     }
 
+    // --- RedWarden ---
+
+    function loadRedwardenStatus() {
+        fetch('/api/credentials/redwarden')
+            .then(r => r.json())
+            .then(data => {
+                const creds = data.redwarden || {};
+                if (creds.ip) {
+                    document.getElementById('redwarden-ip').placeholder = creds.ip.masked;
+                    document.getElementById('redwarden-ip-status').textContent =
+                        'Last updated: ' + new Date(creds.ip.updated_at).toLocaleString();
+                }
+            })
+            .catch(err => console.error('Failed to load RedWarden credentials:', err));
+    }
+
+    function saveRedwardenCredentials() {
+        const ip = document.getElementById('redwarden-ip').value.trim();
+        if (!ip) { alert('Enter a RedWarden IP address.'); return; }
+
+        fetch('/api/credentials/redwarden', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ip: ip})
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.saved) {
+                alert('Saved: ' + data.saved.join(', '));
+                document.getElementById('redwarden-ip').value = '';
+                loadRedwardenStatus();
+            }
+        })
+        .catch(err => alert('Error saving: ' + err));
+    }
+
     // --- NPM EC2 Picker ---
 
     function loadEc2ForNpm() {
@@ -948,14 +1029,42 @@
             .then(r => r.json())
             .then(data => {
                 if (data.error) return;
-                const instances = (data.instances || []).filter(i => i.public_ip);
-                const select = document.getElementById('npm-ip-from-ec2');
-                select.innerHTML = '<option value="">Set from EC2...</option>';
-                instances.forEach(inst => {
+                const allInstances = data.instances || [];
+                const publicInstances = allInstances.filter(i => i.public_ip);
+                const privateInstances = allInstances.filter(i => i.private_ip);
+
+                // Populate NPM picker (public IP)
+                const npmSelect = document.getElementById('npm-ip-from-ec2');
+                npmSelect.innerHTML = '<option value="">Set from EC2...</option>';
+
+                // Populate RedWarden picker (public IP)
+                const rwSelect = document.getElementById('redwarden-ip-from-ec2');
+                rwSelect.innerHTML = '<option value="">Set from EC2...</option>';
+
+                publicInstances.forEach(inst => {
+                    const label = (inst.name || inst.id) + ' (' + inst.public_ip + ')';
+
+                    const opt1 = document.createElement('option');
+                    opt1.value = inst.public_ip;
+                    opt1.textContent = label;
+                    npmSelect.appendChild(opt1);
+
+                    const opt2 = document.createElement('option');
+                    opt2.value = inst.public_ip;
+                    opt2.textContent = label;
+                    rwSelect.appendChild(opt2);
+                });
+
+                // Populate CS Listener IP picker (private IP)
+                const csIpSelect = document.getElementById('cs-listener-ip-from-ec2');
+                csIpSelect.innerHTML = '<option value="">Set from EC2...</option>';
+
+                privateInstances.forEach(inst => {
+                    const label = (inst.name || inst.id) + ' (' + inst.private_ip + ')';
                     const opt = document.createElement('option');
-                    opt.value = inst.public_ip;
-                    opt.textContent = (inst.name || inst.id) + ' (' + inst.public_ip + ')';
-                    select.appendChild(opt);
+                    opt.value = inst.private_ip;
+                    opt.textContent = label;
+                    csIpSelect.appendChild(opt);
                 });
             })
             .catch(() => {});
@@ -965,6 +1074,22 @@
         const select = document.getElementById('npm-ip-from-ec2');
         if (select.value) {
             document.getElementById('npm-public-ip').value = select.value;
+        }
+        select.value = '';
+    }
+
+    function onRedwardenEc2Select() {
+        const select = document.getElementById('redwarden-ip-from-ec2');
+        if (select.value) {
+            document.getElementById('redwarden-ip').value = select.value;
+        }
+        select.value = '';
+    }
+
+    function onCsListenerIpEc2Select() {
+        const select = document.getElementById('cs-listener-ip-from-ec2');
+        if (select.value) {
+            document.getElementById('cs-listener-ip').value = select.value;
         }
         select.value = '';
     }
