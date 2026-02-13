@@ -141,9 +141,11 @@
         {id: 'proxy-password', label: 'Proxy Pass', type: 'password', placeholder: '', col: 2}
     ];
 
+    var csListenerIp = '';
+
     var TYPE_FIELDS = {
         http: [
-            {id: 'host', label: 'Stager Host', type: 'text', placeholder: '0.0.0.0', required: true, col: 6},
+            {id: 'host', label: 'Stager Host', type: 'text', placeholder: '0.0.0.0', required: true, col: 6, isHost: true},
             {id: 'httpPort', label: 'Port (C2)', type: 'number', placeholder: '80', col: 3, defaultVal: '80'},
             {id: 'httpBindPort', label: 'Bind Port', type: 'number', placeholder: 'Same as port', col: 3},
             {id: 'hosts', label: 'Callback Hosts', type: 'text', placeholder: 'host1.com, host2.com', col: 6, isArray: true},
@@ -155,7 +157,7 @@
             {id: 'maxRetryStrategy', label: 'Max Retry Strategy', type: 'text', placeholder: 'exit-10-5-5m', col: 6, defaultVal: 'exit-10-5-5m'}
         ],
         https: [
-            {id: 'host', label: 'Stager Host', type: 'text', placeholder: '0.0.0.0', required: true, col: 6},
+            {id: 'host', label: 'Stager Host', type: 'text', placeholder: '0.0.0.0', required: true, col: 6, isHost: true},
             {id: 'httpPort', label: 'Port (C2)', type: 'number', placeholder: '443', col: 3, defaultVal: '443'},
             {id: 'httpBindPort', label: 'Bind Port', type: 'number', placeholder: 'Same as port', col: 3},
             {id: 'hosts', label: 'Callback Hosts', type: 'text', placeholder: 'host1.com, host2.com', col: 6, isArray: true},
@@ -167,7 +169,7 @@
             {id: 'maxRetryStrategy', label: 'Max Retry Strategy', type: 'text', placeholder: 'exit-10-5-5m', col: 6, defaultVal: 'exit-10-5-5m'}
         ],
         dns: [
-            {id: 'host', label: 'DNS Stager Host', type: 'text', placeholder: 'ns1.example.com', required: true, col: 6},
+            {id: 'host', label: 'DNS Stager Host', type: 'text', placeholder: 'ns1.example.com', required: true, col: 6, isHost: true},
             {id: 'dnsBindPort', label: 'Port (Bind)', type: 'number', placeholder: '53', col: 3, defaultVal: '53'},
             {id: 'hosts', label: 'DNS Callback Hosts', type: 'text', placeholder: 'host.example.com', col: 6, isArray: true},
             {id: 'profile', label: 'Profile', type: 'text', placeholder: 'default', col: 3},
@@ -186,12 +188,12 @@
             {id: 'color', label: 'Color', type: 'text', placeholder: 'DEFAULT', col: 4, defaultVal: 'DEFAULT'}
         ],
         foreignHttp: [
-            {id: 'host', label: 'Host', type: 'text', placeholder: '10.0.0.1', required: true, col: 6},
+            {id: 'host', label: 'Host', type: 'text', placeholder: '10.0.0.1', required: true, col: 6, isHost: true},
             {id: 'port', label: 'Port', type: 'number', placeholder: '80', required: true, col: 3, defaultVal: '80'},
             {id: 'color', label: 'Color', type: 'text', placeholder: 'DEFAULT', col: 3, defaultVal: 'DEFAULT'}
         ],
         foreignHttps: [
-            {id: 'host', label: 'Host', type: 'text', placeholder: '10.0.0.1', required: true, col: 6},
+            {id: 'host', label: 'Host', type: 'text', placeholder: '10.0.0.1', required: true, col: 6, isHost: true},
             {id: 'port', label: 'Port', type: 'number', placeholder: '443', required: true, col: 3, defaultVal: '443'},
             {id: 'color', label: 'Color', type: 'text', placeholder: 'DEFAULT', col: 3, defaultVal: 'DEFAULT'}
         ],
@@ -215,6 +217,12 @@
         var html = '';
         fields.forEach(function(f) {
             var fid = prefix + f.id;
+            var placeholder = f.placeholder || '';
+            var defaultVal = f.defaultVal || '';
+            if (f.isHost && csListenerIp) {
+                placeholder = csListenerIp;
+                defaultVal = csListenerIp;
+            }
             html += '<div class="col-md-' + (f.col || 6) + '">';
 
             if (f.type === 'checkbox') {
@@ -244,8 +252,8 @@
                     html += '</select>';
                 } else {
                     html += '<input type="' + (f.type || 'text') + '" class="form-control" id="' + fid + '"';
-                    html += ' placeholder="' + (f.placeholder || '') + '"';
-                    if (f.defaultVal) html += ' value="' + f.defaultVal + '"';
+                    html += ' placeholder="' + placeholder + '"';
+                    if (defaultVal) html += ' value="' + defaultVal + '"';
                     html += '>';
                 }
             }
@@ -297,7 +305,19 @@
     // ---- CRUD ----
     document.addEventListener('DOMContentLoaded', function() {
         loadListeners();
+        loadCsListenerIp();
     });
+
+    function loadCsListenerIp() {
+        fetch('/api/credentials/cobaltstrike/listener_ip')
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (data && data.value) {
+                    csListenerIp = data.value;
+                }
+            })
+            .catch(function() {});
+    }
 
     function loadListeners() {
         fetch('/api/cobaltstrike/listeners')

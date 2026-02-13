@@ -1,10 +1,10 @@
 {% extends "base.html" %}
 
-{% block title %}Operations - InfraRed{% endblock %}
+{% block title %}Setup - InfraRed{% endblock %}
 
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-4">
-    <h1 class="h3 mb-0">Operations</h1>
+    <h1 class="h3 mb-0">Setup</h1>
     <div class="d-flex align-items-center gap-3">
         <select id="zoneSelect" class="form-select form-select-sm" style="width: 300px;" onchange="onZoneChange()">
             <option value="">Select a Cloudflare zone...</option>
@@ -181,6 +181,95 @@
         </div>
     </div>
 
+    <!-- 3. Setup C2 Connection -->
+    <div class="card-custom mb-4">
+        <div class="card-header">
+            <i class="bi bi-crosshair"></i> Setup C2 Connection
+        </div>
+        <div class="card-body">
+            <p class="text-muted small">Create a Cobalt Strike listener, NPM reverse proxy, and Cloudflare DNS entries in one step. DNS points to RedWarden, NPM forwards to CS Listener IP.</p>
+
+            <div id="c2-redwarden-warning" class="alert alert-warning small d-none mb-3">
+                <i class="bi bi-exclamation-triangle"></i> RedWarden IP not configured. <a href="/settings#credentials">Set it in Settings</a>.
+            </div>
+            <div id="c2-redwarden-info" class="small text-muted mb-2 d-none">
+                <i class="bi bi-info-circle"></i> Cloudflare DNS will point to RedWarden: <strong id="c2-redwarden-display"></strong>
+            </div>
+            <div id="c2-csip-warning" class="alert alert-warning small d-none mb-3">
+                <i class="bi bi-exclamation-triangle"></i> CS Listener IP not configured. <a href="/settings#credentials">Set it in Settings</a> (Cobalt Strike section).
+            </div>
+            <div id="c2-csip-info" class="small text-muted mb-2 d-none">
+                <i class="bi bi-info-circle"></i> Stager host &amp; NPM forward target: <strong id="c2-csip-display"></strong>
+            </div>
+
+            <div class="mb-3">
+                <button class="btn btn-infrared" data-bs-toggle="modal" data-bs-target="#c2Modal">
+                    <i class="bi bi-plus-circle"></i> New C2 Setup
+                </button>
+            </div>
+            <div id="c2-log" class="border rounded p-2" style="max-height: 300px; overflow-y: auto; background: #f8f9fa; min-height: 40px;">
+                <small class="text-muted">Waiting for action...</small>
+            </div>
+        </div>
+    </div>
+
+    <!-- C2 Setup Modal -->
+    <div class="modal fade" id="c2Modal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="bi bi-crosshair"></i> New C2 Setup</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <!-- Type + Name -->
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label">Listener Type</label>
+                            <select class="form-select" id="c2-type" onchange="onC2TypeChange()">
+                                <option value="">Select type...</option>
+                                <option value="http">HTTP</option>
+                                <option value="https" selected>HTTPS</option>
+                                <option value="dns">DNS</option>
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Listener Name</label>
+                            <input type="text" class="form-control" id="c2-name" placeholder="auto-generated if empty">
+                        </div>
+                    </div>
+
+                    <!-- Callback Hosts (zone-aware) -->
+                    <div class="row mb-3">
+                        <div class="col-md-12">
+                            <label class="form-label">Callback Hosts <span class="text-danger">*</span></label>
+                            <div class="input-group">
+                                <input type="text" class="form-control" id="c2-callbacks" placeholder="c2, cdn, update">
+                                <span class="input-group-text dns-zone-suffix">.example.com</span>
+                            </div>
+                            <small class="text-muted">Comma-separated subdomains (appended with zone). These become the listener's <code>hosts</code> array, NPM domain names, and Cloudflare A records.</small>
+                        </div>
+                    </div>
+
+                    <!-- Dynamic type-specific fields -->
+                    <div id="c2-type-fields"></div>
+
+                    <!-- HTTP Proxy section (rendered by JS) -->
+                    <div id="c2-proxy-fields"></div>
+
+                    <!-- GuardRails section (rendered by JS) -->
+                    <div id="c2-guardrails-fields"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-infrared" id="btn-c2-setup" onclick="setupC2()">
+                        <i class="bi bi-play-circle"></i> Create C2 Setup
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
 </div>
 {% endblock %}
 
@@ -191,6 +280,8 @@
     var allInstances = [];
     var allContainers = [];
     var npmPublicIp = '';
+    var redwardenIp = '';
+    var csListenerIp = '';
     var mailgunDnsRecords = null;
     var mailgunDomain = '';
     var mailgunRegion = 'us';
@@ -204,6 +295,8 @@
         loadInstances();
         loadContainers();
         loadNpmPublicIp();
+        loadRedwardenIp();
+        loadCsListenerIp();
     }
 
     // --- Helpers ---
@@ -837,6 +930,46 @@
             .catch(function() {});
     }
 
+    function loadRedwardenIp() {
+        fetch('/api/credentials/redwarden/ip')
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (data && data.value) {
+                    redwardenIp = data.value;
+                    document.getElementById('c2-redwarden-warning').classList.add('d-none');
+                    document.getElementById('c2-redwarden-info').classList.remove('d-none');
+                    document.getElementById('c2-redwarden-display').textContent = redwardenIp;
+                } else {
+                    document.getElementById('c2-redwarden-warning').classList.remove('d-none');
+                    document.getElementById('c2-redwarden-info').classList.add('d-none');
+                }
+            })
+            .catch(function() {
+                document.getElementById('c2-redwarden-warning').classList.remove('d-none');
+                document.getElementById('c2-redwarden-info').classList.add('d-none');
+            });
+    }
+
+    function loadCsListenerIp() {
+        fetch('/api/credentials/cobaltstrike/listener_ip')
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (data && data.value) {
+                    csListenerIp = data.value;
+                    document.getElementById('c2-csip-warning').classList.add('d-none');
+                    document.getElementById('c2-csip-info').classList.remove('d-none');
+                    document.getElementById('c2-csip-display').textContent = csListenerIp;
+                } else {
+                    document.getElementById('c2-csip-warning').classList.remove('d-none');
+                    document.getElementById('c2-csip-info').classList.add('d-none');
+                }
+            })
+            .catch(function() {
+                document.getElementById('c2-csip-warning').classList.remove('d-none');
+                document.getElementById('c2-csip-info').classList.add('d-none');
+            });
+    }
+
     function onTargetTypeChange() {
         var isService = document.getElementById('target-service').checked;
         document.getElementById('ec2-fields').classList.toggle('d-none', isService);
@@ -991,6 +1124,378 @@
                 logErr('point-log', 'Request failed: ' + err);
             });
         }
+    }
+
+    // --- C2 Setup (modal-based, mirrors CS create listener) ---
+
+    // Field definitions — same as cobaltstrike.html but bind port fields removed
+    // (bind port is auto-generated; the httpPort/dnsBindPort defaults are set automatically)
+    var C2_GUARDRAILS = [
+        {id: 'ipAddress', label: 'IP Address', type: 'text', placeholder: '123.123.*.*', col: 6},
+        {id: 'userName', label: 'Username', type: 'text', placeholder: 'admin*', col: 6},
+        {id: 'serverName', label: 'Server Name', type: 'text', placeholder: 'foo*', col: 6},
+        {id: 'domain', label: 'Domain Name', type: 'text', placeholder: '*bar.com', col: 6}
+    ];
+
+    var C2_GUARDRAIL_TYPES = {'http':1, 'https':1, 'dns':1};
+    var C2_PROXY_TYPES = {'http':1, 'https':1};
+
+    var C2_PROXY_FIELDS = [
+        {id: 'proxy-protocol', label: 'Protocol', type: 'select', options: ['', 'http', 'socks4', 'socks5'], col: 3},
+        {id: 'proxy-host', label: 'Proxy Host', type: 'text', placeholder: '10.0.0.1', col: 3},
+        {id: 'proxy-port', label: 'Proxy Port', type: 'number', placeholder: '8080', col: 2},
+        {id: 'proxy-userName', label: 'Proxy User', type: 'text', placeholder: '', col: 2},
+        {id: 'proxy-password', label: 'Proxy Pass', type: 'password', placeholder: '', col: 2}
+    ];
+
+    // Type-specific fields — host and hosts are handled separately in the modal,
+    // bind port is auto-generated, so those are excluded here
+    var C2_TYPE_FIELDS = {
+        http: [
+            {id: 'host', label: 'Stager Host', type: 'text', placeholder: '0.0.0.0', required: true, col: 6, isHost: true},
+            {id: 'httpHostHeader', label: 'Host Header', type: 'text', placeholder: 'Domain fronting host', col: 6},
+            {id: 'profile', label: 'Profile', type: 'text', placeholder: 'default', col: 4},
+            {id: 'hostRotationStrategy', label: 'Host Rotation', type: 'select', options: ['', 'round-robin', 'random', 'failover-5x', 'failover-1x', 'failover-rr', 'rotate-1m', 'rotate-5m', 'rotate-15m', 'rotate-30m', 'rotate-1h'], col: 4},
+            {id: 'color', label: 'Color', type: 'text', placeholder: 'DEFAULT', col: 4, defaultVal: 'DEFAULT'},
+            {id: 'ignoreProxySettings', label: 'Ignore Proxy Settings', type: 'checkbox', col: 4},
+            {id: 'maxRetryStrategy', label: 'Max Retry Strategy', type: 'text', placeholder: 'exit-10-5-5m', col: 4, defaultVal: 'exit-10-5-5m'}
+        ],
+        https: [
+            {id: 'host', label: 'Stager Host', type: 'text', placeholder: '0.0.0.0', required: true, col: 6, isHost: true},
+            {id: 'httpHostHeader', label: 'Host Header', type: 'text', placeholder: 'Domain fronting host', col: 6},
+            {id: 'profile', label: 'Profile', type: 'text', placeholder: 'default', col: 4},
+            {id: 'hostRotationStrategy', label: 'Host Rotation', type: 'select', options: ['', 'round-robin', 'random', 'failover-5x', 'failover-1x', 'failover-rr', 'rotate-1m', 'rotate-5m', 'rotate-15m', 'rotate-30m', 'rotate-1h'], col: 4},
+            {id: 'color', label: 'Color', type: 'text', placeholder: 'DEFAULT', col: 4, defaultVal: 'DEFAULT'},
+            {id: 'ignoreProxySettings', label: 'Ignore Proxy Settings', type: 'checkbox', col: 4},
+            {id: 'maxRetryStrategy', label: 'Max Retry Strategy', type: 'text', placeholder: 'exit-10-5-5m', col: 4, defaultVal: 'exit-10-5-5m'}
+        ],
+        dns: [
+            {id: 'host', label: 'DNS Stager Host', type: 'text', placeholder: 'ns1.example.com', required: true, col: 6, isHost: true},
+            {id: 'profile', label: 'Profile', type: 'text', placeholder: 'default', col: 3},
+            {id: 'color', label: 'Color', type: 'text', placeholder: 'DEFAULT', col: 3, defaultVal: 'DEFAULT'},
+            {id: 'hostRotationStrategy', label: 'Host Rotation', type: 'select', options: ['', 'round-robin', 'random', 'failover-5x', 'failover-1x', 'failover-rr', 'rotate-1m', 'rotate-5m', 'rotate-15m', 'rotate-30m', 'rotate-1h'], col: 4},
+            {id: 'dnsResolver', label: 'DNS Resolver', type: 'text', placeholder: 'host.example.com', col: 4},
+            {id: 'maxRetryStrategy', label: 'Max Retry Strategy', type: 'text', placeholder: 'exit-10-5-5m', col: 4, defaultVal: 'exit-10-5-5m'}
+        ]
+    };
+
+    function c2RenderFields(fields, prefix) {
+        var html = '';
+        fields.forEach(function(f) {
+            var fid = prefix + f.id;
+            var placeholder = f.placeholder || '';
+            var defaultVal = f.defaultVal || '';
+            if (f.isHost && csListenerIp) {
+                placeholder = csListenerIp;
+                defaultVal = csListenerIp;
+            }
+            html += '<div class="col-md-' + (f.col || 6) + '">';
+            if (f.type === 'checkbox') {
+                html += '<div class="form-check mt-4">';
+                html += '<input class="form-check-input" type="checkbox" id="' + fid + '">';
+                html += '<label class="form-check-label" for="' + fid + '">' + f.label + '</label>';
+                html += '</div>';
+            } else {
+                html += '<label class="form-label">' + f.label;
+                if (f.required) html += ' <span class="text-danger">*</span>';
+                html += '</label>';
+                if (f.type === 'select') {
+                    html += '<select class="form-select" id="' + fid + '">';
+                    (f.options || []).forEach(function(opt) {
+                        html += opt === '' ? '<option value="">Select...</option>' : '<option value="' + opt + '">' + opt + '</option>';
+                    });
+                    html += '</select>';
+                } else {
+                    html += '<input type="' + (f.type || 'text') + '" class="form-control" id="' + fid + '"';
+                    html += ' placeholder="' + placeholder + '"';
+                    if (defaultVal) html += ' value="' + defaultVal + '"';
+                    html += '>';
+                }
+            }
+            html += '</div>';
+        });
+        return html;
+    }
+
+    function onC2TypeChange() {
+        var type = document.getElementById('c2-type').value;
+        var container = document.getElementById('c2-type-fields');
+        var proxyContainer = document.getElementById('c2-proxy-fields');
+        var grContainer = document.getElementById('c2-guardrails-fields');
+
+        if (!type || !C2_TYPE_FIELDS[type]) {
+            container.innerHTML = '';
+            proxyContainer.innerHTML = '';
+            grContainer.innerHTML = '';
+            return;
+        }
+
+        // Type-specific fields
+        var html = '<div class="row g-3 mb-3">';
+        html += c2RenderFields(C2_TYPE_FIELDS[type], 'c2-');
+        html += '</div>';
+        container.innerHTML = html;
+
+        // HTTP Proxy section
+        if (C2_PROXY_TYPES[type]) {
+            var pH = '<hr class="my-3"><h6 class="text-muted">HTTP Proxy (optional)</h6>';
+            pH += '<div class="row g-3">';
+            pH += c2RenderFields(C2_PROXY_FIELDS, 'c2-');
+            pH += '</div>';
+            proxyContainer.innerHTML = pH;
+        } else {
+            proxyContainer.innerHTML = '';
+        }
+
+        // GuardRails section
+        if (C2_GUARDRAIL_TYPES[type]) {
+            var gH = '<hr class="my-3"><h6 class="text-muted">GuardRails (optional)</h6>';
+            gH += '<div class="row g-3">';
+            gH += c2RenderFields(C2_GUARDRAILS, 'c2-gr-');
+            gH += '</div>';
+            grContainer.innerHTML = gH;
+        } else {
+            grContainer.innerHTML = '';
+        }
+    }
+
+    // Render fields when the modal is shown (csListenerIp is loaded by then)
+    document.addEventListener('DOMContentLoaded', function() {
+        var c2ModalEl = document.getElementById('c2Modal');
+        if (c2ModalEl) {
+            c2ModalEl.addEventListener('show.bs.modal', function() {
+                onC2TypeChange();
+            });
+        }
+    });
+
+    function setupC2() {
+        if (!selectedZoneId) { alert('Select a zone first'); return; }
+        if (!redwardenIp) { alert('RedWarden IP not configured. Set it in Settings.'); return; }
+        if (!csListenerIp) { alert('CS Listener IP not configured. Set it in Settings (Cobalt Strike section).'); return; }
+
+        var type = document.getElementById('c2-type').value;
+        if (!type) { alert('Select a listener type'); return; }
+
+        var rawCallbacks = document.getElementById('c2-callbacks').value.trim();
+        if (!rawCallbacks) { alert('Enter at least one callback host'); return; }
+
+        // Build FQDN callback hosts from subdomains
+        var callbackHosts = rawCallbacks.split(',').map(function(s) {
+            s = s.trim();
+            if (!s) return '';
+            return s.indexOf('.') !== -1 ? s : s + '.' + selectedZoneName;
+        }).filter(Boolean);
+
+        if (callbackHosts.length === 0) { alert('Enter at least one callback host'); return; }
+
+        // Collect all type-specific fields from the modal
+        var fields = C2_TYPE_FIELDS[type] || [];
+        var listenerPayload = {type: type};
+
+        // Listener name (auto-generate if empty)
+        var listenerName = document.getElementById('c2-name').value.trim();
+        if (!listenerName) {
+            listenerName = type + '-' + selectedZoneName.split('.')[0] + '-' + Math.floor(Math.random() * 9000 + 1000);
+        }
+        listenerPayload.name = listenerName;
+        listenerPayload.hosts = callbackHosts;
+
+        // Collect type fields
+        for (var i = 0; i < fields.length; i++) {
+            var f = fields[i];
+            var el = document.getElementById('c2-' + f.id);
+            if (!el) continue;
+            if (f.type === 'checkbox') {
+                listenerPayload[f.id] = el.checked;
+                continue;
+            }
+            var val = el.value.trim();
+            if (f.required && !val) {
+                alert('Missing required field: ' + f.label);
+                return;
+            }
+            if (val) {
+                listenerPayload[f.id] = (f.type === 'number') ? parseInt(val, 10) : val;
+            }
+        }
+
+        // Collect httpProxy
+        if (C2_PROXY_TYPES[type]) {
+            var proxy = {};
+            var hasProxy = false;
+            C2_PROXY_FIELDS.forEach(function(pf) {
+                var el = document.getElementById('c2-' + pf.id);
+                if (!el) return;
+                var val = el.value.trim();
+                var key = pf.id.replace('proxy-', '');
+                if (val) {
+                    proxy[key] = (pf.type === 'number') ? parseInt(val, 10) : val;
+                    hasProxy = true;
+                } else {
+                    proxy[key] = null;
+                }
+            });
+            if (hasProxy) listenerPayload.httpProxy = proxy;
+        }
+
+        // Collect guardRails
+        if (C2_GUARDRAIL_TYPES[type]) {
+            var gr = {};
+            var hasGr = false;
+            C2_GUARDRAILS.forEach(function(gf) {
+                var el = document.getElementById('c2-gr-' + gf.id);
+                if (!el) return;
+                var val = el.value.trim();
+                if (val) { gr[gf.id] = val; hasGr = true; }
+            });
+            if (hasGr) listenerPayload.guardRails = gr;
+        }
+
+        // Close modal and start orchestration
+        var modal = bootstrap.Modal.getInstance(document.getElementById('c2Modal'));
+        if (modal) modal.hide();
+
+        var LOG = 'c2-log';
+        clearLog(LOG);
+        setButtonLoading('btn-c2-setup', true);
+
+        // Protocol defaults for bind port
+        var portDefaults = {http: 80, https: 443, dns: 53};
+        var schemeMap = {http: 'http', https: 'https', dns: 'https'};
+
+        // Step 1: Fetch existing listeners to find used ports
+        logWarn(LOG, 'Fetching existing CS listeners to find available port...');
+
+        fetch('/api/cobaltstrike/listeners')
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (data.error) {
+                    logErr(LOG, 'Failed to fetch listeners: ' + data.error);
+                    setButtonLoading('btn-c2-setup', false);
+                    return Promise.reject('stop');
+                }
+
+                var listeners = data.listeners || [];
+                var usedPorts = {};
+                listeners.forEach(function(l) {
+                    if (l.httpBindPort) usedPorts[l.httpBindPort] = true;
+                    if (l.dnsBindPort) usedPorts[l.dnsBindPort] = true;
+                    if (l.port) usedPorts[l.port] = true;
+                });
+
+                // Generate random port >10000 not in use
+                var bindPort;
+                var attempts = 0;
+                do {
+                    bindPort = Math.floor(Math.random() * 55000) + 10001;
+                    attempts++;
+                } while (usedPorts[bindPort] && attempts < 1000);
+
+                logOk(LOG, 'Selected bind port: <strong>' + bindPort + '</strong> (C2 port: ' + portDefaults[type] + ')');
+
+                // Step 2: Set bind port on payload
+                if (type === 'http' || type === 'https') {
+                    listenerPayload.httpPort = portDefaults[type];
+                    listenerPayload.httpBindPort = bindPort;
+                } else if (type === 'dns') {
+                    listenerPayload.dnsBindPort = bindPort;
+                }
+
+                logWarn(LOG, 'Creating CS listener: <strong>' + listenerName + '</strong> (' + type.toUpperCase() + ', bind port ' + bindPort + ')...');
+
+                return fetch('/api/cobaltstrike/listeners', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(listenerPayload)
+                })
+                .then(function(r) { return r.json(); })
+                .then(function(csData) {
+                    if (csData.error) {
+                        logErr(LOG, 'Failed to create CS listener: ' + csData.error);
+                        setButtonLoading('btn-c2-setup', false);
+                        return Promise.reject('stop');
+                    }
+                    logOk(LOG, 'CS listener created: <strong>' + listenerName + '</strong>');
+                    return bindPort;
+                });
+            })
+            .then(function(bindPort) {
+                if (bindPort === undefined) return Promise.reject('stop');
+
+                // Step 3: Create NPM proxy host (using CS Listener IP from settings)
+                logOk(LOG, 'CS Listener IP: <strong>' + csListenerIp + '</strong>');
+                var scheme = schemeMap[type];
+                logWarn(LOG, 'Creating NPM proxy: <strong>' + callbackHosts.join(', ') + '</strong> &rarr; ' + scheme + '://' + csListenerIp + ':' + bindPort + '...');
+
+                return fetch('/api/npm/hosts', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        domain_names: callbackHosts,
+                        forward_host: csListenerIp,
+                        forward_port: bindPort,
+                        forward_scheme: scheme
+                    })
+                })
+                .then(function(r) { return r.json(); })
+                .then(function(npmData) {
+                    if (npmData.error) {
+                        logErr(LOG, 'Failed to create NPM proxy: ' + npmData.error);
+                        setButtonLoading('btn-c2-setup', false);
+                        return Promise.reject('stop');
+                    }
+                    logOk(LOG, 'NPM proxy host created');
+                    if (npmData.host && npmData.host.id) {
+                        logInfo(LOG, 'NPM Host ID: ' + npmData.host.id);
+                    }
+                    return true;
+                });
+            })
+            .then(function(ok) {
+                if (!ok) return Promise.reject('stop');
+
+                // Step 4: Create Cloudflare A records for each callback host
+                logWarn(LOG, 'Creating Cloudflare A records for ' + callbackHosts.length + ' callback host(s) &rarr; ' + redwardenIp + '...');
+
+                var dnsPromises = callbackHosts.map(function(host) {
+                    return fetch('/api/domains/zones/' + selectedZoneId + '/records', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({
+                            type: 'A',
+                            name: host,
+                            content: redwardenIp,
+                            ttl: 1,
+                            proxied: true
+                        })
+                    })
+                    .then(function(r) { return r.json(); })
+                    .then(function(dnsData) {
+                        if (dnsData.error) {
+                            if (dnsData.error.toLowerCase().indexOf('already exists') !== -1) {
+                                logWarn(LOG, 'A record already exists for ' + host + ' — skipped');
+                            } else {
+                                logErr(LOG, 'Failed to create A record for ' + host + ': ' + dnsData.error);
+                            }
+                        } else {
+                            logOk(LOG, 'A record created: ' + host + ' &rarr; ' + redwardenIp + ' (proxied)');
+                        }
+                    });
+                });
+
+                return Promise.all(dnsPromises);
+            })
+            .then(function() {
+                setButtonLoading('btn-c2-setup', false);
+                logInfo(LOG, '<strong>C2 setup complete!</strong> Flow: Beacon &rarr; Cloudflare &rarr; RedWarden (' + redwardenIp + ') &rarr; NPM &rarr; CS Listener (' + listenerName + ')');
+            })
+            .catch(function(err) {
+                setButtonLoading('btn-c2-setup', false);
+                if (err !== 'stop') {
+                    logErr(LOG, 'Unexpected error: ' + err);
+                }
+            });
     }
 </script>
 {% endblock %}

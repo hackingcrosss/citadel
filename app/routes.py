@@ -141,6 +141,11 @@ def register_routes(app):
     def cobaltstrike():
         return render_template('cobaltstrike.html')
 
+    @app.route('/orchestration')
+    @login_required
+    def orchestration_mgmt():
+        return render_template('orchestration.html')
+
     @app.route('/settings')
     @login_required
     def settings():

@@ -284,7 +284,7 @@ docker compose exec web python init_db.py
 - `app/services/credential_service.py` - Fernet encryption/decryption for all stored credentials
 
 ### API Endpoints (all complete)
-- `/api/credentials` - Credential CRUD + test for all providers, single credential GET (aws, cloudflare, mailgun, npm, docker, gophish, cobaltstrike)
+- `/api/credentials` - Credential CRUD + test for all providers, single credential GET (aws, cloudflare, mailgun, npm, docker, gophish, cobaltstrike, redwarden)
 - `/api/domains` - Local domain tracking (CRUD, sync with Cloudflare) + Cloudflare zone/DNS record management
 - `/api/containers` - Docker container management (list, details, start/stop/restart/remove, logs, stats)
 - `/api/aws` - EC2 instance management (list, details, start/stop/reboot/terminate, security groups, key pairs)
@@ -300,10 +300,10 @@ docker compose exec web python init_db.py
 - Domains page with zone selector, DNS record editor, SSL settings
 - Email page with domain management, DNS verification, SMTP credentials
 - NPM page with proxy host management
-- Operations page with cross-service orchestration: email domain setup (region-aware) with GoPhish integration (auto-creates Mailgun SMTP credential + GoPhish sending profile), unified Point Domain card (EC2 direct or Service via NPM with container picker)
+- Operations page with cross-service orchestration: email domain setup (region-aware) with GoPhish integration (auto-creates Mailgun SMTP credential + GoPhish sending profile), unified Point Domain card (EC2 direct or Service via NPM with container picker), C2 Setup card (auto-creates CS listener with random bind port, NPM proxy, and Cloudflare DNS records pointing to RedWarden)
 - GoPhish page with sending profile table (view, create via modal, delete)
 - Cobalt Strike page with listener table and dynamic create modal (fields adapt per listener type: http, https, dns, smb, tcp, foreignHttp, foreignHttps, externalC2, userDefinedC2; with conditional guardRails, httpProxy, and UDC2 file upload sections)
-- Settings page with credential management for all providers including Docker remote host, NPM public IP (with EC2 instance picker), GoPhish API credentials, and Cobalt Strike teamserver credentials
+- Settings page with credential management for all providers including Docker remote host, NPM public IP (with EC2 instance picker), GoPhish API credentials, Cobalt Strike teamserver credentials, and RedWarden IP (beacon reverse proxy)
 
 ### Celery Tasks (all complete)
 - `app/tasks/celery_app.py` - Celery instance with Flask app context integration
