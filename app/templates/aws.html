@@ -65,7 +65,7 @@
             <div class="col-auto">
                 <label class="form-label mb-0 small fw-bold">Filter:</label>
             </div>
-            <div class="col-md-3">
+            <div class="col-md-2">
                 <select class="form-select form-select-sm" id="filter-status" onchange="applyFilters()">
                     <option value="">All statuses</option>
                     <option value="running">Running</option>
@@ -78,6 +78,11 @@
             </div>
             <div class="col-md-3">
                 <input type="text" class="form-control form-control-sm" id="filter-name" placeholder="Search by name or ID..." oninput="applyFilters()">
+            </div>
+            <div class="col-md-2">
+                <select class="form-select form-select-sm" id="filter-tag" onchange="applyFilters()">
+                    <option value="">All tags</option>
+                </select>
             </div>
             <div class="col-auto">
                 <small class="text-muted" id="filter-count"></small>
@@ -122,6 +127,7 @@
                     <th>Public IP</th>
                     <th>Private IP</th>
                     <th>AZ</th>
+                    <th>Tags</th>
                     <th>Actions</th>
                 </tr>
             </thead>
@@ -188,9 +194,16 @@
 {% block extra_js %}
 <script>
     let allInstances = [];
+    let allDistinctTags = [];
     let selectedRegion = 'eu-west-1';
 
     document.addEventListener('DOMContentLoaded', loadInstances);
+
+    function escapeHtml(str) {
+        var div = document.createElement('div');
+        div.appendChild(document.createTextNode(str));
+        return div.innerHTML;
+    }
 
     function getRegion() {
         return document.getElementById('regionSelect').value;
@@ -218,6 +231,7 @@
                 }
                 allInstances = data.instances || [];
                 updateStats(allInstances);
+                refreshTagFilter();
                 if (allInstances.length === 0) {
                     empty.classList.remove('d-none');
                 } else {
@@ -240,9 +254,32 @@
         document.getElementById('statOther').textContent = instances.filter(i => !['running', 'stopped'].includes(i.state)).length;
     }
 
+    // --- Tag Filter ---
+
+    function refreshTagFilter() {
+        // Collect distinct tags from loaded instances
+        var tagSet = {};
+        allInstances.forEach(function(inst) {
+            (inst.local_tags || []).forEach(function(t) { tagSet[t] = true; });
+        });
+        allDistinctTags = Object.keys(tagSet).sort();
+
+        var select = document.getElementById('filter-tag');
+        var current = select.value;
+        select.innerHTML = '<option value="">All tags</option>';
+        allDistinctTags.forEach(function(t) {
+            var opt = document.createElement('option');
+            opt.value = t;
+            opt.textContent = t;
+            select.appendChild(opt);
+        });
+        if (current) select.value = current;
+    }
+
     function applyFilters() {
         const status = document.getElementById('filter-status').value;
         const name = document.getElementById('filter-name').value.toLowerCase();
+        const tag = document.getElementById('filter-tag').value;
 
         const filtered = allInstances.filter(inst => {
             if (status && inst.state !== status) return false;
@@ -251,12 +288,15 @@
                               inst.id.toLowerCase().indexOf(name) !== -1;
                 if (!match) return false;
             }
+            if (tag) {
+                if (!(inst.local_tags || []).includes(tag)) return false;
+            }
             return true;
         });
 
         renderInstances(filtered);
         const countEl = document.getElementById('filter-count');
-        if (status || name) {
+        if (status || name || tag) {
             countEl.textContent = `Showing ${filtered.length} of ${allInstances.length}`;
         } else {
             countEl.textContent = '';
@@ -275,6 +315,7 @@
                 <td>${inst.public_ip ? `<code>${inst.public_ip}</code>` : '<span class="text-muted">-</span>'}</td>
                 <td><code>${inst.private_ip || '-'}</code></td>
                 <td><small>${inst.az}</small></td>
+                <td>${renderTags(inst)}</td>
                 <td>
                     <div class="btn-group btn-group-sm">
                         ${inst.state === 'stopped' ? `<button class="btn btn-outline-success btn-sm" title="Start" onclick="instanceAction('start', '${inst.id}')"><i class="bi bi-play-fill"></i></button>` : ''}
@@ -285,6 +326,103 @@
                 </td>
             </tr>
         `).join('');
+    }
+
+    // --- Tag Rendering & Management ---
+
+    function renderTags(inst) {
+        var html = '';
+        (inst.local_tags || []).forEach(function(t) {
+            html += '<span class="badge bg-primary me-1 mb-1" style="font-size: 0.75em;">' +
+                    escapeHtml(t) +
+                    ' <i class="bi bi-x" style="cursor:pointer" onclick="removeTag(\'' + escapeAttr(inst.id) + '\', \'' + escapeAttr(t) + '\')"></i>' +
+                    '</span>';
+        });
+        html += '<i class="bi bi-plus-circle text-muted" style="cursor:pointer; font-size: 0.85em;" onclick="showAddTag(\'' + escapeAttr(inst.id) + '\', this)" title="Add tag"></i>';
+        return html;
+    }
+
+    function escapeAttr(str) {
+        return str.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+    }
+
+    function showAddTag(instanceId, btnEl) {
+        // Remove any existing inline input
+        var existing = document.getElementById('inline-tag-input');
+        if (existing) existing.remove();
+
+        var container = document.createElement('span');
+        container.id = 'inline-tag-input';
+        container.innerHTML = '<input type="text" class="form-control form-control-sm d-inline-block" ' +
+                              'style="width: 100px; font-size: 0.8em; padding: 1px 4px;" ' +
+                              'placeholder="tag..." id="tag-input-field">';
+        btnEl.parentNode.insertBefore(container, btnEl);
+
+        var input = document.getElementById('tag-input-field');
+        input.focus();
+
+        input.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') {
+                var val = input.value.trim();
+                if (val) addTag(instanceId, val);
+                container.remove();
+            } else if (e.key === 'Escape') {
+                container.remove();
+            }
+        });
+
+        input.addEventListener('blur', function() {
+            var val = input.value.trim();
+            if (val) addTag(instanceId, val);
+            container.remove();
+        });
+    }
+
+    function addTag(instanceId, tag) {
+        fetch('/api/aws/tags', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({instance_id: instanceId, tag: tag})
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.error) {
+                alert('Error: ' + data.error);
+                return;
+            }
+            // Update local data and re-render
+            var inst = allInstances.find(i => i.id === instanceId);
+            if (inst) {
+                if (!inst.local_tags) inst.local_tags = [];
+                if (!inst.local_tags.includes(tag)) inst.local_tags.push(tag);
+            }
+            refreshTagFilter();
+            applyFilters();
+        })
+        .catch(err => alert('Error: ' + err));
+    }
+
+    function removeTag(instanceId, tag) {
+        fetch('/api/aws/tags', {
+            method: 'DELETE',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({instance_id: instanceId, tag: tag})
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.error) {
+                alert('Error: ' + data.error);
+                return;
+            }
+            // Update local data and re-render
+            var inst = allInstances.find(i => i.id === instanceId);
+            if (inst && inst.local_tags) {
+                inst.local_tags = inst.local_tags.filter(t => t !== tag);
+            }
+            refreshTagFilter();
+            applyFilters();
+        })
+        .catch(err => alert('Error: ' + err));
     }
 
     function stateBadge(state) {

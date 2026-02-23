@@ -8,6 +8,7 @@ from app import create_app, db
 from app.models.user import User
 from app.models.credential import Credential
 from app.models.domain import Domain, DNSRecord
+from app.models.instance_tag import InstanceTag
 
 def init_database():
     app = create_app()
