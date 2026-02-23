@@ -2,6 +2,8 @@ from flask import request, jsonify
 from flask_login import login_required
 from app.api import api_bp
 from app.services import aws_service
+from app import db
+from app.models.instance_tag import InstanceTag
 
 
 # --- Instances ---
@@ -12,6 +14,20 @@ def aws_list_instances():
     region = request.args.get('region')
     try:
         instances = aws_service.list_instances(region)
+
+        # Enrich instances with local tags
+        instance_ids = [i['id'] for i in instances]
+        if instance_ids:
+            tags = InstanceTag.query.filter(InstanceTag.instance_id.in_(instance_ids)).all()
+            tag_map = {}
+            for t in tags:
+                tag_map.setdefault(t.instance_id, []).append(t.tag)
+            for inst in instances:
+                inst['local_tags'] = tag_map.get(inst['id'], [])
+        else:
+            for inst in instances:
+                inst['local_tags'] = []
+
         return jsonify({'instances': instances})
     except Exception as e:
         return jsonify({'error': str(e)}), 400
@@ -86,6 +102,69 @@ def aws_terminate_instances():
         return jsonify({'result': result})
     except Exception as e:
         return jsonify({'error': str(e)}), 400
+
+
+# --- Instance Tags (Local) ---
+
+@api_bp.route('/aws/tags', methods=['GET'])
+@login_required
+def aws_list_tags():
+    instance_id = request.args.get('instance_id')
+    try:
+        if instance_id:
+            tags = InstanceTag.query.filter_by(instance_id=instance_id).all()
+            return jsonify({'tags': [t.to_dict() for t in tags]})
+        else:
+            # Return distinct tag values
+            rows = db.session.query(InstanceTag.tag).distinct().order_by(InstanceTag.tag).all()
+            return jsonify({'tags': [r[0] for r in rows]})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 400
+
+
+@api_bp.route('/aws/tags', methods=['POST'])
+@login_required
+def aws_add_tag():
+    data = request.get_json()
+    if not data:
+        return jsonify({'error': 'No data provided'}), 400
+
+    instance_id = data.get('instance_id', '').strip()
+    tag = data.get('tag', '').strip()
+
+    if not instance_id or not tag:
+        return jsonify({'error': 'instance_id and tag are required'}), 400
+
+    existing = InstanceTag.query.filter_by(instance_id=instance_id, tag=tag).first()
+    if existing:
+        return jsonify({'tag': existing.to_dict()}), 200
+
+    new_tag = InstanceTag(instance_id=instance_id, tag=tag)
+    db.session.add(new_tag)
+    db.session.commit()
+    return jsonify({'tag': new_tag.to_dict()}), 201
+
+
+@api_bp.route('/aws/tags', methods=['DELETE'])
+@login_required
+def aws_remove_tag():
+    data = request.get_json()
+    if not data:
+        return jsonify({'error': 'No data provided'}), 400
+
+    instance_id = data.get('instance_id', '').strip()
+    tag = data.get('tag', '').strip()
+
+    if not instance_id or not tag:
+        return jsonify({'error': 'instance_id and tag are required'}), 400
+
+    existing = InstanceTag.query.filter_by(instance_id=instance_id, tag=tag).first()
+    if not existing:
+        return jsonify({'error': 'Tag not found'}), 404
+
+    db.session.delete(existing)
+    db.session.commit()
+    return jsonify({'deleted': True})
 
 
 # --- Security Groups ---
