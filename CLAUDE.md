@@ -31,7 +31,8 @@ infrared/
 │   │   ├── __init__.py
 │   │   ├── user.py           # User authentication model
 │   │   ├── credential.py     # Encrypted credential storage model
-│   │   └── domain.py         # Domain and DNSRecord models
+│   │   ├── domain.py         # Domain and DNSRecord models
+│   │   └── instance_tag.py   # Local EC2 instance tagging model
 │   ├── services/             # Business logic (DNS, Docker, AWS, etc.)
 │   ├── tasks/                # Celery async tasks
 │   │   ├── celery_app.py     # Celery instance with Flask context
@@ -177,6 +178,16 @@ class DNSRecord(db.Model):
     updated_at: datetime
 ```
 
+### InstanceTag Model
+```python
+class InstanceTag(db.Model):
+    id: int (primary key)
+    instance_id: str (indexed)      # AWS EC2 instance ID (e.g. "i-0abc123")
+    tag: str (indexed)              # Local tag label
+    created_at: datetime
+    # Unique constraint on (instance_id, tag)
+```
+
 ## Environment Variables
 ```bash
 # Flask
@@ -289,7 +300,7 @@ docker compose exec web python init_db.py
 - `/api/credentials` - Credential CRUD + test for all providers, single credential GET (aws, cloudflare, mailgun, npm, docker, gophish, cobaltstrike, redwarden)
 - `/api/domains` - Local domain tracking (CRUD, sync with Cloudflare) + Cloudflare zone/DNS record management
 - `/api/containers` - Docker container management (list, details, start/stop/restart/remove, logs, stats)
-- `/api/aws` - EC2 instance management (list, details, start/stop/reboot/terminate, security groups, key pairs)
+- `/api/aws` - EC2 instance management (list with local tags, details, start/stop/reboot/terminate, security groups, key pairs, local instance tagging CRUD)
 - `/api/npm` - Nginx Proxy Manager proxy hosts, certificates, redirections
 - `/api/email` - Mailgun domain and SMTP credential management
 - `/api/gophish` - GoPhish sending profile management (list, create, delete)
@@ -298,12 +309,12 @@ docker compose exec web python init_db.py
 ### Frontend (all complete)
 - Dashboard with live data from all services, auto-refresh every 30 seconds
 - Containers page with logs viewer, detail inspector, status/name filters, auto-refresh
-- AWS EC2 page with instance detail/security group modals, bulk actions, status/name filters
+- AWS EC2 page with instance detail/security group modals, bulk actions, status/name/tag filters, local instance tagging (add/remove tags inline per instance, tags stored in local DB)
 - Domains page with zone selector, DNS record editor, SSL settings
 - Email page with domain management, DNS verification, SMTP credentials
 - NPM page with proxy host management
 - Setup page (formerly Operations) with cross-service orchestration: email domain setup (region-aware) with GoPhish integration (auto-creates Mailgun SMTP credential + GoPhish sending profile), unified Point Domain card (EC2 direct or Service via NPM with container picker), C2 Setup card (modal-based, mirrors CS create listener form; auto-creates CS listener with random bind port, NPM proxy forwarding to CS Listener IP, and Cloudflare DNS records pointing to RedWarden)
-- C2 Deployments page showing active infrastructure: cross-references CS listeners with NPM proxy hosts (matched by callback host overlap) and Cloudflare DNS A records (optional zone selector); supports inspect (JSON detail modal) and teardown (deletes CS listener + NPM hosts + DNS records with confirmation and real-time log)
+- C2 Deployments page showing active infrastructure: cross-references CS listeners with NPM proxy hosts (matched by callback host overlap, showing forward target as scheme://host:port) and Cloudflare DNS A records (auto-resolved from callback host domains — no manual zone selection needed); supports inspect (JSON detail modal) and teardown (deletes CS listener + NPM hosts + DNS records with confirmation and real-time log)
 - GoPhish page with sending profile table (view, create via modal, delete)
 - Cobalt Strike page with listener table and dynamic create modal (fields adapt per listener type: http, https, dns, smb, tcp, foreignHttp, foreignHttps, externalC2, userDefinedC2; with conditional guardRails, httpProxy, and UDC2 file upload sections; host fields auto-populate from configured CS Listener IP)
 - Settings page with credential management for all providers including Docker remote host, NPM public IP (with EC2 instance picker), GoPhish API credentials, Cobalt Strike teamserver credentials (including Listener IP — private IP of teamserver EC2, with EC2 private IP picker), and RedWarden IP (beacon reverse proxy)

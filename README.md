@@ -7,12 +7,13 @@ A web application for managing red team infrastructure including domains, Docker
 - **Dashboard**: Live overview pulling real-time data from all integrated services, auto-refreshing every 30 seconds
 - **Domain Management**: Cloudflare DNS zone and record management, SSL settings
 - **Container Management**: Docker container listing, start/stop/restart/remove, logs viewer, detail inspector, with status and name filtering. Supports local socket or remote Docker host via TCP/TLS
-- **AWS EC2 Monitoring**: Multi-region instance management, security groups, key pairs, start/stop/reboot/terminate, with status and name/ID filtering
+- **AWS EC2 Monitoring**: Multi-region instance management, security groups, key pairs, start/stop/reboot/terminate, with status/name/tag filtering and local instance tagging (tags stored in local DB, not AWS)
 - **Nginx Proxy Manager**: Proxy host CRUD, enable/disable, certificates, redirections
 - **Email (Mailgun)**: Domain management, DNS verification, SMTP credential management, multi-region support
 - **GoPhish**: Sending profile management — view, create, and delete SMTP sending profiles
 - **Cobalt Strike**: Listener management — view, create (HTTP, HTTPS, DNS, SMB, TCP, Foreign), and delete listeners via the CS REST API (4.12+) with JWT authentication
-- **Operations**: Cross-service orchestration — setup email domains (Mailgun + Cloudflare DNS), push SMTP credentials to GoPhish, point domains to EC2 instances, create NPM reverse proxies, all from a single domain-centric page
+- **Operations**: Cross-service orchestration — setup email domains (Mailgun + Cloudflare DNS), push SMTP credentials to GoPhish, point domains to EC2 instances, create NPM reverse proxies, deploy C2 infrastructure (CS listener + NPM proxy + DNS records), all from a single domain-centric page
+- **C2 Deployments**: View active C2 infrastructure with auto-resolved DNS records (from callback host domains) and NPM forward targets (scheme://host:port); teardown entire deployments (CS listener + NPM hosts + DNS records) with confirmation and real-time log
 - **Secure Credential Storage**: All API keys encrypted with Fernet (AES-256) before database storage
 
 ## Quick Start
@@ -116,6 +117,9 @@ The `web` container mounts `/var/run/docker.sock` for direct Docker container ma
 | GET    | `/api/aws/security-groups/<id>` | Security group details |
 | GET    | `/api/aws/key-pairs` | List key pairs |
 | GET    | `/api/aws/regions` | List available regions |
+| GET    | `/api/aws/tags` | List distinct tags (or `?instance_id=` for specific instance) |
+| POST   | `/api/aws/tags` | Add a local tag to an instance |
+| DELETE | `/api/aws/tags` | Remove a local tag from an instance |
 
 ### Domains / Cloudflare (`/api/domains`)
 | Method | Endpoint | Description |
@@ -211,7 +215,8 @@ Each section loads independently. If a service's credentials aren't configured, 
 - Single and bulk instance actions: start, stop, reboot, terminate (with confirmation)
 - Instance detail modal with full metadata, security groups, and tags
 - Security group drill-down showing inbound/outbound rules
-- Frontend filters: status dropdown and name/ID search
+- **Local instance tagging**: Add/remove tags per instance (stored in local DB, not AWS). Tags shown as badges in the table with inline add (click "+", type, press Enter) and remove (click "x")
+- Frontend filters: status dropdown, name/ID search, and tag filter dropdown
 - Checkbox selection for bulk operations
 
 ### Operations (`/operations`)
