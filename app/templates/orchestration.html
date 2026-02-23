@@ -5,14 +5,9 @@
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-4">
     <h1 class="h3 mb-0">C2 Deployments</h1>
-    <div class="d-flex align-items-center gap-3">
-        <select id="zoneSelect" class="form-select form-select-sm" style="width: 300px;" onchange="onZoneChange()">
-            <option value="">Select a Cloudflare zone (optional)...</option>
-        </select>
-        <button class="btn btn-sm btn-outline-secondary" onclick="loadAll()">
-            <i class="bi bi-arrow-clockwise"></i> Refresh
-        </button>
-    </div>
+    <button class="btn btn-sm btn-outline-secondary" onclick="loadAll()">
+        <i class="bi bi-arrow-clockwise"></i> Refresh
+    </button>
 </div>
 
 <div class="card-custom">
@@ -99,11 +94,9 @@
 
 {% block extra_js %}
 <script>
-    var selectedZoneId = '';
-    var selectedZoneName = '';
+    var allZones = [];
     var allListeners = [];
     var allNpmHosts = [];
-    var allDnsRecords = [];
     var deployments = [];
     var pendingTeardown = null;
 
@@ -112,7 +105,6 @@
     });
 
     function loadAll() {
-        loadZones();
         loadDeployments();
     }
 
@@ -138,54 +130,32 @@
     function logWarn(logId, msg) { logStep(logId, 'bi-hourglass-split', 'text-warning', msg); }
     function logInfo(logId, msg) { logStep(logId, 'bi-info-circle', 'text-primary', msg); }
 
-    // --- Zone Selector ---
+    // --- Zone helpers ---
 
-    function loadZones() {
-        fetch('/api/domains/zones')
-            .then(function(r) { return r.json(); })
-            .then(function(data) {
-                if (data.error) return;
-                var zones = data.zones || [];
-                var select = document.getElementById('zoneSelect');
-                var current = select.value;
-                select.innerHTML = '<option value="">Select a Cloudflare zone (optional)...</option>';
-                zones.forEach(function(z) {
-                    var opt = document.createElement('option');
-                    opt.value = z.id + '|' + z.name;
-                    opt.textContent = z.name + (z.status === 'active' ? '' : ' (' + z.status + ')');
-                    select.appendChild(opt);
-                });
-                if (current) select.value = current;
-            })
-            .catch(function() {});
-    }
-
-    function onZoneChange() {
-        var val = document.getElementById('zoneSelect').value;
-        if (!val) {
-            selectedZoneId = '';
-            selectedZoneName = '';
-            allDnsRecords = [];
-            renderTable();
-            return;
+    function extractRootDomain(hostname) {
+        // Remove trailing dot if present
+        var h = hostname.replace(/\.$/, '');
+        var parts = h.split('.');
+        // Return last two parts (e.g. "sub.example.com" -> "example.com")
+        if (parts.length >= 2) {
+            return parts.slice(-2).join('.');
         }
-        var parts = val.split('|');
-        selectedZoneId = parts[0];
-        selectedZoneName = parts[1];
-        loadDnsRecords();
+        return h;
     }
 
-    function loadDnsRecords() {
-        if (!selectedZoneId) return;
-        fetch('/api/domains/zones/' + selectedZoneId + '/records')
-            .then(function(r) { return r.json(); })
-            .then(function(data) {
-                allDnsRecords = (data.records || []).filter(function(r) {
-                    return r.type === 'A';
-                });
-                renderTable();
-            })
-            .catch(function() { allDnsRecords = []; renderTable(); });
+    function findZoneForHost(hostname) {
+        var h = hostname.replace(/\.$/, '').toLowerCase();
+        // Try to find the most specific matching zone (longest name match)
+        var bestMatch = null;
+        allZones.forEach(function(z) {
+            var zName = z.name.toLowerCase();
+            if (h === zName || h.endsWith('.' + zName)) {
+                if (!bestMatch || zName.length > bestMatch.name.length) {
+                    bestMatch = z;
+                }
+            }
+        });
+        return bestMatch;
     }
 
     // --- Load Deployments ---
@@ -194,13 +164,15 @@
         var tbody = document.getElementById('deployments-table');
         tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted py-4"><span class="spinner-border spinner-border-sm"></span> Loading...</td></tr>';
 
-        // Fetch CS listeners and NPM hosts in parallel
+        // Fetch CS listeners, NPM hosts, and Cloudflare zones in parallel
         Promise.all([
             fetch('/api/cobaltstrike/listeners').then(function(r) { return r.json(); }).catch(function() { return {listeners: []}; }),
-            fetch('/api/npm/hosts').then(function(r) { return r.json(); }).catch(function() { return {hosts: []}; })
+            fetch('/api/npm/hosts').then(function(r) { return r.json(); }).catch(function() { return {hosts: []}; }),
+            fetch('/api/domains/zones').then(function(r) { return r.json(); }).catch(function() { return {zones: []}; })
         ]).then(function(results) {
             allListeners = results[0].listeners || [];
             allNpmHosts = results[1].hosts || [];
+            allZones = results[2].zones || [];
 
             // Build deployments by matching listeners to NPM hosts
             deployments = [];
@@ -229,7 +201,77 @@
                     type: lType,
                     bindPort: bindPort,
                     hosts: lHosts,
-                    npmHosts: matchedNpm
+                    npmHosts: matchedNpm,
+                    matchedDns: [],
+                    dnsLoaded: false
+                });
+            });
+
+            // Auto-resolve DNS records from callback hosts
+            loadDnsForDeployments();
+        });
+    }
+
+    function loadDnsForDeployments() {
+        // Collect all unique zone IDs needed from callback hosts
+        var zoneIdsNeeded = {};
+        deployments.forEach(function(dep) {
+            dep.hosts.forEach(function(h) {
+                var zone = findZoneForHost(h);
+                if (zone && !zoneIdsNeeded[zone.id]) {
+                    zoneIdsNeeded[zone.id] = zone;
+                }
+            });
+        });
+
+        var zoneIds = Object.keys(zoneIdsNeeded);
+        if (zoneIds.length === 0) {
+            // No zones matched — render without DNS
+            deployments.forEach(function(dep) { dep.dnsLoaded = true; });
+            renderTable();
+            return;
+        }
+
+        // Fetch A records for each needed zone in parallel
+        var fetches = zoneIds.map(function(zId) {
+            return fetch('/api/domains/zones/' + zId + '/records')
+                .then(function(r) { return r.json(); })
+                .then(function(data) {
+                    var aRecords = (data.records || []).filter(function(r) {
+                        return r.type === 'A';
+                    });
+                    return { zoneId: zId, records: aRecords };
+                })
+                .catch(function() {
+                    return { zoneId: zId, records: [] };
+                });
+        });
+
+        Promise.all(fetches).then(function(results) {
+            // Build a map of zone -> A records
+            var zoneRecords = {};
+            results.forEach(function(res) {
+                zoneRecords[res.zoneId] = res.records;
+            });
+
+            // Match DNS records to each deployment's callback hosts
+            deployments.forEach(function(dep) {
+                dep.matchedDns = [];
+                dep.dnsLoaded = true;
+
+                dep.hosts.forEach(function(h) {
+                    var zone = findZoneForHost(h);
+                    if (!zone || !zoneRecords[zone.id]) return;
+
+                    zoneRecords[zone.id].forEach(function(r) {
+                        var rName = r.name.replace(/\.$/, '');
+                        var hName = h.replace(/\.$/, '');
+                        if (rName === hName) {
+                            // Store the zoneId alongside the record for teardown
+                            var rec = Object.assign({}, r, { _zoneId: zone.id });
+                            dep.matchedDns.push(rec);
+                        }
+                    });
                 });
             });
 
@@ -265,31 +307,29 @@
             var lHost = l.host || l.pipename || '-';
             var lHosts = dep.hosts.length > 0 ? dep.hosts.join(', ') : '-';
 
-            // NPM info
+            // NPM info — show forward target (scheme://host:port)
             var npmInfo = '-';
             if (dep.npmHosts.length > 0) {
                 npmInfo = dep.npmHosts.map(function(n) {
-                    return '<span class="badge bg-success">#' + n.id + '</span>';
+                    var scheme = n.forward_scheme || 'http';
+                    var host = n.forward_host || '?';
+                    var port = n.forward_port || 80;
+                    return '<span class="badge bg-success">' + escapeHtml(scheme + '://' + host + ':' + port) + '</span>';
                 }).join(' ');
             }
 
             // DNS records matching callback hosts
             var dnsInfo = '-';
-            if (allDnsRecords.length > 0 && dep.hosts.length > 0) {
-                var matched = allDnsRecords.filter(function(r) {
-                    return dep.hosts.some(function(h) {
-                        return r.name === h || r.name === h + '.' || r.name.replace(/\.$/, '') === h;
-                    });
-                });
-                if (matched.length > 0) {
-                    dnsInfo = matched.map(function(r) {
+            if (dep.dnsLoaded) {
+                if (dep.matchedDns.length > 0) {
+                    dnsInfo = dep.matchedDns.map(function(r) {
                         return '<span class="badge bg-info">' + escapeHtml(r.name.replace(/\.$/, '')) + ' &rarr; ' + escapeHtml(r.content) + '</span>';
                     }).join(' ');
-                } else {
+                } else if (dep.hosts.length > 0) {
                     dnsInfo = '<span class="text-muted small">No matching A records</span>';
                 }
-            } else if (!selectedZoneId) {
-                dnsInfo = '<span class="text-muted small">Select zone</span>';
+            } else {
+                dnsInfo = '<span class="spinner-border spinner-border-sm"></span>';
             }
 
             html += '<tr>';
@@ -322,15 +362,8 @@
         var details = {
             listener: dep.listener,
             npm_hosts: dep.npmHosts,
-            matched_dns: []
+            matched_dns: dep.matchedDns
         };
-        if (allDnsRecords.length > 0 && dep.hosts.length > 0) {
-            details.matched_dns = allDnsRecords.filter(function(r) {
-                return dep.hosts.some(function(h) {
-                    return r.name === h || r.name === h + '.' || r.name.replace(/\.$/, '') === h;
-                });
-            });
-        }
         document.getElementById('json-content').textContent = JSON.stringify(details, null, 2);
         new bootstrap.Modal(document.getElementById('jsonModal')).show();
     }
@@ -347,18 +380,12 @@
         var items = '';
         items += '<li>CS Listener: <strong>' + escapeHtml(dep.listener.name || '') + '</strong></li>';
         dep.npmHosts.forEach(function(n) {
-            items += '<li>NPM Proxy Host: <strong>#' + n.id + '</strong> (' + (n.domain_names || []).join(', ') + ')</li>';
+            var target = (n.forward_scheme || 'http') + '://' + (n.forward_host || '?') + ':' + (n.forward_port || 80);
+            items += '<li>NPM Proxy Host: <strong>' + escapeHtml(target) + '</strong> (' + (n.domain_names || []).join(', ') + ')</li>';
         });
-        if (selectedZoneId && dep.hosts.length > 0) {
-            var matched = allDnsRecords.filter(function(r) {
-                return dep.hosts.some(function(h) {
-                    return r.name === h || r.name === h + '.' || r.name.replace(/\.$/, '') === h;
-                });
-            });
-            matched.forEach(function(r) {
-                items += '<li>DNS A Record: <strong>' + escapeHtml(r.name) + '</strong> &rarr; ' + escapeHtml(r.content) + '</li>';
-            });
-        }
+        dep.matchedDns.forEach(function(r) {
+            items += '<li>DNS A Record: <strong>' + escapeHtml(r.name) + '</strong> &rarr; ' + escapeHtml(r.content) + '</li>';
+        });
         list.innerHTML = items;
         new bootstrap.Modal(document.getElementById('teardownModal')).show();
     }
@@ -395,14 +422,15 @@
 
                 // Step 2: Delete NPM hosts
                 var npmPromises = dep.npmHosts.map(function(n) {
-                    logWarn(LOG, 'Deleting NPM proxy host #' + n.id + '...');
+                    var target = (n.forward_scheme || 'http') + '://' + (n.forward_host || '?') + ':' + (n.forward_port || 80);
+                    logWarn(LOG, 'Deleting NPM proxy host ' + escapeHtml(target) + '...');
                     return fetch('/api/npm/hosts/' + n.id, {method: 'DELETE'})
                         .then(function(r) { return r.json(); })
                         .then(function(data) {
                             if (data.error) {
-                                logErr(LOG, 'Failed to delete NPM host #' + n.id + ': ' + data.error);
+                                logErr(LOG, 'Failed to delete NPM host ' + escapeHtml(target) + ': ' + data.error);
                             } else {
-                                logOk(LOG, 'NPM proxy host #' + n.id + ' deleted');
+                                logOk(LOG, 'NPM proxy host deleted: ' + escapeHtml(target));
                             }
                         })
                         .catch(function(err) { logErr(LOG, 'NPM delete failed: ' + err); });
@@ -411,26 +439,15 @@
                 return Promise.all(npmPromises);
             })
             .then(function() {
-                // Step 3: Delete DNS records if zone selected
-                if (!selectedZoneId || dep.hosts.length === 0) {
-                    logInfo(LOG, 'No zone selected — skipping DNS record cleanup');
-                    return;
-                }
-
-                var matched = allDnsRecords.filter(function(r) {
-                    return dep.hosts.some(function(h) {
-                        return r.name === h || r.name === h + '.' || r.name.replace(/\.$/, '') === h;
-                    });
-                });
-
-                if (matched.length === 0) {
+                // Step 3: Delete DNS records using auto-resolved zone IDs
+                if (dep.matchedDns.length === 0) {
                     logInfo(LOG, 'No matching DNS records to delete');
                     return;
                 }
 
-                var dnsPromises = matched.map(function(r) {
+                var dnsPromises = dep.matchedDns.map(function(r) {
                     logWarn(LOG, 'Deleting DNS record: ' + escapeHtml(r.name) + ' &rarr; ' + escapeHtml(r.content) + '...');
-                    return fetch('/api/domains/zones/' + selectedZoneId + '/records/' + r.id, {method: 'DELETE'})
+                    return fetch('/api/domains/zones/' + r._zoneId + '/records/' + r.id, {method: 'DELETE'})
                         .then(function(resp) { return resp.json(); })
                         .then(function(data) {
                             if (data.error) {
@@ -448,7 +465,6 @@
                 logInfo(LOG, '<strong>Teardown complete for ' + escapeHtml(listenerName) + '</strong>');
                 // Reload data
                 loadDeployments();
-                if (selectedZoneId) loadDnsRecords();
             })
             .catch(function(err) {
                 logErr(LOG, 'Unexpected error: ' + err);
