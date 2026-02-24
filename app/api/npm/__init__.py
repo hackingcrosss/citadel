@@ -96,6 +96,18 @@ def disable_proxy_host(host_id):
         return jsonify({'error': str(e)}), 400
 
 
+# --- Access Lists ---
+
+@api_bp.route('/npm/access-lists', methods=['GET'])
+@login_required
+def list_access_lists():
+    try:
+        lists = npm_service.list_access_lists()
+        return jsonify({'access_lists': lists})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 400
+
+
 # --- Certificates ---
 
 @api_bp.route('/npm/certificates', methods=['GET'])

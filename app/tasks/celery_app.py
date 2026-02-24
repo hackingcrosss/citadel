@@ -21,5 +21,6 @@ class ContextTask(celery.Task):
 celery.Task = ContextTask
 
 # Import task modules so they are registered with the celery instance
-import app.tasks.dns_tasks      # noqa: F401, E402
-import app.tasks.container_tasks  # noqa: F401, E402
+import app.tasks.dns_tasks               # noqa: F401, E402
+import app.tasks.container_tasks          # noqa: F401, E402
+import app.tasks.website_generator_tasks  # noqa: F401, E402

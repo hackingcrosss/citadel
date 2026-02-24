@@ -210,6 +210,58 @@
                                 </div>
                             </div>
                         </div>
+
+                        <!-- SSH Deploy Config -->
+                        <div class="col-12 mt-3">
+                            <div class="d-flex align-items-center gap-2 mb-2">
+                                <h6 class="mb-0 small fw-bold text-muted text-uppercase" style="letter-spacing:.05em;">
+                                    <i class="bi bi-upload"></i> SSH Deploy (Website Generator)
+                                </h6>
+                                <button class="btn btn-sm btn-outline-secondary py-0 px-2" data-bs-toggle="collapse" data-bs-target="#npmSshCollapse">
+                                    <i class="bi bi-chevron-expand"></i>
+                                </button>
+                            </div>
+                            <div class="collapse" id="npmSshCollapse">
+                                <div class="card card-body" style="background: rgba(0,0,0,0.15);">
+                                    <div class="row g-3">
+                                        <div class="col-md-4">
+                                            <label class="form-label small">SSH Username</label>
+                                            <input type="text" class="form-control form-control-sm" id="npm-ssh-username" placeholder="root">
+                                            <small class="text-muted" id="npm-ssh-username-status"></small>
+                                        </div>
+                                        <div class="col-md-4">
+                                            <label class="form-label small">SSH Port <span class="text-muted">(optional)</span></label>
+                                            <input type="number" class="form-control form-control-sm" id="npm-ssh-port" placeholder="22">
+                                            <small class="text-muted" id="npm-ssh-port-status"></small>
+                                        </div>
+                                        <div class="col-md-4">
+                                            <label class="form-label small">Deploy Base Path</label>
+                                            <input type="text" class="form-control form-control-sm" id="npm-deploy-path" placeholder="/var/www/html">
+                                            <small class="text-muted" id="npm-deploy-path-status"></small>
+                                        </div>
+                                        <div class="col-12">
+                                            <label class="form-label small">SSH Private Key (PEM)</label>
+                                            <div id="npm-ssh-key-configured" class="d-none mb-2">
+                                                <span class="badge bg-success"><i class="bi bi-check-circle"></i> Key configured</span>
+                                                <button type="button" class="btn btn-sm btn-outline-secondary ms-2" onclick="showNpmReplaceKey()">Replace Key</button>
+                                            </div>
+                                            <div id="npm-ssh-key-input">
+                                                <input type="file" class="form-control form-control-sm mb-1" id="npm-ssh-key-file" accept=".pem,.key,.rsa,.txt" onchange="loadNpmKeyFile(this)">
+                                                <textarea class="form-control font-monospace" id="npm-ssh-private-key" rows="5"
+                                                    placeholder="-----BEGIN RSA PRIVATE KEY-----&#10;...&#10;-----END RSA PRIVATE KEY-----"
+                                                    style="font-size: 0.78em;"></textarea>
+                                            </div>
+                                        </div>
+                                        <div class="col-12">
+                                            <button class="btn btn-sm btn-outline-primary" onclick="saveNpmSshConfig()">
+                                                <i class="bi bi-save"></i> Save SSH Config
+                                            </button>
+                                            <span id="npm-ssh-save-result" class="ms-2 small"></span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
 
@@ -374,6 +426,46 @@
                     </div>
                 </div>
 
+                <hr>
+
+                <!-- OpenAI -->
+                <div class="mb-4">
+                    <h6 class="fw-bold mb-3">
+                        <i class="bi bi-stars text-info"></i> OpenAI (Website Generator)
+                    </h6>
+                    <div class="row g-3">
+                        <div class="col-md-4">
+                            <label class="form-label">API Key</label>
+                            <div class="input-group">
+                                <input type="password" class="form-control" id="openai-api-key" placeholder="Enter Azure OpenAI API key">
+                                <button class="btn btn-outline-secondary" type="button">
+                                    <i class="bi bi-eye"></i>
+                                </button>
+                            </div>
+                            <small class="text-muted" id="openai-api-key-status"></small>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Endpoint <small class="text-muted">(optional)</small></label>
+                            <input type="text" class="form-control" id="openai-endpoint" placeholder="https://swedencentral.api.cognitive.microsoft.com/">
+                            <small class="text-muted" id="openai-endpoint-status"></small>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Deployment <small class="text-muted">(optional)</small></label>
+                            <input type="text" class="form-control" id="openai-deployment" placeholder="model-router">
+                            <small class="text-muted" id="openai-deployment-status"></small>
+                        </div>
+                        <div class="col-12">
+                            <button class="btn btn-sm btn-outline-primary" onclick="saveOpenAICredentials()">
+                                <i class="bi bi-pencil"></i> Update
+                            </button>
+                            <button class="btn btn-sm btn-outline-success" onclick="testOpenAIConnection()">
+                                <i class="bi bi-check-circle"></i> Test Connection
+                            </button>
+                            <span id="openai-test-result" class="ms-2"></span>
+                        </div>
+                    </div>
+                </div>
+
                 <div class="alert alert-info">
                     <i class="bi bi-info-circle"></i>
                     All credentials are encrypted using AES-256 before being stored in the database.
@@ -469,6 +561,8 @@
         loadGophishStatus();
         loadCobaltstrikeStatus();
         loadRedwardenStatus();
+        loadOpenAIStatus();
+        loadNpmSshStatus();
         loadEc2ForNpm();
     });
 
@@ -1092,6 +1186,165 @@
             document.getElementById('cs-listener-ip').value = select.value;
         }
         select.value = '';
+    }
+
+    // --- NPM SSH Deploy ---
+
+    function loadNpmSshStatus() {
+        fetch('/api/credentials/npm')
+            .then(r => r.json())
+            .then(data => {
+                const creds = data.npm || {};
+                ['ssh_username', 'ssh_port', 'deploy_path'].forEach(function(key) {
+                    if (creds[key]) {
+                        var el = document.getElementById('npm-' + key.replace('_', '-'));
+                        if (el) el.placeholder = creds[key].masked;
+                        var st = document.getElementById('npm-' + key.replace('_', '-') + '-status');
+                        if (st) st.textContent = 'Last updated: ' + new Date(creds[key].updated_at).toLocaleString();
+                    }
+                });
+                if (creds.ssh_private_key) {
+                    document.getElementById('npm-ssh-key-configured').classList.remove('d-none');
+                    document.getElementById('npm-ssh-key-input').classList.add('d-none');
+                }
+            })
+            .catch(err => console.error('Failed to load NPM SSH config:', err));
+    }
+
+    function showNpmReplaceKey() {
+        document.getElementById('npm-ssh-key-configured').classList.add('d-none');
+        document.getElementById('npm-ssh-key-input').classList.remove('d-none');
+        document.getElementById('npm-ssh-private-key').value = '';
+        document.getElementById('npm-ssh-key-file').value = '';
+    }
+
+    function loadNpmKeyFile(input) {
+        if (!input.files || !input.files[0]) return;
+        var reader = new FileReader();
+        reader.onload = function(e) {
+            document.getElementById('npm-ssh-private-key').value = e.target.result;
+        };
+        reader.readAsText(input.files[0]);
+    }
+
+    function saveNpmSshConfig() {
+        var body = {};
+        var username = document.getElementById('npm-ssh-username').value.trim();
+        var port = document.getElementById('npm-ssh-port').value.trim();
+        var path = document.getElementById('npm-deploy-path').value.trim();
+        var key = document.getElementById('npm-ssh-private-key').value.trim();
+        if (username) body.ssh_username = username;
+        if (port)     body.ssh_port     = port;
+        if (path)     body.deploy_path  = path;
+        if (key)      body.ssh_private_key = key;
+
+        if (Object.keys(body).length === 0) {
+            alert('Enter at least one value to save.');
+            return;
+        }
+
+        var resultEl = document.getElementById('npm-ssh-save-result');
+        resultEl.innerHTML = '<span class="text-muted"><i class="bi bi-hourglass-split"></i> Saving...</span>';
+
+        fetch('/api/credentials/npm', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(body)
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.saved) {
+                resultEl.innerHTML = '<span class="text-success"><i class="bi bi-check-circle-fill"></i> Saved</span>';
+                document.getElementById('npm-ssh-username').value = '';
+                document.getElementById('npm-ssh-port').value = '';
+                document.getElementById('npm-deploy-path').value = '';
+                document.getElementById('npm-ssh-private-key').value = '';
+                document.getElementById('npm-ssh-key-file').value = '';
+                loadNpmSshStatus();
+                setTimeout(() => { resultEl.innerHTML = ''; }, 3000);
+            } else {
+                resultEl.innerHTML = '<span class="text-danger">Error saving</span>';
+            }
+        })
+        .catch(err => {
+            resultEl.innerHTML = '<span class="text-danger">Error: ' + err + '</span>';
+        });
+    }
+
+    // --- OpenAI ---
+
+    function loadOpenAIStatus() {
+        fetch('/api/credentials/openai')
+            .then(r => r.json())
+            .then(data => {
+                const creds = data.openai || {};
+                if (creds.api_key) {
+                    document.getElementById('openai-api-key').placeholder = creds.api_key.masked;
+                    document.getElementById('openai-api-key-status').textContent =
+                        'Last updated: ' + new Date(creds.api_key.updated_at).toLocaleString();
+                }
+                if (creds.endpoint) {
+                    document.getElementById('openai-endpoint').placeholder = creds.endpoint.masked;
+                    document.getElementById('openai-endpoint-status').textContent =
+                        'Last updated: ' + new Date(creds.endpoint.updated_at).toLocaleString();
+                }
+                if (creds.deployment) {
+                    document.getElementById('openai-deployment').placeholder = creds.deployment.masked;
+                    document.getElementById('openai-deployment-status').textContent =
+                        'Last updated: ' + new Date(creds.deployment.updated_at).toLocaleString();
+                }
+            })
+            .catch(err => console.error('Failed to load OpenAI credentials:', err));
+    }
+
+    function saveOpenAICredentials() {
+        const body = {};
+        const apiKey    = document.getElementById('openai-api-key').value;
+        const endpoint  = document.getElementById('openai-endpoint').value;
+        const deployment = document.getElementById('openai-deployment').value;
+        if (apiKey)    body.api_key    = apiKey;
+        if (endpoint)  body.endpoint   = endpoint;
+        if (deployment) body.deployment = deployment;
+
+        if (Object.keys(body).length === 0) {
+            alert('Enter at least one value to save.');
+            return;
+        }
+
+        fetch('/api/credentials/openai', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(body)
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.saved) {
+                alert('Saved: ' + data.saved.join(', '));
+                document.getElementById('openai-api-key').value = '';
+                document.getElementById('openai-endpoint').value = '';
+                document.getElementById('openai-deployment').value = '';
+                loadOpenAIStatus();
+            }
+        })
+        .catch(err => alert('Error saving: ' + err));
+    }
+
+    function testOpenAIConnection() {
+        const resultEl = document.getElementById('openai-test-result');
+        resultEl.innerHTML = '<span class="text-muted"><i class="bi bi-hourglass-split"></i> Testing...</span>';
+
+        fetch('/api/credentials/openai/test', {method: 'POST'})
+            .then(r => r.json())
+            .then(data => {
+                if (data.success) {
+                    resultEl.innerHTML = '<span class="text-success"><i class="bi bi-check-circle-fill"></i> Connected (model: ' + (data.result.model || 'ok') + ')</span>';
+                } else {
+                    resultEl.innerHTML = '<span class="text-danger"><i class="bi bi-x-circle-fill"></i> ' + (data.error || 'Failed') + '</span>';
+                }
+            })
+            .catch(() => {
+                resultEl.innerHTML = '<span class="text-danger"><i class="bi bi-x-circle-fill"></i> Request failed</span>';
+            });
     }
 
     function npmLogin() {

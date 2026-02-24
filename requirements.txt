@@ -16,3 +16,5 @@ gunicorn==21.2.0
 PyJWT==2.8.0
 werkzeug==3.0.1
 paramiko==3.4.0
+openai>=1.30.0
+pyyaml>=6.0

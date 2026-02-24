@@ -187,6 +187,42 @@
             background: var(--infrared-dark);
             color: white;
         }
+
+        .topbar {
+            position: fixed;
+            top: 0;
+            left: var(--sidebar-width);
+            right: 0;
+            height: 48px;
+            background: #fff;
+            border-bottom: 1px solid #e5e7eb;
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            padding: 0 20px;
+            z-index: 999;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.06);
+        }
+
+        .main-content {
+            padding-top: calc(30px + 48px) !important;
+        }
+
+        .task-entry {
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
+            padding: 14px 16px;
+            border-bottom: 1px solid #f3f4f6;
+            transition: background 0.15s;
+        }
+        .task-entry:hover { background: #f9fafb; }
+        .task-entry-icon { width: 18px; flex-shrink: 0; padding-top: 2px; text-align: center; }
+        .task-entry-body { flex: 1; min-width: 0; }
+        .task-entry-title { font-size: 0.82rem; font-weight: 600; color: #111827; }
+        .task-entry-desc { font-size: 0.78rem; color: #6b7280; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .task-entry-meta { font-size: 0.72rem; color: #9ca3af; margin-top: 3px; }
+        .task-entry-error { font-size: 0.72rem; color: #ef4444; margin-top: 2px; word-break: break-word; }
     </style>
     {% block extra_css %}{% endblock %}
 </head>
@@ -267,12 +303,169 @@
         </div>
     </div>
 
+    <!-- Topbar -->
+    <div class="topbar">
+        <button class="btn btn-sm btn-light position-relative px-2"
+                data-bs-toggle="offcanvas" data-bs-target="#taskLogOffcanvas"
+                title="Background tasks">
+            <i class="bi bi-bell" style="font-size:1.1rem;"></i>
+            <span id="task-badge"
+                  class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger d-none"
+                  style="font-size:0.6rem;">0</span>
+        </button>
+    </div>
+
+    <!-- Task Log Offcanvas -->
+    <div class="offcanvas offcanvas-end" tabindex="-1" id="taskLogOffcanvas" style="width:380px;">
+        <div class="offcanvas-header border-bottom py-2">
+            <h6 class="offcanvas-title mb-0"><i class="bi bi-list-task"></i> Background Tasks</h6>
+            <div class="ms-auto d-flex align-items-center gap-2">
+                <button class="btn btn-sm btn-outline-secondary" style="font-size:0.75rem;" onclick="taskLogClearDone()">
+                    Clear done
+                </button>
+                <button type="button" class="btn-close" data-bs-dismiss="offcanvas"></button>
+            </div>
+        </div>
+        <div class="offcanvas-body p-0" style="overflow-y:auto;">
+            <div id="task-log-list"></div>
+            <div id="task-log-empty" class="text-center text-muted py-5">
+                <i class="bi bi-check-all" style="font-size:2.2rem;opacity:0.35;"></i>
+                <div class="mt-2 small">No tasks yet</div>
+            </div>
+        </div>
+    </div>
+
     <!-- Main Content -->
     <div class="main-content">
         {% block content %}{% endblock %}
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+    // ── Task Log (global, runs on every page) ──────────────────────────────
+    (function() {
+        var _tlTimer = null;
+        var TERMINAL = ['SUCCESS', 'FAILURE', 'REVOKED'];
+        var TYPE_LABELS = { 'website_generation': 'Website Generation' };
+        var STATUS_LABELS = { 'PENDING': 'Queued', 'STARTED': 'Running',
+            'SUCCESS': 'Done', 'FAILURE': 'Failed', 'RETRY': 'Retrying', 'REVOKED': 'Cancelled' };
+
+        function _esc(str) {
+            var d = document.createElement('div');
+            d.appendChild(document.createTextNode(String(str == null ? '' : str)));
+            return d.innerHTML;
+        }
+
+        function _fmtDur(secs) {
+            secs = Math.round(secs);
+            if (secs < 60) return secs + 's';
+            var m = Math.floor(secs / 60), s = secs % 60;
+            return m + 'm ' + (s > 0 ? s + 's' : '');
+        }
+
+        function _icon(status) {
+            if (status === 'SUCCESS')
+                return '<i class="bi bi-check-circle-fill text-success"></i>';
+            if (status === 'FAILURE')
+                return '<i class="bi bi-x-circle-fill text-danger"></i>';
+            if (status === 'REVOKED')
+                return '<i class="bi bi-slash-circle text-secondary"></i>';
+            return '<span class="spinner-border spinner-border-sm text-warning" role="status"></span>';
+        }
+
+        function _badgeClass(status) {
+            if (status === 'SUCCESS') return 'bg-success';
+            if (status === 'FAILURE') return 'bg-danger';
+            return 'bg-warning text-dark';
+        }
+
+        function _renderTask(t) {
+            var now = Date.now() / 1000;
+            var typeLabel = TYPE_LABELS[t.type] || t.type || 'Task';
+            var statusLabel = STATUS_LABELS[t.status] || t.status;
+            var isTerminal = TERMINAL.indexOf(t.status) !== -1;
+
+            var timeStr = '';
+            if (isTerminal && t.duration_s != null) {
+                timeStr = 'Took ' + _fmtDur(t.duration_s);
+            } else if (!isTerminal && t.submitted_at) {
+                timeStr = _fmtDur(now - t.submitted_at) + ' elapsed';
+            }
+
+            var submittedStr = t.submitted_at
+                ? new Date(t.submitted_at * 1000).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})
+                : '';
+
+            return '<div class="task-entry">' +
+                '<div class="task-entry-icon">' + _icon(t.status) + '</div>' +
+                '<div class="task-entry-body">' +
+                    '<div class="task-entry-title">' + _esc(typeLabel) + '</div>' +
+                    '<div class="task-entry-desc">' + _esc(t.description || '') + '</div>' +
+                    (t.error ? '<div class="task-entry-error">' + _esc(t.error) + '</div>' : '') +
+                    '<div class="task-entry-meta d-flex align-items-center gap-2 flex-wrap">' +
+                        '<span class="badge ' + _badgeClass(t.status) + '" style="font-size:0.65rem;">' + statusLabel + '</span>' +
+                        (timeStr ? '<span>' + _esc(timeStr) + '</span>' : '') +
+                        (submittedStr ? '<span>' + _esc(submittedStr) + '</span>' : '') +
+                    '</div>' +
+                '</div>' +
+            '</div>';
+        }
+
+        function _render(tasks) {
+            var list  = document.getElementById('task-log-list');
+            var empty = document.getElementById('task-log-empty');
+            var badge = document.getElementById('task-badge');
+            if (!list) return;
+
+            var active = tasks.filter(function(t) { return TERMINAL.indexOf(t.status) === -1; });
+
+            if (tasks.length === 0) {
+                list.innerHTML = '';
+                empty.style.display = '';
+                badge.classList.add('d-none');
+            } else {
+                empty.style.display = 'none';
+                list.innerHTML = tasks.map(_renderTask).join('');
+                if (active.length > 0) {
+                    badge.textContent = active.length;
+                    badge.classList.remove('d-none');
+                } else {
+                    badge.classList.add('d-none');
+                }
+            }
+
+            // Re-poll faster when tasks are active
+            clearTimeout(_tlTimer);
+            _tlTimer = setTimeout(taskLogRefresh, active.length > 0 ? 4000 : 30000);
+        }
+
+        window.taskLogRefresh = function() {
+            fetch('/api/task-log')
+                .then(function(r) { return r.json(); })
+                .then(function(d) { _render(d.tasks || []); })
+                .catch(function() {
+                    clearTimeout(_tlTimer);
+                    _tlTimer = setTimeout(taskLogRefresh, 30000);
+                });
+        };
+
+        window.taskLogClearDone = function() {
+            fetch('/api/task-log/completed', { method: 'DELETE' })
+                .then(function() { taskLogRefresh(); })
+                .catch(function() {});
+        };
+
+        document.addEventListener('DOMContentLoaded', function() {
+            // Refresh when the offcanvas is opened so it's always fresh
+            var el = document.getElementById('taskLogOffcanvas');
+            if (el) {
+                el.addEventListener('show.bs.offcanvas', function() { taskLogRefresh(); });
+            }
+            // Initial load (quiet — just to set the badge)
+            taskLogRefresh();
+        });
+    })();
+    </script>
     {% block extra_js %}{% endblock %}
 </body>
 </html>

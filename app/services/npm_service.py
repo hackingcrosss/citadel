@@ -103,7 +103,7 @@ def update_proxy_host(host_id, **kwargs):
         'ssl_forced': kwargs.get('ssl_forced', current.get('ssl_forced', False)),
         'block_exploits': kwargs.get('block_exploits', current.get('block_exploits', True)),
         'allow_websocket_upgrade': kwargs.get('allow_websocket_upgrade', current.get('allow_websocket_upgrade', False)),
-        'access_list_id': current.get('access_list_id', '0'),
+        'access_list_id': kwargs.get('access_list_id', current.get('access_list_id', '0')),
         'meta': current.get('meta', {}),
         'advanced_config': kwargs.get('advanced_config', current.get('advanced_config', '')),
         'locations': current.get('locations', []),
@@ -129,6 +129,13 @@ def enable_proxy_host(host_id):
 def disable_proxy_host(host_id):
     data = _request('POST', f'/nginx/proxy-hosts/{host_id}/disable')
     return data
+
+
+# --- Access Lists ---
+
+def list_access_lists():
+    data = _request('GET', '/nginx/access-lists')
+    return data if isinstance(data, list) else []
 
 
 # --- SSL Certificates ---

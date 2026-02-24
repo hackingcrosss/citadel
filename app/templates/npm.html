@@ -30,11 +30,12 @@
                         <th>Forward To</th>
                         <th>SSL</th>
                         <th>Status</th>
+                        <th>Access Control</th>
                         <th>Actions</th>
                     </tr>
                 </thead>
                 <tbody id="hosts-tbody">
-                    <tr><td colspan="5" class="text-center text-muted py-4">Loading proxy hosts...</td></tr>
+                    <tr><td colspan="6" class="text-center text-muted py-4">Loading proxy hosts...</td></tr>
                 </tbody>
             </table>
         </div>
@@ -175,10 +176,42 @@
 
 {% block extra_js %}
 <script>
+    var allAccessLists = [];
+
     document.addEventListener('DOMContentLoaded', function() {
-        loadHosts();
+        loadAccessLists().then(function() { loadHosts(); });
         loadCertificates();
     });
+
+    function loadAccessLists() {
+        return fetch('/api/npm/access-lists')
+            .then(r => r.json())
+            .then(data => { allAccessLists = data.access_lists || []; })
+            .catch(() => { allAccessLists = []; });
+    }
+
+    function buildAclSelect(hostId, currentAclId) {
+        var current = parseInt(currentAclId) || 0;
+        var options = '<option value="0"' + (current === 0 ? ' selected' : '') + '>— None —</option>';
+        allAccessLists.forEach(function(acl) {
+            var sel = parseInt(acl.id) === current ? ' selected' : '';
+            options += '<option value="' + acl.id + '"' + sel + '>' + acl.name + '</option>';
+        });
+        return '<select class="form-select form-select-sm" style="min-width:140px;" ' +
+               'onchange="updateHostAcl(' + hostId + ', this.value)" ' +
+               'title="Change access control list">' + options + '</select>';
+    }
+
+    function updateHostAcl(hostId, aclId) {
+        fetch('/api/npm/hosts/' + hostId, {
+            method: 'PUT',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({access_list_id: parseInt(aclId)})
+        })
+        .then(r => r.json())
+        .then(data => { if (data.error) alert('Failed to update ACL: ' + data.error); })
+        .catch(err => alert('Error: ' + err));
+    }
 
     function loadHosts() {
         fetch('/api/npm/hosts')
@@ -186,7 +219,7 @@
             .then(data => {
                 if (data.error) {
                     document.getElementById('hosts-tbody').innerHTML =
-                        '<tr><td colspan="5" class="text-danger text-center py-4">' + data.error + '</td></tr>';
+                        '<tr><td colspan="6" class="text-danger text-center py-4">' + data.error + '</td></tr>';
                     return;
                 }
 
@@ -195,7 +228,7 @@
 
                 if (hosts.length === 0) {
                     document.getElementById('hosts-tbody').innerHTML =
-                        '<tr><td colspan="5" class="text-center text-muted py-4">No proxy hosts configured</td></tr>';
+                        '<tr><td colspan="6" class="text-center text-muted py-4">No proxy hosts configured</td></tr>';
                     return;
                 }
 
@@ -215,6 +248,7 @@
                         '<td><code>' + forward + '</code></td>' +
                         '<td>' + ssl + '</td>' +
                         '<td>' + status + '</td>' +
+                        '<td>' + buildAclSelect(h.id, h.access_list_id) + '</td>' +
                         '<td>' +
                             '<div class="btn-group btn-group-sm">' +
                                 '<button class="btn btn-outline-primary" title="Edit" onclick="editHost(' + h.id + ')">' +
@@ -230,7 +264,7 @@
             })
             .catch(err => {
                 document.getElementById('hosts-tbody').innerHTML =
-                    '<tr><td colspan="5" class="text-danger text-center py-4">Failed to load - check NPM credentials in Settings</td></tr>';
+                    '<tr><td colspan="6" class="text-danger text-center py-4">Failed to load - check NPM credentials in Settings</td></tr>';
             });
     }
 
