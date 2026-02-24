@@ -4,6 +4,9 @@ from app.api import api_bp
 from app.services import aws_service
 from app import db
 from app.models.instance_tag import InstanceTag
+from app.models.instance_ssh_config import InstanceSSHConfig
+from app.services.credential_service import _get_fernet
+from app.services import ssh_service
 
 
 # --- Instances ---
@@ -27,6 +30,18 @@ def aws_list_instances():
         else:
             for inst in instances:
                 inst['local_tags'] = []
+
+        # Enrich instances with SSH config status
+        if instance_ids:
+            ssh_configs = InstanceSSHConfig.query.filter(
+                InstanceSSHConfig.instance_id.in_(instance_ids)
+            ).all()
+            ssh_set = {c.instance_id for c in ssh_configs}
+            for inst in instances:
+                inst['ssh_configured'] = inst['id'] in ssh_set
+        else:
+            for inst in instances:
+                inst['ssh_configured'] = False
 
         return jsonify({'instances': instances})
     except Exception as e:
@@ -200,6 +215,133 @@ def aws_list_key_pairs():
     try:
         pairs = aws_service.list_key_pairs(region)
         return jsonify({'key_pairs': pairs})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 400
+
+
+# --- SSH Configs ---
+
+@api_bp.route('/aws/ssh-configs', methods=['GET'])
+@login_required
+def aws_list_ssh_configs():
+    try:
+        configs = InstanceSSHConfig.query.all()
+        return jsonify({'ssh_configs': [c.to_dict() for c in configs]})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 400
+
+
+@api_bp.route('/aws/ssh-configs/<instance_id>', methods=['GET'])
+@login_required
+def aws_get_ssh_config(instance_id):
+    try:
+        config = InstanceSSHConfig.query.filter_by(instance_id=instance_id).first()
+        if not config:
+            return jsonify({'ssh_config': None})
+        return jsonify({'ssh_config': config.to_dict()})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 400
+
+
+@api_bp.route('/aws/ssh-configs', methods=['POST'])
+@login_required
+def aws_save_ssh_config():
+    data = request.get_json()
+    if not data:
+        return jsonify({'error': 'No data provided'}), 400
+
+    instance_id = data.get('instance_id', '').strip()
+    ssh_username = data.get('ssh_username', 'ec2-user').strip()
+    private_key = data.get('private_key', '').strip()
+    use_public_ip = data.get('use_public_ip', True)
+    key_label = data.get('key_label', '').strip()
+
+    if not instance_id:
+        return jsonify({'error': 'instance_id is required'}), 400
+    if not ssh_username:
+        return jsonify({'error': 'ssh_username is required'}), 400
+
+    try:
+        config = InstanceSSHConfig.query.filter_by(instance_id=instance_id).first()
+
+        if config:
+            # Update existing
+            config.ssh_username = ssh_username
+            config.use_public_ip = use_public_ip
+            config.key_label = key_label
+            if private_key:
+                f = _get_fernet()
+                config.encrypted_private_key = f.encrypt(private_key.encode()).decode()
+        else:
+            # Create new — private_key is required for new configs
+            if not private_key:
+                return jsonify({'error': 'private_key is required for new configurations'}), 400
+            f = _get_fernet()
+            encrypted = f.encrypt(private_key.encode()).decode()
+            config = InstanceSSHConfig(
+                instance_id=instance_id,
+                ssh_username=ssh_username,
+                encrypted_private_key=encrypted,
+                use_public_ip=use_public_ip,
+                key_label=key_label,
+            )
+            db.session.add(config)
+
+        db.session.commit()
+        return jsonify({'ssh_config': config.to_dict()}), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 400
+
+
+@api_bp.route('/aws/ssh-configs/<instance_id>', methods=['DELETE'])
+@login_required
+def aws_delete_ssh_config(instance_id):
+    try:
+        config = InstanceSSHConfig.query.filter_by(instance_id=instance_id).first()
+        if not config:
+            return jsonify({'error': 'SSH config not found'}), 404
+        db.session.delete(config)
+        db.session.commit()
+        return jsonify({'deleted': True})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 400
+
+
+# --- Instance Services (via SSH) ---
+
+@api_bp.route('/aws/instances/<instance_id>/services', methods=['GET'])
+@login_required
+def aws_list_services(instance_id):
+    region = request.args.get('region')
+    try:
+        services = ssh_service.list_services(instance_id, region)
+        return jsonify({'services': services})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 400
+
+
+@api_bp.route('/aws/instances/<instance_id>/services/<service_name>', methods=['GET'])
+@login_required
+def aws_get_service_status(instance_id, service_name):
+    region = request.args.get('region')
+    try:
+        status = ssh_service.get_service_status(instance_id, service_name, region)
+        return jsonify({'service': status})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 400
+
+
+@api_bp.route('/aws/instances/<instance_id>/services/<service_name>/<action>', methods=['POST'])
+@login_required
+def aws_service_action(instance_id, service_name, action):
+    if action not in ('start', 'stop', 'restart'):
+        return jsonify({'error': 'Invalid action. Must be start, stop, or restart'}), 400
+    region = request.args.get('region') or (request.get_json() or {}).get('region')
+    try:
+        result = ssh_service.service_action(instance_id, service_name, action, region)
+        return jsonify({'result': result})
     except Exception as e:
         return jsonify({'error': str(e)}), 400
 

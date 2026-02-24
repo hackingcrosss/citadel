@@ -58,83 +58,161 @@
     </div>
 </div>
 
-<!-- Filters -->
-<div class="card-custom mb-3">
-    <div class="card-body py-2">
-        <div class="row g-2 align-items-center">
-            <div class="col-auto">
-                <label class="form-label mb-0 small fw-bold">Filter:</label>
-            </div>
-            <div class="col-md-2">
-                <select class="form-select form-select-sm" id="filter-status" onchange="applyFilters()">
-                    <option value="">All statuses</option>
-                    <option value="running">Running</option>
-                    <option value="stopped">Stopped</option>
-                    <option value="pending">Pending</option>
-                    <option value="stopping">Stopping</option>
-                    <option value="shutting-down">Shutting down</option>
-                    <option value="terminated">Terminated</option>
-                </select>
-            </div>
-            <div class="col-md-3">
-                <input type="text" class="form-control form-control-sm" id="filter-name" placeholder="Search by name or ID..." oninput="applyFilters()">
-            </div>
-            <div class="col-md-2">
-                <select class="form-select form-select-sm" id="filter-tag" onchange="applyFilters()">
-                    <option value="">All tags</option>
-                </select>
-            </div>
-            <div class="col-auto">
-                <small class="text-muted" id="filter-count"></small>
-            </div>
-        </div>
-    </div>
-</div>
+<!-- Tab Navigation -->
+<ul class="nav nav-tabs mb-3" id="awsTabs" role="tablist">
+    <li class="nav-item" role="presentation">
+        <button class="nav-link active" id="instances-tab" data-bs-toggle="tab" data-bs-target="#pane-instances" type="button" role="tab">
+            <i class="bi bi-hdd-stack"></i> Instances
+        </button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link" id="services-tab" data-bs-toggle="tab" data-bs-target="#pane-services" type="button" role="tab" onclick="onServicesTabShow()">
+            <i class="bi bi-gear-wide-connected"></i> Services
+        </button>
+    </li>
+</ul>
 
-<!-- Instances Table -->
-<div class="card-custom mb-4">
-    <div class="card-header d-flex justify-content-between align-items-center">
-        <span><i class="bi bi-hdd-stack"></i> EC2 Instances</span>
-        <div>
-            <button class="btn btn-sm btn-outline-success" onclick="bulkAction('start')" id="btnBulkStart" disabled>
-                <i class="bi bi-play-fill"></i> Start
-            </button>
-            <button class="btn btn-sm btn-outline-warning" onclick="bulkAction('stop')" id="btnBulkStop" disabled>
-                <i class="bi bi-stop-fill"></i> Stop
-            </button>
-            <button class="btn btn-sm btn-outline-info" onclick="bulkAction('reboot')" id="btnBulkReboot" disabled>
-                <i class="bi bi-arrow-repeat"></i> Reboot
+<div class="tab-content">
+
+    <!-- ── Instances Tab ── -->
+    <div class="tab-pane fade show active" id="pane-instances" role="tabpanel">
+
+        <!-- Filters -->
+        <div class="card-custom mb-3">
+            <div class="card-body py-2">
+                <div class="row g-2 align-items-center">
+                    <div class="col-auto">
+                        <label class="form-label mb-0 small fw-bold">Filter:</label>
+                    </div>
+                    <div class="col-md-2">
+                        <select class="form-select form-select-sm" id="filter-status" onchange="applyFilters()">
+                            <option value="">All statuses</option>
+                            <option value="running">Running</option>
+                            <option value="stopped">Stopped</option>
+                            <option value="pending">Pending</option>
+                            <option value="stopping">Stopping</option>
+                            <option value="shutting-down">Shutting down</option>
+                            <option value="terminated">Terminated</option>
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <input type="text" class="form-control form-control-sm" id="filter-name" placeholder="Search by name or ID..." oninput="applyFilters()">
+                    </div>
+                    <div class="col-md-2">
+                        <select class="form-select form-select-sm" id="filter-tag" onchange="applyFilters()">
+                            <option value="">All tags</option>
+                        </select>
+                    </div>
+                    <div class="col-auto">
+                        <small class="text-muted" id="filter-count"></small>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Instances Table -->
+        <div class="card-custom mb-4">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span><i class="bi bi-hdd-stack"></i> EC2 Instances</span>
+                <div>
+                    <button class="btn btn-sm btn-outline-success" onclick="bulkAction('start')" id="btnBulkStart" disabled>
+                        <i class="bi bi-play-fill"></i> Start
+                    </button>
+                    <button class="btn btn-sm btn-outline-warning" onclick="bulkAction('stop')" id="btnBulkStop" disabled>
+                        <i class="bi bi-stop-fill"></i> Stop
+                    </button>
+                    <button class="btn btn-sm btn-outline-info" onclick="bulkAction('reboot')" id="btnBulkReboot" disabled>
+                        <i class="bi bi-arrow-repeat"></i> Reboot
+                    </button>
+                </div>
+            </div>
+            <div class="card-body p-0">
+                <div id="instancesLoading" class="text-center py-4">
+                    <div class="spinner-border text-secondary" role="status"></div>
+                    <div class="text-muted mt-2">Loading instances...</div>
+                </div>
+                <div id="instancesEmpty" class="text-center py-4 d-none">
+                    <i class="bi bi-cloud text-muted" style="font-size: 2rem;"></i>
+                    <div class="text-muted mt-2">No instances found in this region</div>
+                </div>
+                <table class="table table-hover mb-0 d-none" id="instancesTable">
+                    <thead class="table-light">
+                        <tr>
+                            <th style="width: 30px;"><input type="checkbox" id="selectAll" onchange="toggleSelectAll()"></th>
+                            <th>Name</th>
+                            <th>Instance ID</th>
+                            <th>Type</th>
+                            <th>State</th>
+                            <th>Public IP</th>
+                            <th>Private IP</th>
+                            <th>AZ</th>
+                            <th>Tags</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="instancesBody"></tbody>
+                </table>
+            </div>
+        </div>
+
+    </div><!-- /pane-instances -->
+
+    <!-- ── Services Tab ── -->
+    <div class="tab-pane fade" id="pane-services" role="tabpanel">
+
+        <!-- Instance selector -->
+        <div class="d-flex gap-2 align-items-center mb-3">
+            <select id="svcInstanceSelect" class="form-select form-select-sm" style="width: 380px;" onchange="onSvcInstanceChange()" disabled>
+                <option value="">Select a running instance with SSH configured...</option>
+            </select>
+            <button class="btn btn-sm btn-outline-secondary" onclick="loadServices()" id="svcBtnRefresh" disabled>
+                <i class="bi bi-arrow-clockwise"></i> Refresh Services
             </button>
         </div>
-    </div>
-    <div class="card-body p-0">
-        <div id="instancesLoading" class="text-center py-4">
-            <div class="spinner-border text-secondary" role="status"></div>
-            <div class="text-muted mt-2">Loading instances...</div>
+
+        <!-- Info Banner -->
+        <div id="svcInfoMsg" class="alert alert-info py-2 d-none">
+            <i class="bi bi-info-circle"></i> <span id="svcInfoText"></span>
         </div>
-        <div id="instancesEmpty" class="text-center py-4 d-none">
-            <i class="bi bi-cloud text-muted" style="font-size: 2rem;"></i>
-            <div class="text-muted mt-2">No instances found in this region</div>
+        <!-- Error Banner -->
+        <div id="svcErrorMsg" class="alert alert-danger py-2 d-none">
+            <i class="bi bi-exclamation-triangle"></i> <span id="svcErrorText"></span>
         </div>
-        <table class="table table-hover mb-0 d-none" id="instancesTable">
-            <thead class="table-light">
-                <tr>
-                    <th style="width: 30px;"><input type="checkbox" id="selectAll" onchange="toggleSelectAll()"></th>
-                    <th>Name</th>
-                    <th>Instance ID</th>
-                    <th>Type</th>
-                    <th>State</th>
-                    <th>Public IP</th>
-                    <th>Private IP</th>
-                    <th>AZ</th>
-                    <th>Tags</th>
-                    <th>Actions</th>
-                </tr>
-            </thead>
-            <tbody id="instancesBody"></tbody>
-        </table>
-    </div>
-</div>
+
+        <!-- Services Table -->
+        <div class="card-custom mb-4">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span><i class="bi bi-gear-wide-connected"></i> Services</span>
+                <small class="text-muted" id="svcCount"></small>
+            </div>
+            <div class="card-body p-0">
+                <div id="svcLoading" class="text-center py-4 d-none">
+                    <div class="spinner-border text-secondary" role="status"></div>
+                    <div class="text-muted mt-2">Connecting via SSH and loading services...</div>
+                </div>
+                <div id="svcEmpty" class="text-center py-4">
+                    <i class="bi bi-terminal text-muted" style="font-size: 2rem;"></i>
+                    <div class="text-muted mt-2">Select a running instance with SSH configured to view services</div>
+                </div>
+                <table class="table table-hover mb-0 d-none" id="svcTable">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Service</th>
+                            <th>Status</th>
+                            <th>Sub-state</th>
+                            <th>Enabled</th>
+                            <th>Description</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="svcBody"></tbody>
+                </table>
+            </div>
+        </div>
+
+    </div><!-- /pane-services -->
+
+</div><!-- /tab-content -->
 
 <!-- Instance Detail Modal -->
 <div class="modal fade" id="detailModal" tabindex="-1">
@@ -170,6 +248,67 @@
     </div>
 </div>
 
+<!-- SSH Config Modal -->
+<div class="modal fade" id="sshConfigModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-key"></i> SSH Configuration</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="sshConfigInstanceId">
+                <div class="mb-3">
+                    <label class="form-label fw-bold">Instance</label>
+                    <div id="sshConfigInstanceName" class="text-muted"></div>
+                </div>
+                <div class="mb-3">
+                    <label for="sshUsername" class="form-label fw-bold">SSH Username</label>
+                    <input type="text" class="form-control" id="sshUsername" value="ec2-user" placeholder="ec2-user">
+                </div>
+                <div class="mb-3">
+                    <label for="sshKeyLabel" class="form-label fw-bold">Key Label <small class="text-muted">(optional)</small></label>
+                    <input type="text" class="form-control" id="sshKeyLabel" placeholder="e.g. my-key-pair">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-bold">Connect Using</label>
+                    <div>
+                        <div class="form-check form-check-inline">
+                            <input class="form-check-input" type="radio" name="sshIpPref" id="sshIpPublic" value="public" checked>
+                            <label class="form-check-label" for="sshIpPublic">Public IP</label>
+                        </div>
+                        <div class="form-check form-check-inline">
+                            <input class="form-check-input" type="radio" name="sshIpPref" id="sshIpPrivate" value="private">
+                            <label class="form-check-label" for="sshIpPrivate">Private IP</label>
+                        </div>
+                    </div>
+                </div>
+                <div class="mb-3" id="sshKeySection">
+                    <label for="sshPrivateKey" class="form-label fw-bold">Private Key (PEM)</label>
+                    <div id="sshKeyConfigured" class="d-none mb-2">
+                        <span class="badge bg-success"><i class="bi bi-check-circle"></i> Key configured</span>
+                        <button type="button" class="btn btn-sm btn-outline-secondary ms-2" onclick="showReplaceKey()">Replace Key</button>
+                    </div>
+                    <div class="mb-2">
+                        <input type="file" class="form-control form-control-sm" id="sshKeyFile" accept=".pem,.key,.rsa,.txt" onchange="loadKeyFile(this)">
+                        <small class="text-muted">Upload a .pem / .key / .rsa file or paste below</small>
+                    </div>
+                    <textarea class="form-control font-monospace" id="sshPrivateKey" rows="8" placeholder="-----BEGIN RSA PRIVATE KEY-----&#10;...&#10;-----END RSA PRIVATE KEY-----" style="font-size: 0.8em;"></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-danger" id="sshDeleteBtn" onclick="deleteSSHConfig()" style="display:none;">
+                    <i class="bi bi-trash"></i> Delete
+                </button>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" onclick="saveSSHConfig()">
+                    <i class="bi bi-save"></i> Save
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- Terminate Confirm Modal -->
 <div class="modal fade" id="terminateModal" tabindex="-1">
     <div class="modal-dialog">
@@ -189,12 +328,30 @@
         </div>
     </div>
 </div>
+
+<!-- Service Detail Modal -->
+<div class="modal fade" id="serviceDetailModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-file-text"></i> <span id="serviceDetailName"></span></h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="serviceDetailBody">
+                <div class="text-center py-3">
+                    <div class="spinner-border text-secondary" role="status"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block extra_js %}
 <script>
     let allInstances = [];
     let allDistinctTags = [];
+    let allServices = [];
     let selectedRegion = 'eu-west-1';
 
     document.addEventListener('DOMContentLoaded', loadInstances);
@@ -205,9 +362,17 @@
         return div.innerHTML;
     }
 
+    function escapeAttr(str) {
+        return str.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+    }
+
     function getRegion() {
         return document.getElementById('regionSelect').value;
     }
+
+    // ─────────────────────────────────────────
+    // Instances Tab
+    // ─────────────────────────────────────────
 
     function loadInstances() {
         selectedRegion = getRegion();
@@ -227,11 +392,14 @@
                     empty.classList.remove('d-none');
                     empty.querySelector('.text-muted:last-child').textContent = data.error;
                     updateStats([]);
+                    allInstances = [];
+                    populateServicesInstanceSelect();
                     return;
                 }
                 allInstances = data.instances || [];
                 updateStats(allInstances);
                 refreshTagFilter();
+                populateServicesInstanceSelect();
                 if (allInstances.length === 0) {
                     empty.classList.remove('d-none');
                 } else {
@@ -244,6 +412,8 @@
                 empty.classList.remove('d-none');
                 empty.querySelector('.text-muted:last-child').textContent = 'Error: ' + err;
                 updateStats([]);
+                allInstances = [];
+                populateServicesInstanceSelect();
             });
     }
 
@@ -257,7 +427,6 @@
     // --- Tag Filter ---
 
     function refreshTagFilter() {
-        // Collect distinct tags from loaded instances
         var tagSet = {};
         allInstances.forEach(function(inst) {
             (inst.local_tags || []).forEach(function(t) { tagSet[t] = true; });
@@ -318,6 +487,7 @@
                 <td>${renderTags(inst)}</td>
                 <td>
                     <div class="btn-group btn-group-sm">
+                        <button class="btn btn-sm ${inst.ssh_configured ? 'btn-outline-success' : 'btn-outline-secondary'}" title="SSH Config" onclick="openSSHConfig('${inst.id}', '${(inst.name || inst.id).replace(/'/g, "\\'")}')"><i class="bi bi-key"></i></button>
                         ${inst.state === 'stopped' ? `<button class="btn btn-outline-success btn-sm" title="Start" onclick="instanceAction('start', '${inst.id}')"><i class="bi bi-play-fill"></i></button>` : ''}
                         ${inst.state === 'running' ? `<button class="btn btn-outline-warning btn-sm" title="Stop" onclick="instanceAction('stop', '${inst.id}')"><i class="bi bi-stop-fill"></i></button>` : ''}
                         ${inst.state === 'running' ? `<button class="btn btn-outline-info btn-sm" title="Reboot" onclick="instanceAction('reboot', '${inst.id}')"><i class="bi bi-arrow-repeat"></i></button>` : ''}
@@ -342,12 +512,7 @@
         return html;
     }
 
-    function escapeAttr(str) {
-        return str.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
-    }
-
     function showAddTag(instanceId, btnEl) {
-        // Remove any existing inline input
         var existing = document.getElementById('inline-tag-input');
         if (existing) existing.remove();
 
@@ -390,7 +555,6 @@
                 alert('Error: ' + data.error);
                 return;
             }
-            // Update local data and re-render
             var inst = allInstances.find(i => i.id === instanceId);
             if (inst) {
                 if (!inst.local_tags) inst.local_tags = [];
@@ -414,7 +578,6 @@
                 alert('Error: ' + data.error);
                 return;
             }
-            // Update local data and re-render
             var inst = allInstances.find(i => i.id === instanceId);
             if (inst && inst.local_tags) {
                 inst.local_tags = inst.local_tags.filter(t => t !== tag);
@@ -601,7 +764,6 @@
     // --- Security Group Detail ---
 
     function showSecurityGroup(groupId) {
-        // Close instance detail modal first
         const detailModal = bootstrap.Modal.getInstance(document.getElementById('detailModal'));
         if (detailModal) detailModal.hide();
 
@@ -662,6 +824,363 @@
             .catch(err => {
                 body.innerHTML = `<div class="alert alert-danger">Error: ${err}</div>`;
             });
+    }
+
+    // --- SSH Config ---
+
+    function openSSHConfig(instanceId, name) {
+        document.getElementById('sshConfigInstanceId').value = instanceId;
+        document.getElementById('sshConfigInstanceName').textContent = name + ' (' + instanceId + ')';
+
+        document.getElementById('sshUsername').value = 'ec2-user';
+        document.getElementById('sshKeyLabel').value = '';
+        document.getElementById('sshIpPublic').checked = true;
+        document.getElementById('sshPrivateKey').value = '';
+        document.getElementById('sshKeyFile').value = '';
+        document.getElementById('sshPrivateKey').classList.remove('d-none');
+        document.getElementById('sshKeyFile').parentElement.classList.remove('d-none');
+        document.getElementById('sshKeyConfigured').classList.add('d-none');
+        document.getElementById('sshDeleteBtn').style.display = 'none';
+
+        fetch('/api/aws/ssh-configs/' + instanceId)
+            .then(r => r.json())
+            .then(data => {
+                if (data.ssh_config) {
+                    var cfg = data.ssh_config;
+                    document.getElementById('sshUsername').value = cfg.ssh_username;
+                    document.getElementById('sshKeyLabel').value = cfg.key_label || '';
+                    if (cfg.use_public_ip) {
+                        document.getElementById('sshIpPublic').checked = true;
+                    } else {
+                        document.getElementById('sshIpPrivate').checked = true;
+                    }
+                    document.getElementById('sshKeyConfigured').classList.remove('d-none');
+                    document.getElementById('sshPrivateKey').classList.add('d-none');
+                    document.getElementById('sshKeyFile').parentElement.classList.add('d-none');
+                    document.getElementById('sshDeleteBtn').style.display = '';
+                }
+                new bootstrap.Modal(document.getElementById('sshConfigModal')).show();
+            })
+            .catch(err => {
+                alert('Error loading SSH config: ' + err);
+            });
+    }
+
+    function showReplaceKey() {
+        document.getElementById('sshPrivateKey').classList.remove('d-none');
+        document.getElementById('sshKeyFile').parentElement.classList.remove('d-none');
+        document.getElementById('sshPrivateKey').value = '';
+        document.getElementById('sshKeyFile').value = '';
+        document.getElementById('sshPrivateKey').focus();
+    }
+
+    function loadKeyFile(input) {
+        if (!input.files || !input.files[0]) return;
+        var reader = new FileReader();
+        reader.onload = function(e) {
+            document.getElementById('sshPrivateKey').value = e.target.result;
+        };
+        reader.readAsText(input.files[0]);
+    }
+
+    function saveSSHConfig() {
+        var instanceId = document.getElementById('sshConfigInstanceId').value;
+        var username = document.getElementById('sshUsername').value.trim();
+        var keyLabel = document.getElementById('sshKeyLabel').value.trim();
+        var usePublicIp = document.getElementById('sshIpPublic').checked;
+        var privateKey = document.getElementById('sshPrivateKey').value.trim();
+
+        if (!username) {
+            alert('SSH username is required');
+            return;
+        }
+
+        var payload = {
+            instance_id: instanceId,
+            ssh_username: username,
+            use_public_ip: usePublicIp,
+            key_label: keyLabel
+        };
+        if (privateKey) {
+            payload.private_key = privateKey;
+        }
+
+        fetch('/api/aws/ssh-configs', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(payload)
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.error) {
+                alert('Error: ' + data.error);
+                return;
+            }
+            bootstrap.Modal.getInstance(document.getElementById('sshConfigModal')).hide();
+            var inst = allInstances.find(i => i.id === instanceId);
+            if (inst) inst.ssh_configured = true;
+            applyFilters();
+            populateServicesInstanceSelect();
+        })
+        .catch(err => alert('Error: ' + err));
+    }
+
+    function deleteSSHConfig() {
+        var instanceId = document.getElementById('sshConfigInstanceId').value;
+        if (!confirm('Remove SSH configuration for this instance?')) return;
+
+        fetch('/api/aws/ssh-configs/' + instanceId, {
+            method: 'DELETE',
+            headers: {'Content-Type': 'application/json'}
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.error) {
+                alert('Error: ' + data.error);
+                return;
+            }
+            bootstrap.Modal.getInstance(document.getElementById('sshConfigModal')).hide();
+            var inst = allInstances.find(i => i.id === instanceId);
+            if (inst) inst.ssh_configured = false;
+            applyFilters();
+            populateServicesInstanceSelect();
+        })
+        .catch(err => alert('Error: ' + err));
+    }
+
+    // ─────────────────────────────────────────
+    // Services Tab
+    // ─────────────────────────────────────────
+
+    function onServicesTabShow() {
+        // If instances haven't loaded yet, wait; otherwise populate now
+        if (allInstances.length === 0 && document.getElementById('instancesLoading').classList.contains('d-none')) {
+            // Instances loaded but none available — info already set
+        }
+        populateServicesInstanceSelect();
+    }
+
+    function populateServicesInstanceSelect() {
+        var sshInstances = allInstances.filter(function(i) {
+            return i.ssh_configured && i.state === 'running';
+        });
+
+        var select = document.getElementById('svcInstanceSelect');
+        var prevVal = select.value;
+
+        select.innerHTML = '<option value="">Select a running instance with SSH configured...</option>';
+        sshInstances.forEach(function(inst) {
+            var opt = document.createElement('option');
+            opt.value = inst.id;
+            var label = inst.name ? inst.name + ' (' + inst.id + ')' : inst.id;
+            var ip = inst.public_ip || inst.private_ip || 'no IP';
+            opt.textContent = label + ' \u2014 ' + ip;
+            select.appendChild(opt);
+        });
+
+        // Restore previous selection if it's still valid
+        if (prevVal && sshInstances.find(function(i) { return i.id === prevVal; })) {
+            select.value = prevVal;
+        }
+
+        select.disabled = sshInstances.length === 0;
+        document.getElementById('svcBtnRefresh').disabled = !select.value;
+
+        // Show info if no SSH-configured running instances
+        var onServicesTab = document.getElementById('pane-services').classList.contains('show');
+        if (onServicesTab) {
+            if (sshInstances.length === 0) {
+                showSvcInfo('No running instances with SSH configured in this region. Configure SSH keys on the Instances tab.');
+            } else {
+                hideSvcInfo();
+            }
+        }
+    }
+
+    function onSvcInstanceChange() {
+        var instanceId = document.getElementById('svcInstanceSelect').value;
+        document.getElementById('svcBtnRefresh').disabled = !instanceId;
+        if (instanceId) {
+            loadServices();
+        } else {
+            // Clear services view
+            document.getElementById('svcTable').classList.add('d-none');
+            document.getElementById('svcEmpty').classList.remove('d-none');
+            document.getElementById('svcCount').textContent = '';
+            allServices = [];
+        }
+    }
+
+    function loadServices() {
+        var instanceId = document.getElementById('svcInstanceSelect').value;
+        if (!instanceId) return;
+
+        var loading = document.getElementById('svcLoading');
+        var empty = document.getElementById('svcEmpty');
+        var table = document.getElementById('svcTable');
+
+        loading.classList.remove('d-none');
+        empty.classList.add('d-none');
+        table.classList.add('d-none');
+        document.getElementById('svcErrorMsg').classList.add('d-none');
+        hideSvcInfo();
+        document.getElementById('svcCount').textContent = '';
+
+        fetch('/api/aws/instances/' + instanceId + '/services?region=' + getRegion())
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                loading.classList.add('d-none');
+                if (data.error) {
+                    empty.classList.remove('d-none');
+                    showSvcError(data.error);
+                    return;
+                }
+                allServices = data.services || [];
+                if (allServices.length === 0) {
+                    empty.classList.remove('d-none');
+                    document.getElementById('svcEmpty').querySelector('.text-muted').textContent = 'No custom services found on this instance';
+                } else {
+                    table.classList.remove('d-none');
+                    renderServices(allServices);
+                    document.getElementById('svcCount').textContent = allServices.length + ' service(s)';
+                }
+            })
+            .catch(function(err) {
+                loading.classList.add('d-none');
+                empty.classList.remove('d-none');
+                showSvcError('Failed to connect: ' + err);
+            });
+    }
+
+    function renderServices(services) {
+        var tbody = document.getElementById('svcBody');
+        tbody.innerHTML = services.map(function(svc) {
+            var isRunning = svc.active === 'active' && svc.sub === 'running';
+            var isStopped = svc.active === 'inactive' || svc.sub === 'dead';
+            var isFailed = svc.active === 'failed' || svc.sub === 'failed';
+            var canEnable  = svc.enabled !== 'enabled' && svc.enabled !== 'static' && svc.enabled !== 'masked';
+            var canDisable = svc.enabled === 'enabled';
+
+            return '<tr>' +
+                '<td><a href="#" onclick="showServiceDetail(\'' + escapeAttr(svc.name) + '\', \'status\'); return false;" class="text-primary fw-bold">' + escapeHtml(svc.name) + '</a></td>' +
+                '<td>' + svcActiveBadge(svc.active) + '</td>' +
+                '<td><small>' + escapeHtml(svc.sub) + '</small></td>' +
+                '<td>' + svcEnabledBadge(svc.enabled) + '</td>' +
+                '<td><small class="text-muted">' + escapeHtml(svc.description) + '</small></td>' +
+                '<td>' +
+                    '<div class="btn-group btn-group-sm">' +
+                        (isStopped || isFailed ? '<button class="btn btn-outline-success btn-sm" title="Start" onclick="doServiceAction(\'' + escapeAttr(svc.name) + '\', \'start\')"><i class="bi bi-play-fill"></i></button>' : '') +
+                        (isRunning ? '<button class="btn btn-outline-warning btn-sm" title="Stop" onclick="doServiceAction(\'' + escapeAttr(svc.name) + '\', \'stop\')"><i class="bi bi-stop-fill"></i></button>' : '') +
+                        (isRunning ? '<button class="btn btn-outline-info btn-sm" title="Restart" onclick="doServiceAction(\'' + escapeAttr(svc.name) + '\', \'restart\')"><i class="bi bi-arrow-repeat"></i></button>' : '') +
+                        (canEnable  ? '<button class="btn btn-outline-success btn-sm" title="Enable" onclick="doServiceAction(\'' + escapeAttr(svc.name) + '\', \'enable\')"><i class="bi bi-check2-circle"></i></button>' : '') +
+                        (canDisable ? '<button class="btn btn-outline-danger btn-sm" title="Disable" onclick="doServiceAction(\'' + escapeAttr(svc.name) + '\', \'disable\')"><i class="bi bi-slash-circle"></i></button>' : '') +
+                        '<button class="btn btn-outline-secondary btn-sm" title="View Configuration" onclick="showServiceDetail(\'' + escapeAttr(svc.name) + '\', \'config\')"><i class="bi bi-file-code"></i></button>' +
+                    '</div>' +
+                '</td>' +
+            '</tr>';
+        }).join('');
+    }
+
+    function svcActiveBadge(active) {
+        var map = {
+            'active': 'badge-running',
+            'inactive': 'badge-stopped',
+            'failed': 'badge-stopped',
+            'activating': 'badge-pending',
+            'deactivating': 'badge-pending',
+        };
+        return '<span class="badge-status ' + (map[active] || 'badge-pending') + '">' + escapeHtml(active) + '</span>';
+    }
+
+    function svcEnabledBadge(enabled) {
+        if (enabled === 'enabled') {
+            return '<span class="badge bg-success" style="font-size:0.75em;">enabled</span>';
+        } else if (enabled === 'disabled') {
+            return '<span class="badge bg-secondary" style="font-size:0.75em;">disabled</span>';
+        }
+        return '<span class="badge bg-light text-dark" style="font-size:0.75em;">' + escapeHtml(enabled) + '</span>';
+    }
+
+    function doServiceAction(serviceName, action) {
+        var instanceId = document.getElementById('svcInstanceSelect').value;
+        if (!instanceId) return;
+
+        var label = action.charAt(0).toUpperCase() + action.slice(1);
+        if (!confirm(label + ' service "' + serviceName + '"?')) return;
+
+        fetch('/api/aws/instances/' + instanceId + '/services/' + encodeURIComponent(serviceName) + '/' + action + '?region=' + getRegion(), {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+        })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            if (data.error) {
+                showSvcError(data.error);
+            } else {
+                setTimeout(loadServices, 1500);
+            }
+        })
+        .catch(function(err) { showSvcError('Action failed: ' + err); });
+    }
+
+    function showServiceDetail(serviceName, activeTab) {
+        activeTab = activeTab || 'status';
+        var instanceId = document.getElementById('svcInstanceSelect').value;
+        if (!instanceId) return;
+
+        var modal = new bootstrap.Modal(document.getElementById('serviceDetailModal'));
+        var body = document.getElementById('serviceDetailBody');
+        document.getElementById('serviceDetailName').textContent = serviceName;
+        body.innerHTML = '<div class="text-center py-3"><div class="spinner-border text-secondary"></div></div>';
+        modal.show();
+
+        fetch('/api/aws/instances/' + instanceId + '/services/' + encodeURIComponent(serviceName) + '?region=' + getRegion())
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (data.error) {
+                    body.innerHTML = '<div class="alert alert-danger">' + escapeHtml(data.error) + '</div>';
+                    return;
+                }
+                var svc = data.service;
+                var statusActive = activeTab === 'status' ? 'show active' : '';
+                var configActive = activeTab === 'config' ? 'show active' : '';
+                var statusTabActive = activeTab === 'status' ? 'active' : '';
+                var configTabActive = activeTab === 'config' ? 'active' : '';
+                body.innerHTML =
+                    '<ul class="nav nav-tabs mb-3">' +
+                        '<li class="nav-item"><button class="nav-link ' + statusTabActive + '" data-bs-toggle="tab" data-bs-target="#svcDetailStatus" type="button"><i class="bi bi-terminal me-1"></i>Status</button></li>' +
+                        '<li class="nav-item"><button class="nav-link ' + configTabActive + '" data-bs-toggle="tab" data-bs-target="#svcDetailConfig" type="button"><i class="bi bi-file-code me-1"></i>Configuration</button></li>' +
+                    '</ul>' +
+                    '<div class="tab-content">' +
+                        '<div class="tab-pane fade ' + statusActive + '" id="svcDetailStatus">' +
+                            '<pre class="bg-dark text-light p-3 rounded" style="font-size: 0.8em; max-height: 420px; overflow-y: auto; white-space: pre-wrap;">' + escapeHtml(svc.status_output || 'No status output') + '</pre>' +
+                        '</div>' +
+                        '<div class="tab-pane fade ' + configActive + '" id="svcDetailConfig">' +
+                            '<pre class="bg-dark text-light p-3 rounded" style="font-size: 0.8em; max-height: 420px; overflow-y: auto; white-space: pre-wrap;">' + escapeHtml(svc.config_output || 'No configuration found') + '</pre>' +
+                        '</div>' +
+                    '</div>';
+            })
+            .catch(function(err) {
+                body.innerHTML = '<div class="alert alert-danger">Error: ' + escapeHtml(String(err)) + '</div>';
+            });
+    }
+
+    // --- Services message helpers ---
+
+    function showSvcError(msg) {
+        var el = document.getElementById('svcErrorMsg');
+        document.getElementById('svcErrorText').textContent = msg;
+        el.classList.remove('d-none');
+        setTimeout(function() { el.classList.add('d-none'); }, 10000);
+    }
+
+    function showSvcInfo(msg) {
+        document.getElementById('svcInfoText').textContent = msg;
+        document.getElementById('svcInfoMsg').classList.remove('d-none');
+    }
+
+    function hideSvcInfo() {
+        document.getElementById('svcInfoMsg').classList.add('d-none');
     }
 </script>
 {% endblock %}
