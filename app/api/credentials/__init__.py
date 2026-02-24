@@ -38,6 +38,7 @@ def test_credentials(provider):
         'docker': _test_docker,
         'gophish': _test_gophish,
         'cobaltstrike': _test_cobaltstrike,
+        'openai': _test_openai,
     }
 
     tester = testers.get(provider)
@@ -110,3 +111,14 @@ def _test_cobaltstrike():
     from app.services import cobaltstrike_service
     result = cobaltstrike_service.verify_connection()
     return result
+
+
+def _test_openai():
+    from app.services import website_generator_service
+    client, deployment = website_generator_service._get_client()
+    response = client.chat.completions.create(
+        model=deployment,
+        messages=[{"role": "user", "content": "Say 'ok' in one word."}],
+        max_tokens=5,
+    )
+    return {'status': 'ok', 'model': deployment, 'reply': response.choices[0].message.content.strip()}

@@ -270,7 +270,92 @@
         </div>
     </div>
 
+
+    <!-- Website Generator -->
+    <div class="card-custom mb-4" id="website-generator-card">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <span><i class="bi bi-stars"></i> Website Generator</span>
+            <small class="text-muted">AI-generated phishing pretext site</small>
+        </div>
+        <div class="card-body">
+            <p class="text-muted small">Generate a realistic, single-page website for a given business category using Azure OpenAI, then publish it directly under the selected domain. Requires OpenAI and NPM credentials in Settings.</p>
+
+            <!-- Resume banner: shown on page load if a task was left pending -->
+            <div id="wg-resume-banner" class="alert alert-info d-none py-2 mb-3 d-flex align-items-center gap-2">
+                <i class="bi bi-hourglass-split"></i>
+                <span id="wg-resume-text" class="flex-grow-1"></span>
+                <button class="btn btn-sm btn-outline-primary" onclick="resumeTask()">Resume</button>
+                <button class="btn btn-sm btn-outline-secondary" onclick="dismissResume()">Dismiss</button>
+            </div>
+
+            <div class="row g-3 mb-3">
+                <div class="col-md-3">
+                    <label class="form-label">Subdomain <span class="text-muted small">(optional)</span></label>
+                    <div class="input-group">
+                        <input type="text" class="form-control" id="wg-subdomain" placeholder="shop">
+                        <span class="input-group-text" id="wg-zone-suffix">.example.com</span>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Business Category / Industry</label>
+                    <input type="text" class="form-control" id="wg-category" placeholder="e.g. healthcare, fintech, law firm...">
+                </div>
+                <div class="col-md-6 d-flex align-items-end gap-2 flex-wrap">
+                    <button class="btn btn-infrared" id="wg-btn-generate" onclick="generateWebsite()">
+                        <i class="bi bi-stars"></i> Generate Website
+                    </button>
+                    <button class="btn btn-outline-secondary d-none" id="wg-btn-download" onclick="downloadGeneratedHtml()">
+                        <i class="bi bi-download"></i> Download HTML
+                    </button>
+                    <button class="btn btn-success d-none" id="wg-btn-publish" onclick="publishWebsite()">
+                        <i class="bi bi-rocket-takeoff"></i> Publish
+                    </button>
+                </div>
+            </div>
+
+            <!-- Loading -->
+            <div id="wg-loading" class="d-none text-center py-4">
+                <div class="spinner-border text-secondary" role="status"></div>
+                <div class="text-muted mt-2 small" id="wg-loading-msg">Generating website — running in background, please wait...</div>
+                <div class="text-muted small mt-1 d-none" id="wg-loading-taskinfo">
+                    Task: <code id="wg-loading-taskid"></code> &nbsp; <span id="wg-elapsed" class="text-muted"></span>
+                </div>
+            </div>
+
+            <!-- Error -->
+            <div id="wg-error" class="alert alert-danger d-none py-2"></div>
+
+            <!-- Result -->
+            <div id="wg-result" class="d-none">
+                <!-- Brand summary strip -->
+                <div class="d-flex align-items-center gap-3 mb-3 p-3 rounded" id="wg-brand-strip" style="background: var(--bs-dark, #1f2937);">
+                    <div id="wg-color-swatches" class="d-flex gap-1"></div>
+                    <div>
+                        <div class="fw-bold" id="wg-brand-name"></div>
+                        <div class="text-muted small" id="wg-brand-tagline"></div>
+                    </div>
+                    <div class="ms-auto">
+                        <span class="badge bg-secondary" id="wg-brand-style"></span>
+                    </div>
+                </div>
+                <!-- Preview iframe -->
+                <iframe id="wg-preview"
+                        sandbox="allow-scripts allow-same-origin"
+                        style="width: 100%; height: 620px; border: 1px solid #374151; border-radius: 6px; background: #fff;">
+                </iframe>
+            </div>
+
+            <!-- Publish status -->
+            <div id="wg-publish-loading" class="d-none text-center py-3 mt-3">
+                <div class="spinner-border spinner-border-sm text-secondary" role="status"></div>
+                <span class="text-muted ms-2 small">Publishing website — uploading, relaunching containers, configuring NPM and DNS...</span>
+            </div>
+            <div id="wg-publish-log" class="d-none mt-3" style="background:#0d1117;border:1px solid #374151;border-radius:6px;padding:12px;max-height:220px;overflow-y:auto;font-family:monospace;font-size:0.82rem;"></div>
+        </div>
+    </div>
+
 </div>
+
 {% endblock %}
 
 {% block extra_js %}
@@ -399,6 +484,7 @@
         document.querySelectorAll('.dns-zone-suffix').forEach(function(el) {
             el.textContent = '.' + selectedZoneName;
         });
+        document.getElementById('wg-zone-suffix').textContent = '.' + selectedZoneName;
 
         // Reset email workflow state and check if domain exists in Mailgun
         mailgunDnsRecords = null;
@@ -1496,6 +1582,280 @@
                     logErr(LOG, 'Unexpected error: ' + err);
                 }
             });
+    }
+
+    // ─────────────────────────────────────────
+    // Website Generator
+    // ─────────────────────────────────────────
+
+    var _wgHtml = '';
+    var _wgPlan = null;
+    var _wgPollTimer = null;
+    var _wgElapsedTimer = null;
+
+    // On load: restore any pending task from localStorage
+    (function _wgRestoreTask() {
+        var taskId = localStorage.getItem('wg_task_id');
+        if (!taskId) return;
+        var category = localStorage.getItem('wg_task_category') || '';
+        var subdomain = localStorage.getItem('wg_task_subdomain') || '';
+        var startedAt = parseInt(localStorage.getItem('wg_task_started_at') || '0');
+        var elapsed = startedAt ? Math.round((Date.now() - startedAt) / 1000) : null;
+        var banner = document.getElementById('wg-resume-banner');
+        var text = document.getElementById('wg-resume-text');
+        var fqdn = subdomain ? subdomain + '.[zone]' : '[zone]';
+        var msg = 'Website generation task still pending';
+        if (category) msg += ' for <strong>' + category + '</strong>';
+        if (subdomain) msg += ' at <strong>' + subdomain + '.&lt;zone&gt;</strong>';
+        if (elapsed !== null) msg += ' (' + elapsed + 's ago)';
+        msg += ' — Task: <code>' + taskId + '</code>';
+        text.innerHTML = msg;
+        banner.classList.remove('d-none');
+    })();
+
+    function resumeTask() {
+        var taskId = localStorage.getItem('wg_task_id');
+        if (!taskId) return;
+        var category = localStorage.getItem('wg_task_category') || '';
+        var subdomain = localStorage.getItem('wg_task_subdomain') || '';
+        document.getElementById('wg-resume-banner').classList.add('d-none');
+        if (category) document.getElementById('wg-category').value = category;
+        if (subdomain) document.getElementById('wg-subdomain').value = subdomain;
+        _wgStartPolling(taskId);
+    }
+
+    function dismissResume() {
+        localStorage.removeItem('wg_task_id');
+        localStorage.removeItem('wg_task_category');
+        localStorage.removeItem('wg_task_subdomain');
+        localStorage.removeItem('wg_task_started_at');
+        document.getElementById('wg-resume-banner').classList.add('d-none');
+    }
+
+    function generateWebsite() {
+        var category = document.getElementById('wg-category').value.trim();
+        if (!category) {
+            document.getElementById('wg-error').textContent = 'Please enter a business category.';
+            document.getElementById('wg-error').classList.remove('d-none');
+            return;
+        }
+
+        document.getElementById('wg-error').classList.add('d-none');
+        document.getElementById('wg-result').classList.add('d-none');
+        document.getElementById('wg-btn-download').classList.add('d-none');
+        document.getElementById('wg-btn-publish').classList.add('d-none');
+        document.getElementById('wg-publish-log').classList.add('d-none');
+        document.getElementById('wg-btn-generate').disabled = true;
+
+        var subdomain = document.getElementById('wg-subdomain').value.trim();
+
+        fetch('/api/website-generator/generate', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({category: category})
+        })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            if (data.error) {
+                document.getElementById('wg-btn-generate').disabled = false;
+                document.getElementById('wg-error').textContent = data.error;
+                document.getElementById('wg-error').classList.remove('d-none');
+                return;
+            }
+            var taskId = data.task_id;
+            localStorage.setItem('wg_task_id', taskId);
+            localStorage.setItem('wg_task_category', category);
+            localStorage.setItem('wg_task_subdomain', subdomain);
+            localStorage.setItem('wg_task_started_at', String(Date.now()));
+            _wgStartPolling(taskId);
+        })
+        .catch(function(err) {
+            document.getElementById('wg-btn-generate').disabled = false;
+            document.getElementById('wg-error').textContent = 'Request failed: ' + err;
+            document.getElementById('wg-error').classList.remove('d-none');
+        });
+    }
+
+    function _wgStartPolling(taskId) {
+        if (_wgPollTimer) clearTimeout(_wgPollTimer);
+        if (_wgElapsedTimer) clearInterval(_wgElapsedTimer);
+
+        // Show loading state with task info
+        document.getElementById('wg-loading').classList.remove('d-none');
+        document.getElementById('wg-loading-msg').textContent =
+            'Generating website \u2014 running in background, please wait...';
+        document.getElementById('wg-loading-taskid').textContent = taskId;
+        document.getElementById('wg-loading-taskinfo').classList.remove('d-none');
+
+        var startedAt = parseInt(localStorage.getItem('wg_task_started_at') || String(Date.now()));
+        _wgElapsedTimer = setInterval(function() {
+            var el = document.getElementById('wg-elapsed');
+            if (el) {
+                var secs = Math.round((Date.now() - startedAt) / 1000);
+                var m = Math.floor(secs / 60), s = secs % 60;
+                el.textContent = m > 0 ? '(' + m + 'm ' + s + 's elapsed)' : '(' + s + 's elapsed)';
+            }
+        }, 1000);
+
+        function poll() {
+            fetch('/api/website-generator/status/' + taskId)
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (data.status === 'SUCCESS') {
+                    clearInterval(_wgElapsedTimer);
+                    _wgOnComplete(data.result);
+                } else if (data.status === 'FAILURE') {
+                    clearInterval(_wgElapsedTimer);
+                    _wgOnFailed(data.error || 'Task failed');
+                } else {
+                    _wgPollTimer = setTimeout(poll, 3000);
+                }
+            })
+            .catch(function(err) {
+                clearInterval(_wgElapsedTimer);
+                _wgOnFailed('Polling error: ' + err);
+            });
+        }
+        poll();
+    }
+
+    function _wgOnComplete(result) {
+        document.getElementById('wg-loading').classList.add('d-none');
+        document.getElementById('wg-btn-generate').disabled = false;
+        localStorage.removeItem('wg_task_id');
+        localStorage.removeItem('wg_task_category');
+        localStorage.removeItem('wg_task_subdomain');
+        localStorage.removeItem('wg_task_started_at');
+
+        _wgHtml = result.html;
+        _wgPlan = result.plan;
+
+        // Brand strip
+        var brand = result.plan.brand || {};
+        document.getElementById('wg-brand-name').textContent = brand.name || '';
+        document.getElementById('wg-brand-tagline').textContent = brand.tagline || '';
+        document.getElementById('wg-brand-style').textContent = (result.plan.design || {}).style || '';
+
+        // Color swatches
+        var swatches = document.getElementById('wg-color-swatches');
+        swatches.innerHTML = '';
+        Object.values(brand.colors || {}).forEach(function(hex) {
+            var s = document.createElement('span');
+            s.style.cssText = 'display:inline-block;width:20px;height:20px;border-radius:4px;background:' + hex + ';border:1px solid rgba(255,255,255,0.15);';
+            s.title = hex;
+            swatches.appendChild(s);
+        });
+
+        document.getElementById('wg-preview').srcdoc = result.html;
+        document.getElementById('wg-publish-log').classList.add('d-none');
+        document.getElementById('wg-result').classList.remove('d-none');
+        document.getElementById('wg-btn-download').classList.remove('d-none');
+        document.getElementById('wg-btn-publish').classList.remove('d-none');
+    }
+
+    function _wgOnFailed(error) {
+        document.getElementById('wg-loading').classList.add('d-none');
+        document.getElementById('wg-btn-generate').disabled = false;
+        document.getElementById('wg-error').textContent = error;
+        document.getElementById('wg-error').classList.remove('d-none');
+        localStorage.removeItem('wg_task_id');
+        localStorage.removeItem('wg_task_category');
+        localStorage.removeItem('wg_task_subdomain');
+        localStorage.removeItem('wg_task_started_at');
+    }
+
+    function publishWebsite() {
+        if (!_wgHtml) return;
+        var category = document.getElementById('wg-category').value.trim() || 'site';
+        var subdomain = document.getElementById('wg-subdomain').value.trim();
+
+        if (!selectedZoneId) {
+            var log = document.getElementById('wg-publish-log');
+            log.innerHTML = '<span class="text-danger"><i class="bi bi-x-circle-fill"></i> Please select a Cloudflare zone first.</span>';
+            log.classList.remove('d-none');
+            return;
+        }
+
+        document.getElementById('wg-publish-loading').classList.remove('d-none');
+        document.getElementById('wg-publish-log').classList.add('d-none');
+        document.getElementById('wg-btn-publish').disabled = true;
+
+        fetch('/api/website-generator/publish', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                html: _wgHtml,
+                category: category,
+                zone_id: selectedZoneId,
+                zone_name: selectedZoneName,
+                subdomain: subdomain
+            })
+        })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            document.getElementById('wg-publish-loading').classList.add('d-none');
+            document.getElementById('wg-btn-publish').disabled = false;
+
+            var log = document.getElementById('wg-publish-log');
+            log.innerHTML = '';
+            log.classList.remove('d-none');
+
+            if (data.error) {
+                log.innerHTML = '<span class="text-danger"><i class="bi bi-x-circle-fill"></i> ' + escapeHtml(data.error) + '</span>';
+                return;
+            }
+
+            var stepLabels = {
+                'deploy':         'Upload index.html &amp; update docker-compose.yaml',
+                'relaunch':       'Relaunch containers (docker compose down &amp;&amp; up -d)',
+                'npm_proxy':      'Create NPM proxy host',
+                'cloudflare_dns': 'Create Cloudflare A record'
+            };
+
+            (data.steps || []).forEach(function(s) {
+                var ok = s.status === 'ok';
+                var icon = ok ? '<span class="text-success">✓</span>' : '<span class="text-danger">✗</span>';
+                var label = stepLabels[s.step] || s.step;
+                var detail = '';
+                if (!ok) detail = ' <span class="text-danger">— ' + escapeHtml(s.error) + '</span>';
+                else if (s.step === 'deploy') detail = ' <span class="text-muted">→ ' + escapeHtml(s.folder) + '</span>';
+                else if (s.step === 'npm_proxy') detail = ' <span class="text-muted">→ id:' + escapeHtml(String(s.proxy_id || '')) + '</span>';
+                log.innerHTML += '<div>' + icon + ' ' + label + detail + '</div>';
+            });
+
+            if (data.fqdn) {
+                var allOk = (data.steps || []).every(function(s) { return s.status === 'ok'; });
+                var cls = allOk ? 'text-success' : 'text-warning';
+                log.innerHTML += '<div class="mt-2 ' + cls + '" style="font-size:0.9rem;font-weight:600;">' +
+                    '<i class="bi bi-globe"></i> ' + escapeHtml(data.fqdn) + '</div>';
+            }
+        })
+        .catch(function(err) {
+            document.getElementById('wg-publish-loading').classList.add('d-none');
+            document.getElementById('wg-btn-publish').disabled = false;
+            var log = document.getElementById('wg-publish-log');
+            log.innerHTML = '<span class="text-danger"><i class="bi bi-x-circle-fill"></i> Request failed: ' + escapeHtml(String(err)) + '</span>';
+            log.classList.remove('d-none');
+        });
+    }
+
+    function escapeHtml(str) {
+        var d = document.createElement('div');
+        d.appendChild(document.createTextNode(String(str)));
+        return d.innerHTML;
+    }
+
+    function downloadGeneratedHtml() {
+        if (!_wgHtml) return;
+        var name = (_wgPlan && _wgPlan.brand && _wgPlan.brand.name)
+            ? _wgPlan.brand.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')
+            : 'generated-website';
+        var blob = new Blob([_wgHtml], {type: 'text/html'});
+        var a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = name + '.html';
+        a.click();
+        URL.revokeObjectURL(a.href);
     }
 </script>
 {% endblock %}
