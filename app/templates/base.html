@@ -196,7 +196,7 @@
         <div class="brand">
             <h4><i class="bi bi-bullseye"></i> InfraRed</h4>
         </div>
-        {% set mgmt_pages = ['domains','email','containers','aws','npm','gophish','cobaltstrike'] %}
+        {% set mgmt_pages = ['domains','email','containers','aws','aws_services','npm','gophish','cobaltstrike'] %}
         {% set ops_pages = ['operations','orchestration_mgmt'] %}
         <nav class="nav flex-column">
             <a class="nav-link {% if request.endpoint == 'dashboard' %}active{% endif %}" href="{{ url_for('dashboard') }}">
@@ -222,6 +222,9 @@
                 </a>
                 <a class="nav-link {% if request.endpoint == 'aws' %}active{% endif %}" href="{{ url_for('aws') }}">
                     <i class="bi bi-cloud"></i> AWS EC2
+                </a>
+                <a class="nav-link {% if request.endpoint == 'aws_services' %}active{% endif %}" href="{{ url_for('aws_services') }}">
+                    <i class="bi bi-terminal"></i> EC2 Services
                 </a>
                 <a class="nav-link {% if request.endpoint == 'npm' %}active{% endif %}" href="{{ url_for('npm') }}">
                     <i class="bi bi-hdd-network"></i> NPM
