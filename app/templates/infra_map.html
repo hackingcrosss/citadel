@@ -1,0 +1,509 @@
+{% extends "base.html" %}
+
+{% block title %}Infra Map - InfraRed{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1 class="h3 mb-0"><i class="bi bi-diagram-3"></i> Infrastructure Map</h1>
+    <button class="btn btn-sm btn-outline-secondary" onclick="loadAll()">
+        <i class="bi bi-arrow-clockwise"></i> Refresh
+    </button>
+</div>
+
+<!-- Summary -->
+<div class="d-flex flex-wrap gap-3 mb-4">
+    <div class="card-custom px-3 py-2 d-flex align-items-center gap-2">
+        <i class="bi bi-globe text-info"></i>
+        <span id="count-domains" class="fw-bold">—</span>
+        <span class="text-muted small">Domains</span>
+    </div>
+    <div class="card-custom px-3 py-2 d-flex align-items-center gap-2">
+        <i class="bi bi-card-list text-info"></i>
+        <span id="count-records" class="fw-bold">—</span>
+        <span class="text-muted small">A Records</span>
+    </div>
+    <div class="card-custom px-3 py-2 d-flex align-items-center gap-2">
+        <i class="bi bi-cloud text-warning"></i>
+        <span id="count-ec2" class="fw-bold">—</span>
+        <span class="text-muted small">EC2 Instances</span>
+    </div>
+    <div class="card-custom px-3 py-2 d-flex align-items-center gap-2">
+        <i class="bi bi-hdd-network text-success"></i>
+        <span id="count-npm" class="fw-bold">—</span>
+        <span class="text-muted small">NPM Proxy Hosts</span>
+    </div>
+    <div class="card-custom px-3 py-2 d-flex align-items-center gap-2">
+        <i class="bi bi-box-seam text-secondary"></i>
+        <span id="count-containers" class="fw-bold">—</span>
+        <span class="text-muted small">Containers</span>
+    </div>
+</div>
+
+<!-- Infrastructure Chain -->
+<div class="card-custom mb-4">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <span><i class="bi bi-diagram-3"></i> Infrastructure Chain</span>
+        <span class="text-muted small">Domain → DNS Record → EC2 → NPM Proxy → Backend</span>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <colgroup>
+                    <col style="width: 22%;">
+                    <col style="width: 7%;">
+                    <col style="width: 13%;">
+                    <col style="width: 19%;">
+                    <col style="width: 16%;">
+                    <col style="width: 23%;">
+                </colgroup>
+                <thead>
+                    <tr>
+                        <th>Domain / Record</th>
+                        <th>Type</th>
+                        <th>IP / Content</th>
+                        <th>EC2 Instance</th>
+                        <th>NPM Proxy</th>
+                        <th>Backend</th>
+                    </tr>
+                </thead>
+                <tbody id="chain-tbody">
+                    <tr>
+                        <td colspan="6" class="text-center text-muted py-4">
+                            <span class="spinner-border spinner-border-sm"></span> Loading...
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- EC2 instances not referenced by any DNS record -->
+<div class="card-custom mb-4">
+    <div class="card-header">
+        <i class="bi bi-cloud-slash text-muted me-1"></i> EC2 Instances Without DNS Records
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead>
+                    <tr>
+                        <th>Instance</th>
+                        <th>State</th>
+                        <th>Public IP</th>
+                        <th>Private IP</th>
+                        <th>Local Tags</th>
+                        <th>Referenced by NPM</th>
+                    </tr>
+                </thead>
+                <tbody id="orphan-ec2-tbody">
+                    <tr><td colspan="6" class="text-center text-muted py-3"><span class="spinner-border spinner-border-sm"></span></td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- NPM proxy hosts not matched to any tracked DNS record -->
+<div class="card-custom mb-4">
+    <div class="card-header">
+        <i class="bi bi-hdd-network text-muted me-1"></i> NPM Proxy Hosts Without Matching DNS
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead>
+                    <tr>
+                        <th>Domain Names</th>
+                        <th>Forward Target</th>
+                        <th>Backend</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody id="orphan-npm-tbody">
+                    <tr><td colspan="4" class="text-center text-muted py-3"><span class="spinner-border spinner-border-sm"></span></td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    var allDomains        = [];
+    var allDnsRecords     = {}; // domainId -> records[] (normalised: always .type field)
+    var allInstances      = [];
+    var allNpmHosts       = [];
+    var allContainers     = [];
+    var allListeners      = [];
+    var ipToInstance      = {}; // ip        -> instance
+    var ipToContainer     = {}; // ip        -> container
+    var nameToContainer   = {}; // name      -> container
+    var hostPortToListener = {}; // "host:port" -> listener
+    var portToListener     = {}; // "port"      -> listener (fallback when host is 0.0.0.0)
+
+    document.addEventListener('DOMContentLoaded', function() { loadAll(); });
+
+    function escapeHtml(str) {
+        var d = document.createElement('div');
+        d.appendChild(document.createTextNode(String(str || '')));
+        return d.innerHTML;
+    }
+
+    // ── Data loading ──────────────────────────────────────────────────────────
+
+    function loadAll() {
+        setLoading();
+        Promise.all([
+            fetch('/api/domains/zones').then(function(r) { return r.json(); }).catch(function() { return {zones: []}; }),
+            fetch('/api/aws/instances').then(function(r) { return r.json(); }).catch(function() { return {instances: []}; }),
+            fetch('/api/npm/hosts').then(function(r) { return r.json(); }).catch(function() { return {hosts: []}; }),
+            fetch('/api/containers').then(function(r) { return r.json(); }).catch(function() { return {containers: []}; }),
+            fetch('/api/cobaltstrike/listeners').then(function(r) { return r.json(); }).catch(function() { return {listeners: []}; })
+        ]).then(function(results) {
+            var cfZones   = results[0].zones      || [];
+            allInstances  = results[1].instances  || [];
+            allNpmHosts   = results[2].hosts      || [];
+            allContainers = results[3].containers || [];
+            allListeners  = results[4].listeners  || [];
+
+            // Build allDomains from Cloudflare zones (primary source).
+            // CF zones already have their zone ID as `id` — no need for local DB tracking.
+            allDomains = cfZones.map(function(z) {
+                return { id: z.id, name: z.name, cloudflare_zone_id: z.id };
+            });
+
+            document.getElementById('count-domains').textContent    = allDomains.length;
+            document.getElementById('count-ec2').textContent        = allInstances.length;
+            document.getElementById('count-npm').textContent        = allNpmHosts.length;
+            document.getElementById('count-containers').textContent = allContainers.length;
+
+            buildLookupMaps();
+            loadDnsRecords();
+        });
+    }
+
+    function setLoading() {
+        document.getElementById('chain-tbody').innerHTML =
+            '<tr><td colspan="6" class="text-center text-muted py-4"><span class="spinner-border spinner-border-sm"></span> Loading...</td></tr>';
+        document.getElementById('orphan-ec2-tbody').innerHTML =
+            '<tr><td colspan="6" class="text-center text-muted py-3"><span class="spinner-border spinner-border-sm"></span></td></tr>';
+        document.getElementById('orphan-npm-tbody').innerHTML =
+            '<tr><td colspan="4" class="text-center text-muted py-3"><span class="spinner-border spinner-border-sm"></span></td></tr>';
+    }
+
+    function buildLookupMaps() {
+        ipToInstance = {};
+        allInstances.forEach(function(inst) {
+            if (inst.public_ip)  ipToInstance[inst.public_ip]  = inst;
+            if (inst.private_ip) ipToInstance[inst.private_ip] = inst;
+        });
+
+        // networks from list endpoint: { "bridge": "172.17.0.2" } — value is a plain IP string
+        ipToContainer   = {};
+        nameToContainer = {};
+        allContainers.forEach(function(c) {
+            Object.values(c.networks || {}).forEach(function(ip) {
+                if (ip && typeof ip === 'string') ipToContainer[ip] = c;
+            });
+            var name = (c.name || '').replace(/^\//, '').toLowerCase();
+            if (name) nameToContainer[name] = c;
+        });
+
+        // Cobalt Strike listener lookup maps
+        hostPortToListener = {};
+        portToListener     = {};
+        allListeners.forEach(function(l) {
+            var bindPort = String(l.httpBindPort || l.dnsBindPort || l.port || '');
+            var host     = l.host || '';
+            if (bindPort) {
+                portToListener[bindPort] = l;
+                if (host && host !== '0.0.0.0') {
+                    hostPortToListener[host + ':' + bindPort] = l;
+                }
+            }
+        });
+    }
+
+    // Look up a container by NPM forward_host — try IP first, then container name
+    function findContainerForHost(host) {
+        if (!host) return null;
+        return ipToContainer[host]
+            || nameToContainer[host.toLowerCase().replace(/^\//, '')]
+            || null;
+    }
+
+    // Look up a CS listener by forward_host:forward_port — exact host:port first, port-only fallback
+    function findListenerForNpm(npm) {
+        var fwdHost = npm.forward_host || '';
+        var fwdPort = String(npm.forward_port || '');
+        if (!fwdPort) return null;
+        return hostPortToListener[fwdHost + ':' + fwdPort]
+            || portToListener[fwdPort]
+            || null;
+    }
+
+    function loadDnsRecords() {
+        allDnsRecords = {};
+
+        if (allDomains.length === 0) {
+            document.getElementById('count-records').textContent = '0';
+            renderAll();
+            return;
+        }
+
+        // All domains now come from CF zones and already have cloudflare_zone_id === id.
+        // Fetch DNS records for every zone in parallel.
+        var fetches = allDomains.map(function(d) {
+            return fetch('/api/domains/zones/' + d.cloudflare_zone_id + '/records')
+                .then(function(r) { return r.json(); })
+                .then(function(data) { allDnsRecords[d.id] = data.records || []; })
+                .catch(function() { allDnsRecords[d.id] = []; });
+        });
+
+        Promise.all(fetches).then(function() {
+            var totalA = 0;
+            Object.values(allDnsRecords).forEach(function(recs) {
+                totalA += recs.filter(function(r) { return r.type === 'A'; }).length;
+            });
+            document.getElementById('count-records').textContent = totalA;
+            renderAll();
+        });
+    }
+
+    // ── Helpers ───────────────────────────────────────────────────────────────
+
+    // Find the best-matching local domain for a hostname (longest suffix match)
+    function findDomainForHostname(hostname) {
+        var h = hostname.replace(/\.$/, '').toLowerCase();
+        var best = null;
+        allDomains.forEach(function(d) {
+            var dname = d.name.toLowerCase();
+            if (h === dname || h.endsWith('.' + dname)) {
+                if (!best || dname.length > best.name.length) best = d;
+            }
+        });
+        return best;
+    }
+
+    function instanceLabel(inst) {
+        return inst.name ? inst.name + ' (' + inst.id + ')' : inst.id;
+    }
+
+    function stateBadge(state) {
+        var color = state === 'running' ? 'success' : (state === 'stopped' ? 'secondary' : 'warning');
+        return '<span class="badge bg-' + color + '">' + escapeHtml(state) + '</span>';
+    }
+
+    function containerBadge(c) {
+        var color = (c.state === 'running') ? 'success' : 'secondary';
+        return '<span class="badge bg-' + color + '">' + escapeHtml(c.name || c.id) + '</span>';
+    }
+
+    // ── Rendering ─────────────────────────────────────────────────────────────
+
+    function renderAll() {
+        var usedNpmIds      = {};
+        var usedInstanceIds = {};
+        renderChainTable(usedNpmIds, usedInstanceIds);
+        renderOrphanEc2(usedInstanceIds);
+        renderOrphanNpm(usedNpmIds);
+    }
+
+    function renderChainTable(usedNpmIds, usedInstanceIds) {
+        var tbody = document.getElementById('chain-tbody');
+
+        if (allDomains.length === 0 && allNpmHosts.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-4">No domains or NPM hosts found</td></tr>';
+            return;
+        }
+
+        // Build a map: domainId -> { fqdn -> entry }
+        // entry = { fqdn, dnsRec, npmHosts[] }
+        // Sources: NPM domain_names (always) + DNS records (when available)
+        // Using a nested object keyed by normalised FQDN avoids duplicates without fragile string keys.
+        var entriesByDomain = {}; // domainId -> { normFqdn -> entry }
+        allDomains.forEach(function(d) { entriesByDomain[d.id] = {}; });
+
+        // Source 1 — NPM hosts (primary, always present)
+        allNpmHosts.forEach(function(npm) {
+            (npm.domain_names || []).forEach(function(fqdn) {
+                var normFqdn = fqdn.replace(/\.$/, '').toLowerCase();
+                var domain   = findDomainForHostname(normFqdn);
+                if (!domain) return;
+                if (!entriesByDomain[domain.id][normFqdn]) {
+                    entriesByDomain[domain.id][normFqdn] = { fqdn: fqdn, dnsRec: null, npmHosts: [] };
+                }
+                entriesByDomain[domain.id][normFqdn].npmHosts.push(npm);
+                usedNpmIds[npm.id] = true;
+            });
+        });
+
+        // Source 2 — DNS records (enrichment; also catches A records with no NPM proxy)
+        allDomains.forEach(function(domain) {
+            var recs = (allDnsRecords[domain.id] || []).filter(function(r) {
+                return r.type === 'A' || r.type === 'AAAA' || r.type === 'CNAME';
+            });
+            recs.forEach(function(rec) {
+                var normFqdn = rec.name.replace(/\.$/, '').toLowerCase();
+                if (!entriesByDomain[domain.id][normFqdn]) {
+                    entriesByDomain[domain.id][normFqdn] = { fqdn: rec.name.replace(/\.$/, ''), dnsRec: null, npmHosts: [] };
+                }
+                if (!entriesByDomain[domain.id][normFqdn].dnsRec) {
+                    entriesByDomain[domain.id][normFqdn].dnsRec = rec;
+                }
+                var inst = (rec.type === 'A') ? (ipToInstance[rec.content] || null) : null;
+                if (inst) usedInstanceIds[inst.id] = true;
+            });
+        });
+
+        var html = '';
+
+        allDomains.forEach(function(domain) {
+            var entryMap = entriesByDomain[domain.id] || {};
+            var entries  = Object.values(entryMap);
+
+            var meta = '';
+            if (domain.purpose) meta += ' <span class="badge bg-secondary small">' + escapeHtml(domain.purpose) + '</span>';
+
+            html += '<tr class="table-dark"><td colspan="6" class="py-2 fw-semibold">';
+            html += '<i class="bi bi-globe me-2 text-info"></i>' + escapeHtml(domain.name) + meta;
+            html += '</td></tr>';
+
+            if (entries.length === 0) {
+                html += '<tr><td class="ps-4 text-muted small" colspan="6"><em>No NPM hosts or DNS records found for this domain</em></td></tr>';
+                return;
+            }
+
+            entries.forEach(function(entry) {
+                var rec       = entry.dnsRec;
+                var typeCell  = rec
+                    ? '<span class="badge bg-' + (rec.type === 'A' ? 'primary' : rec.type === 'CNAME' ? 'info' : 'secondary') + '">' + escapeHtml(rec.type) + '</span>'
+                    : '<span class="text-muted small">—</span>';
+                var proxiedIcon = (rec && rec.proxied)
+                    ? ' <i class="bi bi-shield-fill text-warning" title="Cloudflare proxied" style="font-size:.75rem;"></i>'
+                    : '';
+                var ipCell    = rec
+                    ? '<code class="small">' + escapeHtml(rec.content) + '</code>'
+                    : '<span class="text-muted small">—</span>';
+                var ec2Inst   = (rec && rec.type === 'A') ? (ipToInstance[rec.content] || null) : null;
+                var ec2Html   = ec2Inst
+                    ? stateBadge(ec2Inst.state) + ' <span class="small">' + escapeHtml(instanceLabel(ec2Inst)) + '</span>'
+                    : '<span class="text-muted small">—</span>';
+
+                var npmHtml = entry.npmHosts.length > 0
+                    ? entry.npmHosts.map(function(n) {
+                        return '<span class="badge bg-' + (n.enabled ? 'success' : 'secondary') + '">'
+                             + escapeHtml((n.domain_names || []).join(', ')) + '</span>';
+                      }).join(' ')
+                    : '<span class="text-muted small">—</span>';
+
+                var backendParts = [];
+                entry.npmHosts.forEach(function(npm) {
+                    var fwdHost   = npm.forward_host   || '';
+                    var fwdPort   = npm.forward_port   || '';
+                    var fwdScheme = npm.forward_scheme || 'http';
+                    var fwdStr    = fwdScheme + '://' + fwdHost + ':' + fwdPort;
+                    var container = findContainerForHost(fwdHost);
+                    var listener  = findListenerForNpm(npm);
+                    var fwdInst   = ipToInstance[fwdHost] || null;
+                    var line = '<code class="small">' + escapeHtml(fwdStr) + '</code>';
+                    if (listener)     line += ' <span class="badge bg-danger" title="Cobalt Strike Listener"><i class="bi bi-crosshair me-1"></i>' + escapeHtml(listener.name) + '</span>';
+                    else if (container)    line += ' ' + containerBadge(container);
+                    else if (fwdInst) line += ' <span class="text-muted small">' + escapeHtml(instanceLabel(fwdInst)) + '</span>';
+                    backendParts.push(line);
+                });
+                var backendHtml = backendParts.length ? backendParts.join('<br>') : '<span class="text-muted small">—</span>';
+
+                html += '<tr>';
+                html += '<td class="ps-4"><code class="small">' + escapeHtml(entry.fqdn) + '</code>' + proxiedIcon + '</td>';
+                html += '<td>' + typeCell + '</td>';
+                html += '<td>' + ipCell + '</td>';
+                html += '<td>' + ec2Html + '</td>';
+                html += '<td>' + npmHtml + '</td>';
+                html += '<td>' + backendHtml + '</td>';
+                html += '</tr>';
+            });
+        });
+
+        tbody.innerHTML = html;
+    }
+
+    function renderOrphanEc2(usedInstanceIds) {
+        var tbody   = document.getElementById('orphan-ec2-tbody');
+        var orphans = allInstances.filter(function(inst) { return !usedInstanceIds[inst.id]; });
+
+        if (orphans.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-3">All EC2 instances are referenced by tracked DNS records</td></tr>';
+            return;
+        }
+
+        var html = '';
+        orphans.forEach(function(inst) {
+            // Check if this instance is the forward target of any NPM host
+            var npmRefs = allNpmHosts.filter(function(npm) {
+                return npm.forward_host === inst.private_ip || npm.forward_host === inst.public_ip;
+            });
+
+            var tagsHtml = (inst.local_tags || []).length > 0
+                ? inst.local_tags.map(function(t) {
+                    return '<span class="badge bg-secondary me-1">' + escapeHtml(t) + '</span>';
+                  }).join('')
+                : '<span class="text-muted small">—</span>';
+
+            var npmHtml = npmRefs.length > 0
+                ? npmRefs.map(function(n) {
+                    return '<span class="badge bg-info text-dark me-1">'
+                        + escapeHtml((n.domain_names || []).join(', ')) + '</span>';
+                  }).join('')
+                : '<span class="text-muted small">—</span>';
+
+            html += '<tr>';
+            html += '<td><code class="small">' + escapeHtml(instanceLabel(inst)) + '</code></td>';
+            html += '<td>' + stateBadge(inst.state || '?') + '</td>';
+            html += '<td><code class="small">' + escapeHtml(inst.public_ip  || '—') + '</code></td>';
+            html += '<td><code class="small">' + escapeHtml(inst.private_ip || '—') + '</code></td>';
+            html += '<td>' + tagsHtml + '</td>';
+            html += '<td>' + npmHtml  + '</td>';
+            html += '</tr>';
+        });
+
+        tbody.innerHTML = html;
+    }
+
+    function renderOrphanNpm(usedNpmIds) {
+        var tbody   = document.getElementById('orphan-npm-tbody');
+        var orphans = allNpmHosts.filter(function(npm) { return !usedNpmIds[npm.id]; });
+
+        if (orphans.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted py-3">All NPM proxy hosts are linked to tracked DNS records</td></tr>';
+            return;
+        }
+
+        var html = '';
+        orphans.forEach(function(npm) {
+            var fwdHost   = npm.forward_host || '';
+            var fwdStr    = (npm.forward_scheme || 'http') + '://' + fwdHost + ':' + (npm.forward_port || '');
+            var container = findContainerForHost(fwdHost);
+            var fwdInst   = ipToInstance[fwdHost] || null;
+
+            var backendHtml = container
+                ? containerBadge(container)
+                : (fwdInst
+                    ? (stateBadge(fwdInst.state) + ' <span class="small">' + escapeHtml(instanceLabel(fwdInst)) + '</span>')
+                    : '<span class="text-muted small">—</span>');
+
+            html += '<tr>';
+            html += '<td class="small">' + escapeHtml((npm.domain_names || []).join(', ')) + '</td>';
+            html += '<td><code class="small">' + escapeHtml(fwdStr) + '</code></td>';
+            html += '<td>' + backendHtml + '</td>';
+            html += '<td><span class="badge bg-' + (npm.enabled ? 'success' : 'secondary') + '">'
+                  + (npm.enabled ? 'Enabled' : 'Disabled') + '</span></td>';
+            html += '</tr>';
+        });
+
+        tbody.innerHTML = html;
+    }
+</script>
+{% endblock %}

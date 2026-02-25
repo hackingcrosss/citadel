@@ -126,6 +126,11 @@ def register_routes(app):
     def aws():
         return render_template('aws.html')
 
+    @app.route('/infra-map')
+    @login_required
+    def infra_map():
+        return render_template('infra_map.html')
+
     @app.route('/operations')
     @login_required
     def operations():
