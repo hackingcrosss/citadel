@@ -27,16 +27,32 @@ def _get_client():
     return client, deployment
 
 
-def generate_website_plan(category):
+def generate_website_plan(category, domain=None, extra_context=None):
     """Call the model to produce a structured JSON website plan for the given business category."""
     client, deployment = _get_client()
 
-    planning_prompt = f"""You are a creative web designer creating a website for a business in the {category} industry.
+    domain_hint = ''
+    if domain:
+        domain_hint = f"""
+The website will be hosted at **https://{domain}**.
+- The business name should feel natural alongside the domain "{domain}" (it can match, complement, or be inspired by it)
+- Use contact@{domain} (or a role-appropriate variant like support@{domain}) as the contact email
+- The footer address and phone should feel consistent with a business that owns this domain
+"""
 
+    extra_hint = ''
+    if extra_context and extra_context.strip():
+        extra_hint = f"""
+Additional instructions from the operator (follow these exactly):
+{extra_context.strip()}
+"""
+
+    planning_prompt = f"""You are a creative web designer creating a website for a business in the {category} industry.
+{domain_hint}{extra_hint}
 Generate a comprehensive website plan including:
 
 1. **Brand Identity**
-   - Business name (creative, memorable)
+   - Business name (creative, memorable, consistent with the domain if provided)
    - Tagline/slogan
    - Color palette (4-6 colors with hex codes)
    - Font recommendations (2-3 fonts from Google Fonts)
@@ -48,7 +64,7 @@ Generate a comprehensive website plan including:
    - About section content (2-3 paragraphs)
    - 4-6 services/features to highlight
    - Call-to-action text
-   - Footer information
+   - Footer information (use the domain-based email if a domain was provided)
 
 3. **Design Direction**
    - Choose a bold, distinctive aesthetic that fits the industry
@@ -80,7 +96,7 @@ Return your response as valid JSON with this structure:
   }}
 }}
 
-Make this unique and tailored specifically to {category}. Avoid generic, cookie-cutter designs."""
+Make this unique and tailored specifically to {category}. Avoid generic, cookie-cutter designs.{extra_hint}"""
 
     response = client.chat.completions.create(
         model=deployment,
@@ -96,16 +112,31 @@ Make this unique and tailored specifically to {category}. Avoid generic, cookie-
     return json.loads(json_match.group())
 
 
-def generate_html(plan, category):
+def generate_html(plan, category, domain=None, extra_context=None):
     """Call the model to produce the full single-file HTML website."""
     client, deployment = _get_client()
+
+    domain_instructions = ''
+    if domain:
+        domain_instructions = f"""
+Domain & branding requirements (IMPORTANT — apply these exactly):
+- The website is hosted at: https://{domain}
+- Set <title> to the brand name: {plan['brand']['name']}
+- Include <link rel="canonical" href="https://{domain}"> in <head>
+- Set Open Graph meta tags: og:url="https://{domain}", og:site_name="{plan['brand']['name']}"
+- Navigation logo / wordmark must display: {plan['brand']['name']}
+- Footer contact email must be: {plan['content']['footer'].get('email', 'contact@' + domain)}
+- Any "mailto:" links must use: {plan['content']['footer'].get('email', 'contact@' + domain)}
+- The copyright line in the footer must read: © {plan['brand']['name']}
+- Do NOT hardcode any other domain, placeholder URL, or example.com anywhere in the page
+"""
 
     code_prompt = f"""Create a complete, production-ready single-page website based on this plan:
 
 {json.dumps(plan, indent=2)}
 
 Industry: {category}
-
+{domain_instructions}
 Requirements:
 1. Single HTML file with embedded CSS and JavaScript
 2. Fully responsive (mobile-first)
@@ -138,7 +169,7 @@ Color palette:
 
 Make this production-grade, visually striking, and unique. Avoid generic AI aesthetics.
 Use creative layouts, unexpected typography choices, engaging animations.
-
+{('Additional operator instructions (apply exactly): ' + extra_context.strip()) if extra_context and extra_context.strip() else ''}
 Return ONLY the complete HTML code, no explanations."""
 
     response = client.chat.completions.create(
@@ -162,10 +193,10 @@ def clean_html(html_text):
     return html_text.strip()
 
 
-def generate_website(category):
+def generate_website(category, domain=None, extra_context=None):
     """Full pipeline: plan → HTML → clean. Returns (plan, html)."""
-    plan = generate_website_plan(category)
-    html_raw = generate_html(plan, category)
+    plan = generate_website_plan(category, domain=domain, extra_context=extra_context)
+    html_raw = generate_html(plan, category, domain=domain, extra_context=extra_context)
     html = clean_html(html_raw)
     if not html:
         raise ValueError('HTML generation returned empty content')

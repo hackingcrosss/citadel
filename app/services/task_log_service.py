@@ -16,7 +16,7 @@ def _redis():
     return redis.from_url(url, decode_responses=True)
 
 
-def log_task(task_id, task_type, description):
+def log_task(task_id, task_type, description, meta=None):
     """Record a submitted task so it shows up in the task log."""
     r = _redis()
     entry = {
@@ -25,6 +25,8 @@ def log_task(task_id, task_type, description):
         'description': description,
         'submitted_at': time.time(),
     }
+    if meta:
+        entry['meta'] = meta
     r.lpush(TASK_LOG_KEY, json.dumps(entry))
     r.ltrim(TASK_LOG_KEY, 0, MAX_TASKS - 1)
 
@@ -50,6 +52,7 @@ def get_tasks():
             'description': t.get('description'),
             'submitted_at': t.get('submitted_at', now),
             'status': status,
+            'meta': t.get('meta', {}),
         }
 
         submitted_at = t.get('submitted_at', now)

@@ -23,3 +23,17 @@ def clear_completed_tasks():
         return jsonify({'ok': True})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+
+@api_bp.route('/task-log/<task_id>/revoke', methods=['POST'])
+@login_required
+def revoke_task(task_id):
+    from app.tasks.celery_app import celery
+    try:
+        celery.control.revoke(task_id, terminate=True)
+        # For PENDING tasks, control.revoke() never writes to the result backend,
+        # so AsyncResult.status stays PENDING forever. Force it to REVOKED now.
+        celery.backend.store_result(task_id, None, 'REVOKED')
+        return jsonify({'ok': True})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
