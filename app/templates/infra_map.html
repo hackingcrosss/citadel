@@ -946,12 +946,22 @@
         visited[startId] = true;
         var queue;
 
-        // Forward BFS — downstream to leaves
+        // Forward BFS — downstream to leaves, NPM-ownership scoped.
+        // When the BFS would enter an NPM proxy node we verify that at least one
+        // of its owning FQDNs (diagramNpmFqdnLinks) is already in the visited set.
+        // This prevents a shared EC2 node from dragging in proxy entries that
+        // belong to unrelated FQDNs/zones.
         queue = [startId];
         while (queue.length) {
             var curr = queue.shift();
-            ((diagramAdjacency[curr] || {}).to || []).forEach(function(nId) {
-                if (!visited[nId]) { visited[nId] = true; queue.push(nId); }
+            ((diagramAdjacency[curr] || {}).to || []).forEach(function(childId) {
+                if (visited[childId]) return;
+                if (diagramNodeGroup[childId] === 'npm') {
+                    var owners = diagramNpmFqdnLinks[childId] || [];
+                    if (!owners.some(function(fId) { return !!visited[fId]; })) return;
+                }
+                visited[childId] = true;
+                queue.push(childId);
             });
         }
 
