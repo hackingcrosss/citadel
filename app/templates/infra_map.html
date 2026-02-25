@@ -275,6 +275,8 @@
     var diagramNetwork       = null;  // vis.Network instance
     var diagramVisData       = null;  // current vis DataSet pair {nodes, edges}
     var diagramAdjacency     = {};    // nodeId -> { to: [], from: [] }
+    var diagramNpmFqdnLinks  = {};    // npmVisId -> [fqdnVisId, ...]  (scoped backward traversal)
+    var diagramNodeGroup     = {};    // nodeId -> group string (e.g. 'ec2', 'npm', 'fqdn')
     var diagramOriginalNodes = {};    // nodeId -> { color, font }  (stored at render time)
     var diagramOriginalEdges = {};    // edgeId -> color object     (stored at render time)
     var diagramActiveNode    = null;  // currently filtered node id, or null
@@ -953,11 +955,34 @@
             });
         }
 
-        // Backward BFS — upstream to roots
+        // Backward BFS — upstream to roots, with NPM-aware scoping.
+        // When traversing backward through an NPM proxy node we use
+        // diagramNpmFqdnLinks to walk only to the FQDNs that explicitly own
+        // that proxy entry, rather than every FQDN whose A record resolves to
+        // the same EC2 server.  We also pull in the EC2 node that sits between
+        // each of those FQDNs and the NPM node so the server is still visible.
         queue = [startId];
         while (queue.length) {
             var curr = queue.shift();
-            ((diagramAdjacency[curr] || {}).from || []).forEach(function(nId) {
+            var parents;
+            if (diagramNpmFqdnLinks[curr]) {
+                // Scoped parents: only the specific FQDNs for this proxy entry
+                parents = diagramNpmFqdnLinks[curr];
+                // Also include the EC2 node that is a forward child of each FQDN
+                // (FQDN → EC2 edge) so the hosting server remains in the path.
+                parents.forEach(function(fId) {
+                    ((diagramAdjacency[fId] || {}).to || []).forEach(function(childId) {
+                        if (!visited[childId] && diagramNodeGroup[childId] === 'ec2') {
+                            visited[childId] = true;
+                            // Don't queue EC2 for further backward traversal —
+                            // we only want to surface it as a visual sibling.
+                        }
+                    });
+                });
+            } else {
+                parents = (diagramAdjacency[curr] || {}).from || [];
+            }
+            parents.forEach(function(nId) {
                 if (!visited[nId]) { visited[nId] = true; queue.push(nId); }
             });
         }
@@ -1045,6 +1070,9 @@
         var backendNodes  = {}; // "host:port"  -> vis node id
         var nodeIdCounter = 0;
 
+        // Reset per-render path-filter helpers
+        diagramNpmFqdnLinks = {};
+
         function uid() { return ++nodeIdCounter; }
 
         var GROUP_COLORS = {
@@ -1123,9 +1151,16 @@
                         nodes.push(makeNode(npmId, npmLabel, 'npm', { level: 3 }));
                     }
 
-                    // Edge: FQDN (or EC2) → NPM
-                    var npmSrc = ec2Id || fqdnId;
-                    edges.push({ from: npmSrc, to: npmId, color: { color: '#4ade80', opacity: 0.8 } });
+                    // Visual edge: EC2 → NPM (if EC2 exists) keeps NPM at level 3 in the
+                    // hierarchical layout, giving a correct EC2 → proxy → backend chain.
+                    var npmVisFrom = ec2Id || fqdnId;
+                    edges.push({ from: npmVisFrom, to: npmId, color: { color: '#4ade80', opacity: 0.8 } });
+
+                    // Record the owning FQDN for this NPM proxy node so the backward BFS
+                    // in getPathNodes can scope to only the relevant FQDN instead of all
+                    // FQDNs whose A records resolve to the same server.
+                    if (!diagramNpmFqdnLinks[npmId]) diagramNpmFqdnLinks[npmId] = [];
+                    diagramNpmFqdnLinks[npmId].push(fqdnId);
 
                     // Backend node
                     var fwdHost  = npm.forward_host || '';
@@ -1166,7 +1201,7 @@
         // Assign stable IDs to edges before DataSet creation
         edges.forEach(function(e, i) { e.id = 'e' + i; });
 
-        // Build directed adjacency map for bidirectional path traversal
+        // Build directed adjacency map for bidirectional path traversal.
         diagramAdjacency = {};
         edges.forEach(function(e) {
             if (!diagramAdjacency[e.from]) diagramAdjacency[e.from] = { to: [], from: [] };
@@ -1175,13 +1210,15 @@
             diagramAdjacency[e.to].from.push(e.from);
         });
 
-        // Snapshot original node and edge styles so highlight can be fully reversed
+        // Snapshot original node styles and record group for path BFS helpers
         diagramOriginalNodes = {};
+        diagramNodeGroup     = {};
         nodes.forEach(function(n) {
             diagramOriginalNodes[n.id] = {
                 color: n.color,
                 font:  JSON.parse(JSON.stringify(n.font))
             };
+            diagramNodeGroup[n.id] = n.group;
         });
         diagramOriginalEdges = {};
         edges.forEach(function(e) { diagramOriginalEdges[e.id] = e.color; });
