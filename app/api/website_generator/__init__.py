@@ -11,10 +11,18 @@ def website_generator_generate():
     if not category:
         return jsonify({'error': 'category is required'}), 400
 
+    domain = data.get('domain', '').strip() or None
+    subdomain = data.get('subdomain', '').strip() or ''
+    zone_id = data.get('zone_id', '').strip() or ''
+    zone_name = data.get('zone_name', '').strip() or ''
+    extra_context = data.get('extra_context', '').strip() or None
+
     from app.tasks.website_generator_tasks import generate_website_task
     from app.services import task_log_service
-    task = generate_website_task.delay(category)
-    task_log_service.log_task(task.id, 'website_generation', category)
+    task = generate_website_task.delay(category, domain=domain, extra_context=extra_context)
+    task_log_service.log_task(task.id, 'website_generation', category,
+                              meta={'subdomain': subdomain, 'domain': domain or '',
+                                    'zone_id': zone_id, 'zone_name': zone_name})
     return jsonify({'task_id': task.id})
 
 

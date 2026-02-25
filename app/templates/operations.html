@@ -312,6 +312,12 @@
                     </button>
                 </div>
             </div>
+            <div class="mb-3">
+                <label class="form-label">Extra Instructions <span class="text-muted small">(optional)</span></label>
+                <textarea class="form-control" id="wg-extra-context" rows="2"
+                    placeholder="e.g. Use a dark navy and gold color scheme. Focus on enterprise clients. Include a testimonials section."></textarea>
+                <div class="form-text">Override the model's creative choices — specify a theme, color palette, tone, content focus, or any other design direction.</div>
+            </div>
 
             <!-- Loading -->
             <div id="wg-loading" class="d-none text-center py-4">
@@ -362,6 +368,7 @@
 <script>
     var selectedZoneId = '';
     var selectedZoneName = '';
+    var _pendingZone = null; // { zoneId, zoneName } — set before zones load, applied by loadZones()
     var allInstances = [];
     var allContainers = [];
     var npmPublicIp = '';
@@ -457,7 +464,14 @@
                     opt.textContent = z.name + (z.status === 'active' ? '' : ' (' + z.status + ')');
                     select.appendChild(opt);
                 });
-                if (current) select.value = current;
+                if (current) {
+                    select.value = current;
+                } else if (_pendingZone) {
+                    var target = _pendingZone.zoneId + '|' + _pendingZone.zoneName;
+                    _pendingZone = null;
+                    select.value = target;
+                    if (select.value === target) onZoneChange();
+                }
             })
             .catch(function() {});
     }
@@ -1613,6 +1627,68 @@
         banner.classList.remove('d-none');
     })();
 
+    // On load: restore a completed task clicked from the notification panel
+    (function _wgRestoreDone() {
+        var taskId = localStorage.getItem('wg_done_task_id');
+        if (!taskId) return;
+        var category = localStorage.getItem('wg_done_category') || '';
+        var subdomain = localStorage.getItem('wg_done_subdomain') || '';
+        var zoneId = localStorage.getItem('wg_done_zone_id') || '';
+        var zoneName = localStorage.getItem('wg_done_zone_name') || '';
+
+        // Clear immediately so a page reload won't re-trigger
+        localStorage.removeItem('wg_done_task_id');
+        localStorage.removeItem('wg_done_category');
+        localStorage.removeItem('wg_done_subdomain');
+        localStorage.removeItem('wg_done_zone_id');
+        localStorage.removeItem('wg_done_zone_name');
+
+        // Pre-fill form fields
+        if (category) document.getElementById('wg-category').value = category;
+        if (subdomain) document.getElementById('wg-subdomain').value = subdomain;
+
+        // Queue zone selection — loadZones() will apply it after the dropdown is populated
+        if (zoneId && zoneName) {
+            _pendingZone = {zoneId: zoneId, zoneName: zoneName};
+        }
+
+        // Reveal the operations panel so the website generator card is visible
+        document.getElementById('operations-content').classList.remove('d-none');
+        document.getElementById('no-zone-message').classList.add('d-none');
+
+        // Show loading while fetching the stored result
+        document.getElementById('wg-loading').classList.remove('d-none');
+        document.getElementById('wg-loading-msg').textContent = 'Restoring generated website\u2026';
+        document.getElementById('wg-btn-generate').disabled = true;
+
+        // Scroll to the card
+        var card = document.getElementById('website-generator-card');
+        if (card) setTimeout(function() { card.scrollIntoView({behavior: 'smooth', block: 'start'}); }, 100);
+
+        fetch('/api/website-generator/status/' + taskId)
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                document.getElementById('wg-loading').classList.add('d-none');
+                document.getElementById('wg-btn-generate').disabled = false;
+                if (data.status === 'SUCCESS' && data.result) {
+                    _wgOnComplete(data.result);
+                    // Re-apply form fields (wgOnComplete doesn't touch them but keeps parity)
+                    if (category) document.getElementById('wg-category').value = category;
+                    if (subdomain) document.getElementById('wg-subdomain').value = subdomain;
+                } else {
+                    document.getElementById('wg-error').textContent =
+                        'Could not restore the website \u2014 the task result may have expired.';
+                    document.getElementById('wg-error').classList.remove('d-none');
+                }
+            })
+            .catch(function(err) {
+                document.getElementById('wg-loading').classList.add('d-none');
+                document.getElementById('wg-btn-generate').disabled = false;
+                document.getElementById('wg-error').textContent = 'Failed to restore: ' + err;
+                document.getElementById('wg-error').classList.remove('d-none');
+            });
+    })();
+
     function resumeTask() {
         var taskId = localStorage.getItem('wg_task_id');
         if (!taskId) return;
@@ -1648,11 +1724,20 @@
         document.getElementById('wg-btn-generate').disabled = true;
 
         var subdomain = document.getElementById('wg-subdomain').value.trim();
+        var extraContext = document.getElementById('wg-extra-context').value.trim();
+
+        var fqdn = subdomain
+            ? subdomain + (selectedZoneName ? '.' + selectedZoneName : '')
+            : selectedZoneName || '';
 
         fetch('/api/website-generator/generate', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({category: category})
+            body: JSON.stringify({category: category, domain: fqdn || undefined,
+                                  subdomain: subdomain || undefined,
+                                  zone_id: selectedZoneId || undefined,
+                                  zone_name: selectedZoneName || undefined,
+                                  extra_context: extraContext || undefined})
         })
         .then(function(r) { return r.json(); })
         .then(function(data) {

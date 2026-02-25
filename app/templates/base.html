@@ -396,6 +396,32 @@
                 ? new Date(t.submitted_at * 1000).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})
                 : '';
 
+            var resumeBtn = '';
+            if (t.type === 'website_generation' && t.status === 'SUCCESS') {
+                var meta = t.meta || {};
+                resumeBtn = '<div class="mt-2">' +
+                    '<button class="btn btn-sm btn-outline-success" style="font-size:0.72rem;" ' +
+                        'data-task-id="' + _esc(t.task_id) + '" ' +
+                        'data-category="' + _esc(t.description || '') + '" ' +
+                        'data-subdomain="' + _esc(meta.subdomain || '') + '" ' +
+                        'data-zone-id="' + _esc(meta.zone_id || '') + '" ' +
+                        'data-zone-name="' + _esc(meta.zone_name || '') + '" ' +
+                        'onclick="taskLogResumeWebsite(this)">' +
+                        '<i class="bi bi-arrow-right-circle"></i> Resume in Setup' +
+                    '</button>' +
+                '</div>';
+            }
+
+            var stopBtn = '';
+            if (!isTerminal) {
+                stopBtn = '<button class="btn btn-sm btn-outline-danger ms-auto flex-shrink-0" ' +
+                    'style="font-size:0.7rem;padding:1px 6px;line-height:1.6;" ' +
+                    'title="Stop task" ' +
+                    'onclick="taskLogRevoke(\'' + _esc(t.task_id) + '\', this)">' +
+                    '<i class="bi bi-stop-fill"></i>' +
+                '</button>';
+            }
+
             return '<div class="task-entry">' +
                 '<div class="task-entry-icon">' + _icon(t.status) + '</div>' +
                 '<div class="task-entry-body">' +
@@ -407,9 +433,20 @@
                         (timeStr ? '<span>' + _esc(timeStr) + '</span>' : '') +
                         (submittedStr ? '<span>' + _esc(submittedStr) + '</span>' : '') +
                     '</div>' +
+                    resumeBtn +
                 '</div>' +
+                stopBtn +
             '</div>';
         }
+
+        window.taskLogResumeWebsite = function(btn) {
+            localStorage.setItem('wg_done_task_id', btn.getAttribute('data-task-id'));
+            localStorage.setItem('wg_done_category', btn.getAttribute('data-category') || '');
+            localStorage.setItem('wg_done_subdomain', btn.getAttribute('data-subdomain') || '');
+            localStorage.setItem('wg_done_zone_id', btn.getAttribute('data-zone-id') || '');
+            localStorage.setItem('wg_done_zone_name', btn.getAttribute('data-zone-name') || '');
+            window.location.href = '/operations';
+        };
 
         function _render(tasks) {
             var list  = document.getElementById('task-log-list');
@@ -453,6 +490,14 @@
             fetch('/api/task-log/completed', { method: 'DELETE' })
                 .then(function() { taskLogRefresh(); })
                 .catch(function() {});
+        };
+
+        window.taskLogRevoke = function(taskId, btn) {
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status"></span>';
+            fetch('/api/task-log/' + encodeURIComponent(taskId) + '/revoke', { method: 'POST' })
+                .then(function() { taskLogRefresh(); })
+                .catch(function() { taskLogRefresh(); });
         };
 
         document.addEventListener('DOMContentLoaded', function() {
