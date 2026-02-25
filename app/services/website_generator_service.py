@@ -414,3 +414,130 @@ def relaunch_containers():
         raise RuntimeError(err or out or f'Command exited with code {exit_code}')
 
     return {'stdout': out, 'stderr': err}
+
+
+def get_deployed_sites():
+    """
+    Discover all website-generator-deployed sites by:
+    1. SSH to NPM host → read docker-compose.yaml → extract nginx_* container names
+    2. Inspect each container to get its current IP
+    3. Fetch NPM proxy hosts and match by forward_host == container_name or container_ip
+    Returns a list of dicts: {fqdn, category, folder, npm_host_id, forward_host}
+    """
+    from app.services import npm_service
+
+    deploy_path = (get_credential('npm', 'deploy_path') or '/var/www/html').rstrip('/')
+
+    # Step 1: read docker-compose.yaml via SSH
+    client = _get_ssh_client()
+    try:
+        sftp = client.open_sftp()
+        try:
+            with sftp.open(f'{deploy_path}/docker-compose.yaml', 'r') as f:
+                compose_data = yaml.safe_load(f.read()) or {}
+        except IOError:
+            return []
+        finally:
+            sftp.close()
+    finally:
+        client.close()
+
+    services = compose_data.get('services', {})
+
+    # Step 2: extract containers from nginx_* services
+    containers = {}  # container_name -> folder_name (same value, kept for clarity)
+    for svc_name, svc_cfg in services.items():
+        if not svc_name.startswith('nginx_'):
+            continue
+        if not isinstance(svc_cfg, dict):
+            continue
+        folder = svc_cfg.get('container_name', svc_name[len('nginx_'):])
+        containers[folder] = folder
+
+    if not containers:
+        return []
+
+    # Step 3: get current IPs for running containers (best-effort)
+    container_ips = {}  # container_name -> ip
+    for folder in containers:
+        try:
+            ip = _get_container_ip(folder)
+            if ip:
+                container_ips[folder] = ip
+        except Exception:
+            pass
+
+    # Build a reverse lookup: ip/name -> folder
+    lookup = {}
+    for folder in containers:
+        lookup[folder] = folder
+        if folder in container_ips:
+            lookup[container_ips[folder]] = folder
+
+    # Step 4: fetch NPM proxy hosts and match
+    npm_hosts = npm_service.list_proxy_hosts()
+
+    results = []
+    for host in npm_hosts:
+        fwd = host.get('forward_host', '')
+        domain_names = host.get('domain_names') or []
+        if not domain_names or not fwd:
+            continue
+        folder = lookup.get(fwd)
+        if not folder:
+            continue
+        fqdn = domain_names[0]
+        # Recover readable category from slug (e.g. "law-firm-123456" → "Law Firm")
+        category_slug = re.sub(r'-\d{6}$', '', folder)
+        category = category_slug.replace('-', ' ').title()
+        results.append({
+            'fqdn': fqdn,
+            'category': category,
+            'folder': folder,
+            'npm_host_id': host.get('id'),
+            'forward_host': fwd,
+        })
+
+    return results
+
+
+def remove_deployed_site(folder_name):
+    """
+    Remove a website-generator site from the NPM host:
+    1. Stop and remove the Docker container
+    2. Remove the nginx_{folder_name} service from docker-compose.yaml
+    Returns {'stopped': bool, 'compose_updated': bool}
+    """
+    deploy_path = (get_credential('npm', 'deploy_path') or '/var/www/html').rstrip('/')
+    result = {'stopped': False, 'compose_updated': False}
+
+    client = _get_ssh_client()
+    try:
+        # Stop and remove the container
+        cmd = f'docker stop {folder_name} && docker rm {folder_name}'
+        stdin, stdout, stderr = client.exec_command(cmd)
+        stdout.channel.recv_exit_status()
+        result['stopped'] = True
+
+        # Update docker-compose.yaml
+        sftp = client.open_sftp()
+        try:
+            compose_file = f'{deploy_path}/docker-compose.yaml'
+            try:
+                with sftp.open(compose_file, 'r') as f:
+                    compose_data = yaml.safe_load(f.read()) or {}
+            except IOError:
+                compose_data = {}
+
+            svc_key = f'nginx_{folder_name}'
+            if 'services' in compose_data and svc_key in compose_data['services']:
+                del compose_data['services'][svc_key]
+                with sftp.open(compose_file, 'w') as f:
+                    f.write(yaml.dump(compose_data, default_flow_style=False, sort_keys=False))
+                result['compose_updated'] = True
+        finally:
+            sftp.close()
+    finally:
+        client.close()
+
+    return result

@@ -4,35 +4,78 @@
 
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-4">
-    <h1 class="h3 mb-0">C2 Deployments</h1>
+    <h1 class="h3 mb-0">Deployments</h1>
     <button class="btn btn-sm btn-outline-secondary" onclick="loadAll()">
         <i class="bi bi-arrow-clockwise"></i> Refresh
     </button>
 </div>
 
-<div class="card-custom">
-    <div class="card-body p-0">
-        <table class="table table-hover mb-0">
-            <thead>
-                <tr>
-                    <th>Listener</th>
-                    <th>Type</th>
-                    <th>Stager Host</th>
-                    <th>Bind Port</th>
-                    <th>Callback Hosts</th>
-                    <th>NPM Proxy</th>
-                    <th>DNS Records</th>
-                    <th>Actions</th>
-                </tr>
-            </thead>
-            <tbody id="deployments-table">
-                <tr>
-                    <td colspan="8" class="text-center text-muted py-4">
-                        <span class="spinner-border spinner-border-sm"></span> Loading...
-                    </td>
-                </tr>
-            </tbody>
-        </table>
+<!-- Tabs -->
+<ul class="nav nav-tabs mb-3" id="deploymentTabs">
+    <li class="nav-item">
+        <button class="nav-link active" id="tab-c2" onclick="switchTab('c2')">
+            <i class="bi bi-crosshair"></i> C2 Deployments
+        </button>
+    </li>
+    <li class="nav-item">
+        <button class="nav-link" id="tab-groomed" onclick="switchTab('groomed')">
+            <i class="bi bi-globe2"></i> Groomed Sites
+            <span id="groomed-badge" class="badge bg-secondary ms-1 d-none">0</span>
+        </button>
+    </li>
+</ul>
+
+<!-- C2 Deployments tab -->
+<div id="pane-c2">
+    <div class="card-custom">
+        <div class="card-body p-0">
+            <table class="table table-hover mb-0">
+                <thead>
+                    <tr>
+                        <th>Listener</th>
+                        <th>Type</th>
+                        <th>Stager Host</th>
+                        <th>Bind Port</th>
+                        <th>Callback Hosts</th>
+                        <th>NPM Proxy</th>
+                        <th>DNS Records</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="deployments-table">
+                    <tr>
+                        <td colspan="8" class="text-center text-muted py-4">
+                            <span class="spinner-border spinner-border-sm"></span> Loading...
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Groomed Sites tab -->
+<div id="pane-groomed" class="d-none">
+    <div class="card-custom">
+        <div class="card-body p-0">
+            <table class="table table-hover mb-0">
+                <thead>
+                    <tr>
+                        <th>Domain</th>
+                        <th>Category</th>
+                        <th>Container / Folder</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="groomed-table">
+                    <tr>
+                        <td colspan="4" class="text-center text-muted py-4">
+                            <span class="spinner-border spinner-border-sm"></span> Loading...
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
     </div>
 </div>
 
@@ -54,7 +97,7 @@
     </div>
 </div>
 
-<!-- Teardown Confirmation Modal -->
+<!-- Teardown Confirmation Modal (C2) -->
 <div class="modal fade" id="teardownModal" tabindex="-1">
     <div class="modal-dialog">
         <div class="modal-content">
@@ -69,6 +112,28 @@
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
                 <button type="button" class="btn btn-danger" id="btn-teardown-confirm" onclick="executeTeardown()">
+                    <i class="bi bi-trash"></i> Delete All
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Teardown Confirmation Modal (Groomed Site) -->
+<div class="modal fade" id="groomedTeardownModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title text-danger"><i class="bi bi-exclamation-triangle"></i> Teardown Groomed Site</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p>This will delete the following resources for <strong id="groomed-teardown-name"></strong>:</p>
+                <ul id="groomed-teardown-list" class="mb-0"></ul>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-danger" id="btn-groomed-teardown-confirm" onclick="executeGroomedTeardown()">
                     <i class="bi bi-trash"></i> Delete All
                 </button>
             </div>
@@ -98,7 +163,9 @@
     var allListeners = [];
     var allNpmHosts = [];
     var deployments = [];
+    var groomedSites = [];
     var pendingTeardown = null;
+    var pendingGroomedTeardown = null;
 
     document.addEventListener('DOMContentLoaded', function() {
         loadAll();
@@ -106,6 +173,16 @@
 
     function loadAll() {
         loadDeployments();
+        loadGroomedSites();
+    }
+
+    // --- Tab switching ---
+
+    function switchTab(name) {
+        document.getElementById('pane-c2').classList.toggle('d-none', name !== 'c2');
+        document.getElementById('pane-groomed').classList.toggle('d-none', name !== 'groomed');
+        document.getElementById('tab-c2').classList.toggle('active', name === 'c2');
+        document.getElementById('tab-groomed').classList.toggle('active', name === 'groomed');
     }
 
     // --- Helpers ---
@@ -133,10 +210,8 @@
     // --- Zone helpers ---
 
     function extractRootDomain(hostname) {
-        // Remove trailing dot if present
         var h = hostname.replace(/\.$/, '');
         var parts = h.split('.');
-        // Return last two parts (e.g. "sub.example.com" -> "example.com")
         if (parts.length >= 2) {
             return parts.slice(-2).join('.');
         }
@@ -145,7 +220,6 @@
 
     function findZoneForHost(hostname) {
         var h = hostname.replace(/\.$/, '').toLowerCase();
-        // Try to find the most specific matching zone (longest name match)
         var bestMatch = null;
         allZones.forEach(function(z) {
             var zName = z.name.toLowerCase();
@@ -158,13 +232,12 @@
         return bestMatch;
     }
 
-    // --- Load Deployments ---
+    // --- Load C2 Deployments ---
 
     function loadDeployments() {
         var tbody = document.getElementById('deployments-table');
         tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted py-4"><span class="spinner-border spinner-border-sm"></span> Loading...</td></tr>';
 
-        // Fetch CS listeners, NPM hosts, and Cloudflare zones in parallel
         Promise.all([
             fetch('/api/cobaltstrike/listeners').then(function(r) { return r.json(); }).catch(function() { return {listeners: []}; }),
             fetch('/api/npm/hosts').then(function(r) { return r.json(); }).catch(function() { return {hosts: []}; }),
@@ -174,17 +247,14 @@
             allNpmHosts = results[1].hosts || [];
             allZones = results[2].zones || [];
 
-            // Build deployments by matching listeners to NPM hosts
             deployments = [];
             allListeners.forEach(function(l) {
                 var lHosts = l.hosts || [];
                 if (!Array.isArray(lHosts)) lHosts = [];
 
-                // Parse type from payload
                 var lType = parseListenerType(l);
                 var bindPort = l.httpBindPort || l.dnsBindPort || l.port || '-';
 
-                // Find matching NPM hosts (where domain_names overlap with listener hosts)
                 var matchedNpm = [];
                 if (lHosts.length > 0) {
                     allNpmHosts.forEach(function(npm) {
@@ -207,13 +277,11 @@
                 });
             });
 
-            // Auto-resolve DNS records from callback hosts
             loadDnsForDeployments();
         });
     }
 
     function loadDnsForDeployments() {
-        // Collect all unique zone IDs needed from callback hosts
         var zoneIdsNeeded = {};
         deployments.forEach(function(dep) {
             dep.hosts.forEach(function(h) {
@@ -226,13 +294,11 @@
 
         var zoneIds = Object.keys(zoneIdsNeeded);
         if (zoneIds.length === 0) {
-            // No zones matched — render without DNS
             deployments.forEach(function(dep) { dep.dnsLoaded = true; });
-            renderTable();
+            renderDeploymentsTable();
             return;
         }
 
-        // Fetch A records for each needed zone in parallel
         var fetches = zoneIds.map(function(zId) {
             return fetch('/api/domains/zones/' + zId + '/records')
                 .then(function(r) { return r.json(); })
@@ -248,13 +314,11 @@
         });
 
         Promise.all(fetches).then(function(results) {
-            // Build a map of zone -> A records
             var zoneRecords = {};
             results.forEach(function(res) {
                 zoneRecords[res.zoneId] = res.records;
             });
 
-            // Match DNS records to each deployment's callback hosts
             deployments.forEach(function(dep) {
                 dep.matchedDns = [];
                 dep.dnsLoaded = true;
@@ -267,7 +331,6 @@
                         var rName = r.name.replace(/\.$/, '');
                         var hName = h.replace(/\.$/, '');
                         if (rName === hName) {
-                            // Store the zoneId alongside the record for teardown
                             var rec = Object.assign({}, r, { _zoneId: zone.id });
                             dep.matchedDns.push(rec);
                         }
@@ -275,7 +338,7 @@
                 });
             });
 
-            renderTable();
+            renderDeploymentsTable();
         });
     }
 
@@ -293,7 +356,7 @@
         return '-';
     }
 
-    function renderTable() {
+    function renderDeploymentsTable() {
         var tbody = document.getElementById('deployments-table');
 
         if (deployments.length === 0) {
@@ -307,7 +370,6 @@
             var lHost = l.host || l.pipename || '-';
             var lHosts = dep.hosts.length > 0 ? dep.hosts.join(', ') : '-';
 
-            // NPM info — show forward target (scheme://host:port)
             var npmInfo = '-';
             if (dep.npmHosts.length > 0) {
                 npmInfo = dep.npmHosts.map(function(n) {
@@ -318,7 +380,6 @@
                 }).join(' ');
             }
 
-            // DNS records matching callback hosts
             var dnsInfo = '-';
             if (dep.dnsLoaded) {
                 if (dep.matchedDns.length > 0) {
@@ -368,7 +429,7 @@
         new bootstrap.Modal(document.getElementById('jsonModal')).show();
     }
 
-    // --- Teardown ---
+    // --- C2 Teardown ---
 
     function confirmTeardown(idx) {
         var dep = deployments[idx];
@@ -395,11 +456,9 @@
         var dep = pendingTeardown;
         pendingTeardown = null;
 
-        // Close confirmation modal
         var modal = bootstrap.Modal.getInstance(document.getElementById('teardownModal'));
         if (modal) modal.hide();
 
-        // Show teardown log
         var logContainer = document.getElementById('teardown-log-container');
         logContainer.classList.remove('d-none');
         var logEl = document.getElementById('teardown-log');
@@ -408,7 +467,6 @@
         var LOG = 'teardown-log';
         var listenerName = dep.listener.name;
 
-        // Step 1: Delete CS listener
         logWarn(LOG, 'Deleting CS listener: <strong>' + escapeHtml(listenerName) + '</strong>...');
 
         fetch('/api/cobaltstrike/listeners/' + encodeURIComponent(listenerName), {method: 'DELETE'})
@@ -420,7 +478,6 @@
                     logOk(LOG, 'CS listener deleted: ' + escapeHtml(listenerName));
                 }
 
-                // Step 2: Delete NPM hosts
                 var npmPromises = dep.npmHosts.map(function(n) {
                     var target = (n.forward_scheme || 'http') + '://' + (n.forward_host || '?') + ':' + (n.forward_port || 80);
                     logWarn(LOG, 'Deleting NPM proxy host ' + escapeHtml(target) + '...');
@@ -439,7 +496,6 @@
                 return Promise.all(npmPromises);
             })
             .then(function() {
-                // Step 3: Delete DNS records using auto-resolved zone IDs
                 if (dep.matchedDns.length === 0) {
                     logInfo(LOG, 'No matching DNS records to delete');
                     return;
@@ -463,8 +519,160 @@
             })
             .then(function() {
                 logInfo(LOG, '<strong>Teardown complete for ' + escapeHtml(listenerName) + '</strong>');
-                // Reload data
                 loadDeployments();
+            })
+            .catch(function(err) {
+                logErr(LOG, 'Unexpected error: ' + err);
+            });
+    }
+
+    // --- Groomed Sites ---
+
+    function loadGroomedSites() {
+        var tbody = document.getElementById('groomed-table');
+        tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted py-4"><span class="spinner-border spinner-border-sm"></span> Loading...</td></tr>';
+
+        fetch('/api/website-generator/deployed-sites')
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (data.error) throw new Error(data.error);
+                groomedSites = data.sites || [];
+                renderGroomedTable();
+            })
+            .catch(function(err) {
+                document.getElementById('groomed-table').innerHTML =
+                    '<tr><td colspan="4" class="text-center text-danger py-4">Failed to load: ' + escapeHtml(String(err)) + '</td></tr>';
+                document.getElementById('groomed-badge').classList.add('d-none');
+            });
+    }
+
+    function renderGroomedTable() {
+        var tbody = document.getElementById('groomed-table');
+        var badge = document.getElementById('groomed-badge');
+
+        if (groomedSites.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted py-4">No groomed sites found — publish a generated website from the Setup page.</td></tr>';
+            badge.classList.add('d-none');
+            return;
+        }
+
+        badge.textContent = groomedSites.length;
+        badge.classList.remove('d-none');
+
+        var html = '';
+        groomedSites.forEach(function(site, idx) {
+            var fqdn = site.fqdn || '';
+            var url = 'https://' + fqdn;
+
+            html += '<tr>';
+            html += '<td><a href="' + escapeHtml(url) + '" target="_blank" rel="noopener noreferrer">' +
+                        '<i class="bi bi-box-arrow-up-right me-1 small"></i>' + escapeHtml(fqdn) +
+                    '</a></td>';
+            html += '<td><span class="badge bg-secondary">' + escapeHtml(site.category || '—') + '</span></td>';
+            html += '<td><code class="small">' + escapeHtml(site.folder || '—') + '</code></td>';
+            html += '<td class="text-nowrap">';
+            html += '<button class="btn btn-sm btn-outline-danger" onclick="confirmGroomedTeardown(' + idx + ')" title="Teardown infrastructure">';
+            html += '<i class="bi bi-trash"></i>';
+            html += '</button>';
+            html += '</td>';
+            html += '</tr>';
+        });
+
+        tbody.innerHTML = html;
+    }
+
+    function confirmGroomedTeardown(idx) {
+        var site = groomedSites[idx];
+        if (!site) return;
+        pendingGroomedTeardown = site;
+
+        document.getElementById('groomed-teardown-name').textContent = site.fqdn || 'unknown';
+        var list = document.getElementById('groomed-teardown-list');
+        var items = '';
+        items += '<li>Stop &amp; remove Docker container: <strong>' + escapeHtml(site.folder || '') + '</strong></li>';
+        items += '<li>Remove service from docker-compose.yaml</li>';
+        items += '<li>NPM proxy host for: <strong>' + escapeHtml(site.fqdn || '') + '</strong></li>';
+        items += '<li>Cloudflare A record for: <strong>' + escapeHtml(site.fqdn || '') + '</strong></li>';
+        list.innerHTML = items;
+        new bootstrap.Modal(document.getElementById('groomedTeardownModal')).show();
+    }
+
+    function executeGroomedTeardown() {
+        if (!pendingGroomedTeardown) return;
+        var site = pendingGroomedTeardown;
+        pendingGroomedTeardown = null;
+
+        var modal = bootstrap.Modal.getInstance(document.getElementById('groomedTeardownModal'));
+        if (modal) modal.hide();
+
+        var logContainer = document.getElementById('teardown-log-container');
+        logContainer.classList.remove('d-none');
+        document.getElementById('teardown-log').innerHTML = '';
+
+        var LOG = 'teardown-log';
+        var fqdn = site.fqdn;
+        var folder = site.folder;
+        var npmHostId = site.npm_host_id;
+
+        // Step 1: stop container + remove from docker-compose (backend)
+        logWarn(LOG, 'Stopping container and updating docker-compose for <strong>' + escapeHtml(folder) + '</strong>...');
+        fetch('/api/website-generator/deployed-sites/' + encodeURIComponent(folder), {method: 'DELETE'})
+            .then(function(r) { return r.json(); })
+            .then(function(d) {
+                if (d.error) logErr(LOG, 'Container cleanup failed: ' + escapeHtml(d.error));
+                else logOk(LOG, 'Container stopped and removed from docker-compose');
+            })
+            .catch(function(err) { logErr(LOG, 'Container cleanup error: ' + err); })
+
+            // Step 2: delete NPM proxy host
+            .then(function() {
+                if (!npmHostId) {
+                    logInfo(LOG, 'No NPM proxy host ID — skipping');
+                    return;
+                }
+                logWarn(LOG, 'Deleting NPM proxy host (id: ' + escapeHtml(String(npmHostId)) + ')...');
+                return fetch('/api/npm/hosts/' + npmHostId, {method: 'DELETE'})
+                    .then(function(r) { return r.json(); })
+                    .then(function(d) {
+                        if (d.error) logErr(LOG, 'NPM delete failed: ' + escapeHtml(d.error));
+                        else logOk(LOG, 'NPM proxy host deleted');
+                    })
+                    .catch(function(err) { logErr(LOG, 'NPM delete error: ' + err); });
+            })
+
+            // Step 3: find zone from allZones and delete Cloudflare A record
+            .then(function() {
+                var zone = findZoneForHost(fqdn);
+                if (!zone) {
+                    logInfo(LOG, 'No matching Cloudflare zone for ' + escapeHtml(fqdn) + ' — skipping DNS');
+                    return;
+                }
+                return fetch('/api/domains/zones/' + encodeURIComponent(zone.id) + '/records')
+                    .then(function(r) { return r.json(); })
+                    .then(function(data) {
+                        var records = (data.records || []).filter(function(r) {
+                            return r.type === 'A' && r.name.replace(/\.$/, '') === fqdn;
+                        });
+                        if (records.length === 0) {
+                            logInfo(LOG, 'No Cloudflare A record found for ' + escapeHtml(fqdn));
+                            return;
+                        }
+                        return Promise.all(records.map(function(r) {
+                            logWarn(LOG, 'Deleting DNS A record: ' + escapeHtml(r.name) + ' &rarr; ' + escapeHtml(r.content) + '...');
+                            return fetch('/api/domains/zones/' + encodeURIComponent(zone.id) + '/records/' + r.id, {method: 'DELETE'})
+                                .then(function(resp) { return resp.json(); })
+                                .then(function(d) {
+                                    if (d.error) logErr(LOG, 'DNS delete failed: ' + escapeHtml(d.error));
+                                    else logOk(LOG, 'DNS A record deleted: ' + escapeHtml(r.name));
+                                })
+                                .catch(function(err) { logErr(LOG, 'DNS delete error: ' + err); });
+                        }));
+                    });
+            })
+
+            .then(function() {
+                logInfo(LOG, '<strong>Teardown complete for ' + escapeHtml(fqdn) + '</strong>');
+                loadGroomedSites();
             })
             .catch(function(err) {
                 logErr(LOG, 'Unexpected error: ' + err);
