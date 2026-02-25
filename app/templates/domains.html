@@ -73,14 +73,30 @@
 <!-- DNS Records Table -->
 <div class="card-custom">
     <div class="card-header d-flex justify-content-between align-items-center">
-        <span><i class="bi bi-diagram-3"></i> DNS Records</span>
-        <span class="badge bg-secondary" id="record-count">0 records</span>
+        <div class="d-flex align-items-center gap-3">
+            <span><i class="bi bi-diagram-3"></i> DNS Records</span>
+            <span class="badge bg-secondary" id="record-count">0 records</span>
+        </div>
+        <div class="d-flex gap-2">
+            <button class="btn btn-sm btn-outline-secondary" onclick="selectAllDomainRecords()">
+                <i class="bi bi-check2-all"></i> Select All
+            </button>
+            <button class="btn btn-sm btn-outline-danger" id="btn-delete-selected-domain"
+                    onclick="deleteSelectedDomainRecords()" disabled>
+                <i class="bi bi-trash"></i> Delete Selected
+                (<span id="domain-selected-count">0</span>)
+            </button>
+        </div>
     </div>
     <div class="card-body p-0">
         <div class="table-responsive">
             <table class="table table-hover mb-0">
                 <thead>
                     <tr>
+                        <th style="width:2%">
+                            <input type="checkbox" id="domain-cb-all" title="Toggle all"
+                                   onchange="toggleAllDomainCheckboxes(this.checked)">
+                        </th>
                         <th>Type</th>
                         <th>Name</th>
                         <th>Content</th>
@@ -90,7 +106,7 @@
                     </tr>
                 </thead>
                 <tbody id="records-tbody">
-                    <tr><td colspan="6" class="text-center text-muted py-4">Select a zone above</td></tr>
+                    <tr><td colspan="7" class="text-center text-muted py-4">Select a zone above</td></tr>
                 </tbody>
             </table>
         </div>
@@ -271,7 +287,8 @@
         if (!currentZoneId) {
             document.getElementById('zone-info-card').style.display = 'none';
             document.getElementById('records-tbody').innerHTML =
-                '<tr><td colspan="6" class="text-center text-muted py-4">Select a zone above</td></tr>';
+                '<tr><td colspan="7" class="text-center text-muted py-4">Select a zone above</td></tr>';
+            updateDomainSelection();
             document.getElementById('record-count').textContent = '0 records';
             return;
         }
@@ -312,7 +329,8 @@
         if (!currentZoneId) return;
 
         const tbody = document.getElementById('records-tbody');
-        tbody.innerHTML = '<tr><td colspan="6" class="text-center py-4"><i class="bi bi-hourglass-split"></i> Loading...</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="7" class="text-center py-4"><i class="bi bi-hourglass-split"></i> Loading...</td></tr>';
+        updateDomainSelection();
 
         let url = '/api/domains/zones/' + currentZoneId + '/records';
         const typeFilter = document.getElementById('type-filter').value;
@@ -322,7 +340,8 @@
             .then(r => r.json())
             .then(data => {
                 if (data.error) {
-                    tbody.innerHTML = '<tr><td colspan="6" class="text-danger text-center py-4">' + data.error + '</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="7" class="text-danger text-center py-4">' + data.error + '</td></tr>';
+                    updateDomainSelection();
                     return;
                 }
 
@@ -330,7 +349,8 @@
                 document.getElementById('record-count').textContent = records.length + ' records';
 
                 if (records.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-4">No records found</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted py-4">No records found</td></tr>';
+                    updateDomainSelection();
                     return;
                 }
 
@@ -344,6 +364,7 @@
                     const escapedRecord = encodeURIComponent(JSON.stringify(r));
 
                     return '<tr>' +
+                        '<td><input type="checkbox" class="domain-rec-cb" data-record-id="' + r.id + '" onchange="updateDomainSelection()"></td>' +
                         '<td><span class="badge bg-' + color + '">' + r.type + '</span></td>' +
                         '<td>' + r.name + '</td>' +
                         '<td class="text-truncate" style="max-width:250px" title="' + r.content + '">' + r.content + '</td>' +
@@ -361,9 +382,11 @@
                         '</td>' +
                     '</tr>';
                 }).join('');
+                updateDomainSelection();
             })
             .catch(err => {
-                tbody.innerHTML = '<tr><td colspan="6" class="text-danger text-center py-4">Failed to load records</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="7" class="text-danger text-center py-4">Failed to load records</td></tr>';
+                updateDomainSelection();
             });
     }
 
@@ -490,6 +513,54 @@
             document.getElementById('zone-detail-ssl').textContent = value;
         })
         .catch(err => alert('Error: ' + err));
+    }
+
+    function updateDomainSelection() {
+        const checks  = Array.from(document.querySelectorAll('.domain-rec-cb'));
+        const checked = checks.filter(cb => cb.checked);
+        document.getElementById('domain-selected-count').textContent = checked.length;
+        document.getElementById('btn-delete-selected-domain').disabled = checked.length === 0;
+
+        const allCb = document.getElementById('domain-cb-all');
+        if (allCb) {
+            allCb.checked       = checks.length > 0 && checked.length === checks.length;
+            allCb.indeterminate = checked.length > 0 && checked.length < checks.length;
+        }
+    }
+
+    function toggleAllDomainCheckboxes(checked) {
+        document.querySelectorAll('.domain-rec-cb').forEach(cb => { cb.checked = checked; });
+        updateDomainSelection();
+    }
+
+    function selectAllDomainRecords() {
+        const checks    = document.querySelectorAll('.domain-rec-cb');
+        const allTicked = Array.from(checks).every(cb => cb.checked);
+        toggleAllDomainCheckboxes(!allTicked);
+    }
+
+    function deleteSelectedDomainRecords() {
+        if (!currentZoneId) return;
+        const checked = Array.from(document.querySelectorAll('.domain-rec-cb:checked'));
+        if (checked.length === 0) return;
+        if (!confirm('Delete ' + checked.length + ' DNS record(s)? This cannot be undone.')) return;
+
+        const btn = document.getElementById('btn-delete-selected-domain');
+        btn.disabled = true;
+
+        const ids = checked.map(cb => cb.dataset.recordId);
+
+        function deleteNext(i) {
+            if (i >= ids.length) {
+                loadDNSRecords();
+                return;
+            }
+            fetch('/api/domains/zones/' + currentZoneId + '/records/' + ids[i], {method: 'DELETE'})
+                .then(r => r.json())
+                .then(() => deleteNext(i + 1))
+                .catch(() => deleteNext(i + 1));
+        }
+        deleteNext(0);
     }
 </script>
 {% endblock %}

@@ -131,8 +131,11 @@
 
 <!-- EC2 instances not referenced by any DNS record -->
 <div class="card-custom mb-4">
-    <div class="card-header">
-        <i class="bi bi-cloud-slash text-muted me-1"></i> EC2 Instances Without DNS Records
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <span><i class="bi bi-cloud-slash text-muted me-1"></i> EC2 Instances Without DNS Records</span>
+        <input type="text" id="ec2-orphan-filter" class="form-control form-control-sm w-auto"
+               placeholder="name contains…" style="min-width:180px;"
+               oninput="renderOrphanEc2Filtered()">
     </div>
     <div class="card-body p-0">
         <div class="table-responsive">
@@ -181,21 +184,36 @@
 
 <!-- DNS records pointing to the NPM server IP but with no NPM host entry -->
 <div class="card-custom mb-4">
-    <div class="card-header">
-        <i class="bi bi-arrow-right-circle text-muted me-1"></i> DNS Records Pointing to NPM Host Without a Proxy Entry
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <span><i class="bi bi-arrow-right-circle text-muted me-1"></i> DNS Records Pointing to NPM Host Without a Proxy Entry</span>
+        <div class="d-flex gap-2">
+            <button class="btn btn-sm btn-outline-secondary" onclick="selectAllDnsRecords()">
+                <i class="bi bi-check2-all"></i> Select All
+            </button>
+            <button class="btn btn-sm btn-outline-danger" id="btn-delete-selected-dns"
+                    onclick="deleteSelectedDnsRecords()" disabled>
+                <i class="bi bi-trash"></i> Delete Selected
+                (<span id="dns-selected-count">0</span>)
+            </button>
+        </div>
     </div>
     <div class="card-body p-0">
         <div class="table-responsive">
             <table class="table table-hover mb-0">
                 <thead>
                     <tr>
+                        <th style="width:2%">
+                            <input type="checkbox" id="dns-cb-all" title="Toggle all"
+                                   onchange="toggleAllDnsCheckboxes(this.checked)">
+                        </th>
                         <th>FQDN</th>
                         <th>IP</th>
                         <th>Zone</th>
+                        <th></th>
                     </tr>
                 </thead>
                 <tbody id="dns-no-npm-tbody">
-                    <tr><td colspan="3" class="text-center text-muted py-3"><span class="spinner-border spinner-border-sm"></span></td></tr>
+                    <tr><td colspan="5" class="text-center text-muted py-3"><span class="spinner-border spinner-border-sm"></span></td></tr>
                 </tbody>
             </table>
         </div>
@@ -251,7 +269,8 @@
     var portToListener     = {}; // "port"      -> listener (fallback when host is 0.0.0.0)
 
     // Module-level entries map so both table and diagram renderers share it
-    var entriesByDomain = {}; // domainId -> { normFqdn -> {fqdn, dnsRec, npmHosts[]} }
+    var entriesByDomain    = {}; // domainId -> { normFqdn -> {fqdn, dnsRec, npmHosts[]} }
+    var orphanEc2Instances = []; // EC2 instances not referenced by any DNS record (for filter)
 
     var diagramNetwork  = null; // vis.Network instance
     var activeTab       = 'table';
@@ -305,7 +324,7 @@
         document.getElementById('orphan-npm-tbody').innerHTML =
             '<tr><td colspan="4" class="text-center text-muted py-3"><span class="spinner-border spinner-border-sm"></span></td></tr>';
         document.getElementById('dns-no-npm-tbody').innerHTML =
-            '<tr><td colspan="3" class="text-center text-muted py-3"><span class="spinner-border spinner-border-sm"></span></td></tr>';
+            '<tr><td colspan="5" class="text-center text-muted py-3"><span class="spinner-border spinner-border-sm"></span></td></tr>';
     }
 
     function buildLookupMaps() {
@@ -545,17 +564,32 @@
     }
 
     function renderOrphanEc2(usedInstanceIds) {
-        var tbody   = document.getElementById('orphan-ec2-tbody');
-        var orphans = allInstances.filter(function(inst) { return !usedInstanceIds[inst.id]; });
+        orphanEc2Instances = allInstances.filter(function(inst) { return !usedInstanceIds[inst.id]; });
+        renderOrphanEc2Filtered();
+    }
 
-        if (orphans.length === 0) {
+    function renderOrphanEc2Filtered() {
+        var tbody  = document.getElementById('orphan-ec2-tbody');
+        var filter = (document.getElementById('ec2-orphan-filter').value || '').trim().toLowerCase();
+
+        var list = filter
+            ? orphanEc2Instances.filter(function(inst) {
+                var label = (inst.name || inst.id || '').toLowerCase();
+                return label.indexOf(filter) !== -1;
+              })
+            : orphanEc2Instances;
+
+        if (orphanEc2Instances.length === 0) {
             tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-3">All EC2 instances are referenced by tracked DNS records</td></tr>';
+            return;
+        }
+        if (list.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-3">No instances match the filter</td></tr>';
             return;
         }
 
         var html = '';
-        orphans.forEach(function(inst) {
-            // Check if this instance is the forward target of any NPM host
+        list.forEach(function(inst) {
             var npmRefs = allNpmHosts.filter(function(npm) {
                 return npm.forward_host === inst.private_ip || npm.forward_host === inst.public_ip;
             });
@@ -642,7 +676,7 @@
         });
 
         if (Object.keys(npmServerIps).length === 0) {
-            tbody.innerHTML = '<tr><td colspan="3" class="text-center text-muted py-3">Cannot determine NPM server IPs — no NPM hosts have matching DNS A records</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-3">Cannot determine NPM server IPs — no NPM hosts have matching DNS A records</td></tr>';
             return;
         }
 
@@ -659,23 +693,123 @@
         });
 
         if (orphans.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="3" class="text-center text-muted py-3">All DNS records pointing to the NPM host have a proxy entry configured</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-3">All DNS records pointing to the NPM host have a proxy entry configured</td></tr>';
+            updateDnsSelection();
             return;
         }
 
         var html = '';
         orphans.forEach(function(item) {
-            var rec = item.rec;
+            var rec      = item.rec;
+            var zoneId   = item.domain.cloudflare_zone_id;
+            var recId    = rec.id;
+            var domainId = item.domain.id;
             var proxiedIcon = rec.proxied
                 ? ' <i class="bi bi-shield-fill text-warning" title="Cloudflare proxied" style="font-size:.75rem;"></i>'
                 : '';
-            html += '<tr>';
+            html += '<tr id="dns-row-' + escapeHtml(recId) + '">';
+            html += '<td><input type="checkbox" class="dns-rec-cb"'
+                  + ' data-zone-id="'   + escapeHtml(zoneId)   + '"'
+                  + ' data-rec-id="'    + escapeHtml(recId)    + '"'
+                  + ' data-domain-id="' + escapeHtml(domainId) + '"'
+                  + ' onchange="updateDnsSelection()"></td>';
             html += '<td><code class="small">' + escapeHtml(rec.name.replace(/\.$/, '')) + '</code>' + proxiedIcon + '</td>';
             html += '<td><code class="small">' + escapeHtml(rec.content) + '</code></td>';
             html += '<td><span class="text-muted small">' + escapeHtml(item.domain.name) + '</span></td>';
+            html += '<td class="text-end">'
+                  + '<button class="btn btn-sm btn-outline-danger" title="Delete DNS record"'
+                  + ' onclick="deleteDnsRecord(this,' + JSON.stringify(zoneId) + ',' + JSON.stringify(recId) + ',' + JSON.stringify(domainId) + ')">'
+                  + '<i class="bi bi-trash"></i></button>'
+                  + '</td>';
             html += '</tr>';
         });
         tbody.innerHTML = html;
+        updateDnsSelection();
+    }
+
+    function updateDnsSelection() {
+        var checks  = Array.from(document.querySelectorAll('.dns-rec-cb'));
+        var checked = checks.filter(function(cb) { return cb.checked; });
+        document.getElementById('dns-selected-count').textContent = checked.length;
+        document.getElementById('btn-delete-selected-dns').disabled = checked.length === 0;
+
+        // Sync header checkbox state
+        var allCb = document.getElementById('dns-cb-all');
+        if (allCb) {
+            allCb.checked       = checks.length > 0 && checked.length === checks.length;
+            allCb.indeterminate = checked.length > 0 && checked.length < checks.length;
+        }
+    }
+
+    function toggleAllDnsCheckboxes(checked) {
+        document.querySelectorAll('.dns-rec-cb').forEach(function(cb) { cb.checked = checked; });
+        updateDnsSelection();
+    }
+
+    function selectAllDnsRecords() {
+        var checks    = document.querySelectorAll('.dns-rec-cb');
+        var allTicked = Array.from(checks).every(function(cb) { return cb.checked; });
+        toggleAllDnsCheckboxes(!allTicked);
+    }
+
+    function deleteSelectedDnsRecords() {
+        var checked = Array.from(document.querySelectorAll('.dns-rec-cb:checked'));
+        if (checked.length === 0) return;
+        if (!confirm('Delete ' + checked.length + ' DNS record(s)? This cannot be undone.')) return;
+
+        var btn = document.getElementById('btn-delete-selected-dns');
+        btn.disabled = true;
+
+        var items = checked.map(function(cb) {
+            return { zoneId: cb.dataset.zoneId, recId: cb.dataset.recId, domainId: cb.dataset.domainId };
+        });
+
+        function deleteNext(i) {
+            if (i >= items.length) {
+                renderDnsWithoutNpm();
+                return;
+            }
+            var item = items[i];
+            fetch('/api/domains/zones/' + item.zoneId + '/records/' + item.recId, { method: 'DELETE' })
+                .then(function(r) { return r.json(); })
+                .then(function() {
+                    if (allDnsRecords[item.domainId]) {
+                        allDnsRecords[item.domainId] = allDnsRecords[item.domainId].filter(function(r) {
+                            return r.id !== item.recId;
+                        });
+                    }
+                    deleteNext(i + 1);
+                })
+                .catch(function() { deleteNext(i + 1); });
+        }
+        deleteNext(0);
+    }
+
+    function deleteDnsRecord(btn, zoneId, recId, domainId) {
+        if (!confirm('Delete this DNS record? This action cannot be undone.')) return;
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+
+        fetch('/api/domains/zones/' + zoneId + '/records/' + recId, { method: 'DELETE' })
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (data.error) {
+                    alert('Error: ' + data.error);
+                    btn.disabled = false;
+                    btn.innerHTML = '<i class="bi bi-trash"></i>';
+                    return;
+                }
+                // Remove from local cache and re-render
+                if (allDnsRecords[domainId]) {
+                    allDnsRecords[domainId] = allDnsRecords[domainId].filter(function(r) { return r.id !== recId; });
+                }
+                renderDnsWithoutNpm();
+            })
+            .catch(function(err) {
+                alert('Request failed: ' + err);
+                btn.disabled = false;
+                btn.innerHTML = '<i class="bi bi-trash"></i>';
+            });
     }
 
     // ── Sync DB ───────────────────────────────────────────────────────────────
