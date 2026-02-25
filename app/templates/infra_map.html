@@ -939,9 +939,6 @@
 
     // ── Diagram path highlighting ─────────────────────────────────────────────
 
-    var DIM_NODE_COLOR = { background: '#1a2332', border: '#2a3548' };
-    var DIM_EDGE_COLOR = { color: '#2d3748', opacity: 0.1 };
-
     function getPathNodes(startId) {
         var visited = {};
         visited[startId] = true;
@@ -982,26 +979,29 @@
 
         var nodeUpdates = [];
         diagramVisData.nodes.forEach(function(n) {
-            if (pathNodes[n.id]) {
-                var orig = diagramOriginalNodes[n.id];
-                nodeUpdates.push({ id: n.id, color: orig.color, font: orig.font });
-            } else {
-                nodeUpdates.push({ id: n.id, color: DIM_NODE_COLOR, font: { color: '#2d3a4a' } });
-            }
+            var inPath = !!pathNodes[n.id];
+            var orig   = diagramOriginalNodes[n.id];
+            nodeUpdates.push({
+                id:     n.id,
+                hidden: !inPath,
+                color:  inPath && orig ? orig.color : n.color,
+                font:   inPath && orig ? orig.font  : n.font
+            });
         });
 
         var edgeUpdates = [];
         diagramVisData.edges.forEach(function(e) {
+            var inPath = pathNodes[e.from] && pathNodes[e.to];
             edgeUpdates.push({
-                id: e.id,
-                color: (pathNodes[e.from] && pathNodes[e.to])
-                    ? diagramOriginalEdges[e.id]
-                    : DIM_EDGE_COLOR
+                id:     e.id,
+                hidden: !inPath,
+                color:  inPath ? diagramOriginalEdges[e.id] : e.color
             });
         });
 
         diagramVisData.nodes.update(nodeUpdates);
         diagramVisData.edges.update(edgeUpdates);
+        setTimeout(function() { fitDiagram(); }, 50);
     }
 
     function resetDiagramHighlight() {
@@ -1011,17 +1011,23 @@
         var nodeUpdates = [];
         diagramVisData.nodes.forEach(function(n) {
             var orig = diagramOriginalNodes[n.id];
-            if (orig) nodeUpdates.push({ id: n.id, color: orig.color, font: orig.font });
+            nodeUpdates.push({
+                id:     n.id,
+                hidden: false,
+                color:  orig ? orig.color : n.color,
+                font:   orig ? orig.font  : n.font
+            });
         });
 
         var edgeUpdates = [];
         diagramVisData.edges.forEach(function(e) {
             var orig = diagramOriginalEdges[e.id];
-            if (orig) edgeUpdates.push({ id: e.id, color: orig });
+            edgeUpdates.push({ id: e.id, hidden: false, color: orig || e.color });
         });
 
         diagramVisData.nodes.update(nodeUpdates);
         diagramVisData.edges.update(edgeUpdates);
+        setTimeout(function() { fitDiagram(); }, 50);
     }
 
     // ── Diagram rendering (vis-network) ───────────────────────────────────────
