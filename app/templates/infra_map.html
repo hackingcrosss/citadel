@@ -39,6 +39,23 @@
     </div>
 </div>
 
+<!-- Tabs -->
+<ul class="nav nav-tabs mb-4">
+    <li class="nav-item">
+        <button class="nav-link active" id="tab-table" onclick="switchTab('table')">
+            <i class="bi bi-table"></i> Table
+        </button>
+    </li>
+    <li class="nav-item">
+        <button class="nav-link" id="tab-diagram" onclick="switchTab('diagram')">
+            <i class="bi bi-share"></i> Diagram
+        </button>
+    </li>
+</ul>
+
+<!-- ── Table pane ───────────────────────────────────────────────────────── -->
+<div id="pane-table">
+
 <!-- Infrastructure Chain -->
 <div class="card-custom mb-4">
     <div class="card-header d-flex justify-content-between align-items-center">
@@ -127,21 +144,60 @@
         </div>
     </div>
 </div>
+
+</div><!-- /pane-table -->
+
+<!-- ── Diagram pane ─────────────────────────────────────────────────────── -->
+<div id="pane-diagram" class="d-none">
+    <div class="card-custom mb-3">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <span><i class="bi bi-share"></i> Infrastructure Diagram</span>
+            <div class="d-flex gap-2 align-items-center">
+                <span class="text-muted small">Scroll to zoom · Drag to pan · Click node to highlight</span>
+                <button class="btn btn-sm btn-outline-secondary" onclick="fitDiagram()">
+                    <i class="bi bi-fullscreen"></i> Fit
+                </button>
+            </div>
+        </div>
+        <div class="card-body p-0">
+            <div id="diagram-container" style="height:650px; background:#111827; border-radius:0 0 8px 8px;"></div>
+        </div>
+    </div>
+    <!-- Legend -->
+    <div class="card-custom">
+        <div class="card-body py-2 d-flex flex-wrap gap-3">
+            <span class="small"><span style="display:inline-block;width:12px;height:12px;background:#1d4ed8;border-radius:2px;vertical-align:middle;" class="me-1"></span>Zone</span>
+            <span class="small"><span style="display:inline-block;width:12px;height:12px;background:#0e7490;border-radius:2px;vertical-align:middle;" class="me-1"></span>DNS Record</span>
+            <span class="small"><span style="display:inline-block;width:12px;height:12px;background:#c2410c;border-radius:2px;vertical-align:middle;" class="me-1"></span>EC2</span>
+            <span class="small"><span style="display:inline-block;width:12px;height:12px;background:#15803d;border-radius:2px;vertical-align:middle;" class="me-1"></span>NPM Proxy</span>
+            <span class="small"><span style="display:inline-block;width:12px;height:12px;background:#374151;border-radius:2px;vertical-align:middle;" class="me-1"></span>Container</span>
+            <span class="small"><span style="display:inline-block;width:12px;height:12px;background:#991b1b;border-radius:2px;vertical-align:middle;" class="me-1"></span>CS Listener</span>
+            <span class="small"><span style="display:inline-block;width:12px;height:12px;background:#6b21a8;border-radius:2px;vertical-align:middle;" class="me-1"></span>Unknown Backend</span>
+        </div>
+    </div>
+</div><!-- /pane-diagram -->
 {% endblock %}
 
 {% block extra_js %}
+<script src="https://unpkg.com/vis-network@9.1.9/standalone/umd/vis-network.min.js"></script>
 <script>
-    var allDomains        = [];
-    var allDnsRecords     = {}; // domainId -> records[] (normalised: always .type field)
-    var allInstances      = [];
-    var allNpmHosts       = [];
-    var allContainers     = [];
-    var allListeners      = [];
-    var ipToInstance      = {}; // ip        -> instance
-    var ipToContainer     = {}; // ip        -> container
-    var nameToContainer   = {}; // name      -> container
+    var allDomains         = [];
+    var allDnsRecords      = {}; // domainId -> records[] (normalised: always .type field)
+    var allInstances       = [];
+    var allNpmHosts        = [];
+    var allContainers      = [];
+    var allListeners       = [];
+    var ipToInstance       = {}; // ip          -> instance
+    var ipToContainer      = {}; // ip          -> container
+    var nameToContainer    = {}; // name        -> container
     var hostPortToListener = {}; // "host:port" -> listener
     var portToListener     = {}; // "port"      -> listener (fallback when host is 0.0.0.0)
+
+    // Module-level entries map so both table and diagram renderers share it
+    var entriesByDomain = {}; // domainId -> { normFqdn -> {fqdn, dnsRec, npmHosts[]} }
+
+    var diagramNetwork  = null; // vis.Network instance
+    var activeTab       = 'table';
 
     document.addEventListener('DOMContentLoaded', function() { loadAll(); });
 
@@ -319,11 +375,9 @@
             return;
         }
 
-        // Build a map: domainId -> { fqdn -> entry }
-        // entry = { fqdn, dnsRec, npmHosts[] }
-        // Sources: NPM domain_names (always) + DNS records (when available)
-        // Using a nested object keyed by normalised FQDN avoids duplicates without fragile string keys.
-        var entriesByDomain = {}; // domainId -> { normFqdn -> entry }
+        // Rebuild entries map (module-level, shared with diagram renderer)
+        // domainId -> { normFqdn -> { fqdn, dnsRec, npmHosts[] } }
+        entriesByDomain = {};
         allDomains.forEach(function(d) { entriesByDomain[d.id] = {}; });
 
         // Source 1 — NPM hosts (primary, always present)
@@ -504,6 +558,201 @@
         });
 
         tbody.innerHTML = html;
+    }
+
+    // ── Tab switching ─────────────────────────────────────────────────────────
+
+    function switchTab(name) {
+        activeTab = name;
+        document.getElementById('pane-table').classList.toggle('d-none', name !== 'table');
+        document.getElementById('pane-diagram').classList.toggle('d-none', name !== 'diagram');
+        document.getElementById('tab-table').classList.toggle('active', name === 'table');
+        document.getElementById('tab-diagram').classList.toggle('active', name === 'diagram');
+        if (name === 'diagram' && Object.keys(entriesByDomain).length > 0) {
+            renderDiagram();
+        }
+    }
+
+    function fitDiagram() {
+        if (diagramNetwork) diagramNetwork.fit({ animation: { duration: 400, easingFunction: 'easeInOutQuad' } });
+    }
+
+    // ── Diagram rendering (vis-network) ───────────────────────────────────────
+
+    function renderDiagram() {
+        var container = document.getElementById('diagram-container');
+        if (!container) return;
+
+        var nodes = [];
+        var edges = [];
+
+        // Track created nodes to deduplicate EC2, NPM, and backend nodes
+        var ec2Nodes      = {}; // instanceId  -> vis node id
+        var npmNodes      = {}; // npmId        -> vis node id
+        var backendNodes  = {}; // "host:port"  -> vis node id
+        var nodeIdCounter = 0;
+
+        function uid() { return ++nodeIdCounter; }
+
+        var GROUP_COLORS = {
+            zone:      { background: '#1e3a8a', border: '#3b82f6', hover: { background: '#1d4ed8' } },
+            fqdn:      { background: '#164e63', border: '#22d3ee', hover: { background: '#0e7490' } },
+            ec2:       { background: '#7c2d12', border: '#fb923c', hover: { background: '#c2410c' } },
+            npm:       { background: '#14532d', border: '#4ade80', hover: { background: '#15803d' } },
+            container: { background: '#1f2937', border: '#9ca3af', hover: { background: '#374151' } },
+            listener:  { background: '#7f1d1d', border: '#f87171', hover: { background: '#991b1b' } },
+            backend:   { background: '#3b0764', border: '#c084fc', hover: { background: '#6b21a8' } }
+        };
+
+        var fontBase = { color: '#f9fafb', size: 13, face: 'monospace' };
+
+        function makeNode(id, label, group, extra) {
+            var n = Object.assign({
+                id: id, label: label, group: group,
+                shape: 'box',
+                color: GROUP_COLORS[group],
+                font: Object.assign({}, fontBase),
+                margin: { top: 8, bottom: 8, left: 12, right: 12 },
+                borderWidth: 1, borderWidthSelected: 2,
+                shadow: { enabled: true, color: 'rgba(0,0,0,0.5)', size: 6, x: 2, y: 2 }
+            }, extra || {});
+            return n;
+        }
+
+        allDomains.forEach(function(domain) {
+            var entries = Object.values(entriesByDomain[domain.id] || {});
+            if (entries.length === 0) return;
+
+            // Zone node
+            var zoneId = uid();
+            nodes.push(makeNode(zoneId, '🌐 ' + domain.name, 'zone', { level: 0, font: Object.assign({}, fontBase, { bold: true, size: 14 }) }));
+
+            entries.forEach(function(entry) {
+                // FQDN node
+                var fqdnId = uid();
+                var fqdnLabel = entry.fqdn;
+                if (entry.dnsRec) {
+                    fqdnLabel += '\n' + entry.dnsRec.type + ' → ' + entry.dnsRec.content;
+                    if (entry.dnsRec.proxied) fqdnLabel += ' 🟠';
+                }
+                nodes.push(makeNode(fqdnId, fqdnLabel, 'fqdn', { level: 1 }));
+                edges.push({ from: zoneId, to: fqdnId, color: { color: '#3b82f6', opacity: 0.7 }, dashes: false });
+
+                // EC2 node (from DNS A record)
+                var ec2Id = null;
+                if (entry.dnsRec && entry.dnsRec.type === 'A') {
+                    var inst = ipToInstance[entry.dnsRec.content];
+                    if (inst) {
+                        if (ec2Nodes[inst.id]) {
+                            ec2Id = ec2Nodes[inst.id];
+                        } else {
+                            ec2Id = uid();
+                            ec2Nodes[inst.id] = ec2Id;
+                            var ec2Label = (inst.name || inst.id) + '\n' + entry.dnsRec.content;
+                            if (inst.state) ec2Label += '\n[' + inst.state + ']';
+                            nodes.push(makeNode(ec2Id, ec2Label, 'ec2', { level: 2 }));
+                        }
+                        edges.push({ from: fqdnId, to: ec2Id, label: entry.dnsRec.content, color: { color: '#fb923c', opacity: 0.8 }, font: { color: '#fb923c', size: 10 } });
+                    }
+                }
+
+                // NPM + backend nodes
+                entry.npmHosts.forEach(function(npm) {
+                    var npmId;
+                    if (npmNodes[npm.id]) {
+                        npmId = npmNodes[npm.id];
+                    } else {
+                        npmId = uid();
+                        npmNodes[npm.id] = npmId;
+                        var npmLabel = (npm.domain_names || []).join('\n');
+                        var fwdStr   = (npm.forward_scheme || 'http') + '://' + (npm.forward_host || '?') + ':' + (npm.forward_port || '?');
+                        npmLabel += '\n→ ' + fwdStr;
+                        nodes.push(makeNode(npmId, npmLabel, 'npm', { level: 3 }));
+                    }
+
+                    // Edge: FQDN (or EC2) → NPM
+                    var npmSrc = ec2Id || fqdnId;
+                    edges.push({ from: npmSrc, to: npmId, color: { color: '#4ade80', opacity: 0.8 } });
+
+                    // Backend node
+                    var fwdHost  = npm.forward_host || '';
+                    var fwdPort  = String(npm.forward_port || '');
+                    var bKey     = fwdHost + ':' + fwdPort;
+                    var bId;
+                    if (backendNodes[bKey]) {
+                        bId = backendNodes[bKey];
+                    } else {
+                        bId = uid();
+                        backendNodes[bKey] = bId;
+
+                        var listener  = findListenerForNpm(npm);
+                        var container = findContainerForHost(fwdHost);
+                        var fwdInst   = ipToInstance[fwdHost] || null;
+
+                        var bLabel, bGroup;
+                        if (listener) {
+                            bLabel = '🎯 ' + listener.name + '\n(CS Listener)\n:' + fwdPort;
+                            bGroup = 'listener';
+                        } else if (container) {
+                            bLabel = '📦 ' + (container.name || container.id) + '\n' + fwdHost + ':' + fwdPort;
+                            bGroup = 'container';
+                        } else if (fwdInst) {
+                            bLabel = '☁️ ' + (fwdInst.name || fwdInst.id) + '\n' + fwdHost + ':' + fwdPort;
+                            bGroup = 'ec2';
+                        } else {
+                            bLabel = fwdHost + ':' + fwdPort;
+                            bGroup = 'backend';
+                        }
+                        nodes.push(makeNode(bId, bLabel, bGroup, { level: 4 }));
+                    }
+                    edges.push({ from: npmId, to: bId, color: { color: '#c084fc', opacity: 0.8 }, arrows: { to: { scaleFactor: 0.7 } } });
+                });
+            });
+        });
+
+        var visData = {
+            nodes: new vis.DataSet(nodes),
+            edges: new vis.DataSet(edges)
+        };
+
+        var options = {
+            layout: {
+                hierarchical: {
+                    enabled: true,
+                    direction: 'LR',
+                    sortMethod: 'directed',
+                    levelSeparation: 230,
+                    nodeSpacing: 110,
+                    treeSpacing: 160,
+                    shakeTowards: 'leaves'
+                }
+            },
+            nodes: { shape: 'box' },
+            edges: {
+                arrows: { to: { enabled: true, scaleFactor: 0.7 } },
+                smooth: { type: 'cubicBezier', forceDirection: 'horizontal', roundness: 0.4 },
+                color: { inherit: false }
+            },
+            physics: { enabled: false },
+            interaction: {
+                hover: true,
+                tooltipDelay: 200,
+                navigationButtons: false,
+                keyboard: false,
+                zoomView: true,
+                dragView: true
+            }
+        };
+
+        if (diagramNetwork) {
+            diagramNetwork.setData(visData);
+            diagramNetwork.setOptions(options);
+        } else {
+            diagramNetwork = new vis.Network(container, visData, options);
+        }
+
+        // Fit after a short delay to let layout settle
+        setTimeout(function() { fitDiagram(); }, 150);
     }
 </script>
 {% endblock %}
