@@ -228,7 +228,7 @@
         <div class="card-header d-flex justify-content-between align-items-center">
             <span><i class="bi bi-share"></i> Infrastructure Diagram</span>
             <div class="d-flex gap-2 align-items-center">
-                <span class="text-muted small">Scroll to zoom · Drag to pan · Click node to highlight</span>
+                <span class="text-muted small">Scroll to zoom · Drag to pan · <strong>Click node</strong> to filter its path · click again or background to reset</span>
                 <button class="btn btn-sm btn-outline-secondary" onclick="fitDiagram()">
                     <i class="bi bi-fullscreen"></i> Fit
                 </button>
@@ -272,8 +272,13 @@
     var entriesByDomain    = {}; // domainId -> { normFqdn -> {fqdn, dnsRec, npmHosts[]} }
     var orphanEc2Instances = []; // EC2 instances not referenced by any DNS record (for filter)
 
-    var diagramNetwork  = null; // vis.Network instance
-    var activeTab       = 'table';
+    var diagramNetwork       = null;  // vis.Network instance
+    var diagramVisData       = null;  // current vis DataSet pair {nodes, edges}
+    var diagramAdjacency     = {};    // nodeId -> { to: [], from: [] }
+    var diagramOriginalNodes = {};    // nodeId -> { color, font }  (stored at render time)
+    var diagramOriginalEdges = {};    // edgeId -> color object     (stored at render time)
+    var diagramActiveNode    = null;  // currently filtered node id, or null
+    var activeTab            = 'table';
 
     document.addEventListener('DOMContentLoaded', function() { loadAll(); });
 
@@ -932,6 +937,93 @@
         if (diagramNetwork) diagramNetwork.fit({ animation: { duration: 400, easingFunction: 'easeInOutQuad' } });
     }
 
+    // ── Diagram path highlighting ─────────────────────────────────────────────
+
+    var DIM_NODE_COLOR = { background: '#1a2332', border: '#2a3548' };
+    var DIM_EDGE_COLOR = { color: '#2d3748', opacity: 0.1 };
+
+    function getPathNodes(startId) {
+        var visited = {};
+        visited[startId] = true;
+        var queue;
+
+        // Forward BFS — downstream to leaves
+        queue = [startId];
+        while (queue.length) {
+            var curr = queue.shift();
+            ((diagramAdjacency[curr] || {}).to || []).forEach(function(nId) {
+                if (!visited[nId]) { visited[nId] = true; queue.push(nId); }
+            });
+        }
+
+        // Backward BFS — upstream to roots
+        queue = [startId];
+        while (queue.length) {
+            var curr = queue.shift();
+            ((diagramAdjacency[curr] || {}).from || []).forEach(function(nId) {
+                if (!visited[nId]) { visited[nId] = true; queue.push(nId); }
+            });
+        }
+
+        return visited;
+    }
+
+    function highlightDiagramPath(nodeId) {
+        if (!diagramVisData) return;
+
+        // Second click on the same node → reset
+        if (diagramActiveNode === nodeId) {
+            resetDiagramHighlight();
+            return;
+        }
+        diagramActiveNode = nodeId;
+
+        var pathNodes = getPathNodes(nodeId);
+
+        var nodeUpdates = [];
+        diagramVisData.nodes.forEach(function(n) {
+            if (pathNodes[n.id]) {
+                var orig = diagramOriginalNodes[n.id];
+                nodeUpdates.push({ id: n.id, color: orig.color, font: orig.font });
+            } else {
+                nodeUpdates.push({ id: n.id, color: DIM_NODE_COLOR, font: { color: '#2d3a4a' } });
+            }
+        });
+
+        var edgeUpdates = [];
+        diagramVisData.edges.forEach(function(e) {
+            edgeUpdates.push({
+                id: e.id,
+                color: (pathNodes[e.from] && pathNodes[e.to])
+                    ? diagramOriginalEdges[e.id]
+                    : DIM_EDGE_COLOR
+            });
+        });
+
+        diagramVisData.nodes.update(nodeUpdates);
+        diagramVisData.edges.update(edgeUpdates);
+    }
+
+    function resetDiagramHighlight() {
+        diagramActiveNode = null;
+        if (!diagramVisData) return;
+
+        var nodeUpdates = [];
+        diagramVisData.nodes.forEach(function(n) {
+            var orig = diagramOriginalNodes[n.id];
+            if (orig) nodeUpdates.push({ id: n.id, color: orig.color, font: orig.font });
+        });
+
+        var edgeUpdates = [];
+        diagramVisData.edges.forEach(function(e) {
+            var orig = diagramOriginalEdges[e.id];
+            if (orig) edgeUpdates.push({ id: e.id, color: orig });
+        });
+
+        diagramVisData.nodes.update(nodeUpdates);
+        diagramVisData.edges.update(edgeUpdates);
+    }
+
     // ── Diagram rendering (vis-network) ───────────────────────────────────────
 
     function renderDiagram() {
@@ -1065,6 +1157,29 @@
             });
         });
 
+        // Assign stable IDs to edges before DataSet creation
+        edges.forEach(function(e, i) { e.id = 'e' + i; });
+
+        // Build directed adjacency map for bidirectional path traversal
+        diagramAdjacency = {};
+        edges.forEach(function(e) {
+            if (!diagramAdjacency[e.from]) diagramAdjacency[e.from] = { to: [], from: [] };
+            if (!diagramAdjacency[e.to])   diagramAdjacency[e.to]   = { to: [], from: [] };
+            diagramAdjacency[e.from].to.push(e.to);
+            diagramAdjacency[e.to].from.push(e.from);
+        });
+
+        // Snapshot original node and edge styles so highlight can be fully reversed
+        diagramOriginalNodes = {};
+        nodes.forEach(function(n) {
+            diagramOriginalNodes[n.id] = {
+                color: n.color,
+                font:  JSON.parse(JSON.stringify(n.font))
+            };
+        });
+        diagramOriginalEdges = {};
+        edges.forEach(function(e) { diagramOriginalEdges[e.id] = e.color; });
+
         var visData = {
             nodes: new vis.DataSet(nodes),
             edges: new vis.DataSet(edges)
@@ -1104,7 +1219,20 @@
             diagramNetwork.setOptions(options);
         } else {
             diagramNetwork = new vis.Network(container, visData, options);
+
+            // Click handler: filter path on node click, reset on background click
+            diagramNetwork.on('click', function(params) {
+                if (params.nodes.length === 1) {
+                    highlightDiagramPath(params.nodes[0]);
+                } else if (params.nodes.length === 0 && params.edges.length === 0) {
+                    resetDiagramHighlight();
+                }
+            });
         }
+
+        // Update the shared DataSet reference and clear any previous highlight
+        diagramVisData    = visData;
+        diagramActiveNode = null;
 
         // Fit after a short delay to let layout settle
         setTimeout(function() { fitDiagram(); }, 150);
