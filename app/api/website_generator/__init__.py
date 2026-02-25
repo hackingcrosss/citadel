@@ -99,3 +99,27 @@ def website_generator_publish():
         return jsonify(result)
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+
+@api_bp.route('/website-generator/deployed-sites', methods=['GET'])
+@login_required
+def get_deployed_sites():
+    """Return sites discovered from docker-compose + NPM proxy host matching."""
+    try:
+        from app.services import website_generator_service
+        sites = website_generator_service.get_deployed_sites()
+        return jsonify({'sites': sites})
+    except Exception as e:
+        return jsonify({'error': str(e), 'sites': []}), 500
+
+
+@api_bp.route('/website-generator/deployed-sites/<folder_name>', methods=['DELETE'])
+@login_required
+def delete_deployed_site(folder_name):
+    """Stop the container and remove its service from docker-compose.yaml."""
+    try:
+        from app.services import website_generator_service
+        result = website_generator_service.remove_deployed_site(folder_name)
+        return jsonify({'ok': True, **result})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
