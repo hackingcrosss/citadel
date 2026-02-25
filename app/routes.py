@@ -126,11 +126,6 @@ def register_routes(app):
     def aws():
         return render_template('aws.html')
 
-    @app.route('/aws/services')
-    @login_required
-    def aws_services():
-        return render_template('aws_services.html')
-
     @app.route('/operations')
     @login_required
     def operations():
