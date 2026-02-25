@@ -5,9 +5,43 @@
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-4">
     <h1 class="h3 mb-0"><i class="bi bi-diagram-3"></i> Infrastructure Map</h1>
-    <button class="btn btn-sm btn-outline-secondary" onclick="loadAll()">
-        <i class="bi bi-arrow-clockwise"></i> Refresh
-    </button>
+    <div class="d-flex gap-2">
+        <button class="btn btn-sm btn-outline-warning" onclick="openSyncModal()">
+            <i class="bi bi-database-gear"></i> Sync DB
+        </button>
+        <button class="btn btn-sm btn-outline-secondary" onclick="loadAll()">
+            <i class="bi bi-arrow-clockwise"></i> Refresh
+        </button>
+    </div>
+</div>
+
+<!-- Sync DB Modal -->
+<div class="modal fade" id="syncModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-database-gear"></i> Sync DB from External Sources</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p class="text-muted small mb-3">
+                    Pulls all Cloudflare zones and DNS records into the local database, removing stale entries.
+                    NPM hosts are fetched live — remove stale ones directly from the <a href="/npm">NPM page</a>.
+                </p>
+                <div id="sync-log" class="border rounded p-2"
+                     style="min-height:120px; max-height:380px; overflow-y:auto;
+                            background:#111827; font-size:0.82rem; font-family:monospace;">
+                    <span class="text-muted">Click <strong>Start Sync</strong> to begin…</span>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" id="btn-sync-close">Close</button>
+                <button type="button" class="btn btn-warning" id="btn-sync-start" onclick="runSync()">
+                    <i class="bi bi-database-gear"></i> Start Sync
+                </button>
+            </div>
+        </div>
+    </div>
 </div>
 
 <!-- Summary -->
@@ -145,6 +179,29 @@
     </div>
 </div>
 
+<!-- DNS records pointing to the NPM server IP but with no NPM host entry -->
+<div class="card-custom mb-4">
+    <div class="card-header">
+        <i class="bi bi-arrow-right-circle text-muted me-1"></i> DNS Records Pointing to NPM Host Without a Proxy Entry
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead>
+                    <tr>
+                        <th>FQDN</th>
+                        <th>IP</th>
+                        <th>Zone</th>
+                    </tr>
+                </thead>
+                <tbody id="dns-no-npm-tbody">
+                    <tr><td colspan="3" class="text-center text-muted py-3"><span class="spinner-border spinner-border-sm"></span></td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
 </div><!-- /pane-table -->
 
 <!-- ── Diagram pane ─────────────────────────────────────────────────────── -->
@@ -247,6 +304,8 @@
             '<tr><td colspan="6" class="text-center text-muted py-3"><span class="spinner-border spinner-border-sm"></span></td></tr>';
         document.getElementById('orphan-npm-tbody').innerHTML =
             '<tr><td colspan="4" class="text-center text-muted py-3"><span class="spinner-border spinner-border-sm"></span></td></tr>';
+        document.getElementById('dns-no-npm-tbody').innerHTML =
+            '<tr><td colspan="3" class="text-center text-muted py-3"><span class="spinner-border spinner-border-sm"></span></td></tr>';
     }
 
     function buildLookupMaps() {
@@ -365,6 +424,7 @@
         renderChainTable(usedNpmIds, usedInstanceIds);
         renderOrphanEc2(usedInstanceIds);
         renderOrphanNpm(usedNpmIds);
+        renderDnsWithoutNpm();
     }
 
     function renderChainTable(usedNpmIds, usedInstanceIds) {
@@ -558,6 +618,167 @@
         });
 
         tbody.innerHTML = html;
+    }
+
+    function renderDnsWithoutNpm() {
+        var tbody = document.getElementById('dns-no-npm-tbody');
+
+        // Collect all FQDNs that appear in any NPM proxy host entry
+        var npmFqdns = {};
+        allNpmHosts.forEach(function(npm) {
+            (npm.domain_names || []).forEach(function(fqdn) {
+                npmFqdns[fqdn.replace(/\.$/, '').toLowerCase()] = true;
+            });
+        });
+
+        // Determine NPM server IPs: the IPs that DNS A records for npm-linked FQDNs resolve to
+        var npmServerIps = {};
+        allDomains.forEach(function(domain) {
+            (allDnsRecords[domain.id] || []).forEach(function(rec) {
+                if (rec.type !== 'A') return;
+                var normName = rec.name.replace(/\.$/, '').toLowerCase();
+                if (npmFqdns[normName]) npmServerIps[rec.content] = true;
+            });
+        });
+
+        if (Object.keys(npmServerIps).length === 0) {
+            tbody.innerHTML = '<tr><td colspan="3" class="text-center text-muted py-3">Cannot determine NPM server IPs — no NPM hosts have matching DNS A records</td></tr>';
+            return;
+        }
+
+        // Find A records pointing to NPM server IPs without a matching NPM host entry
+        var orphans = [];
+        allDomains.forEach(function(domain) {
+            (allDnsRecords[domain.id] || []).forEach(function(rec) {
+                if (rec.type !== 'A') return;
+                if (!npmServerIps[rec.content]) return;
+                var normName = rec.name.replace(/\.$/, '').toLowerCase();
+                if (npmFqdns[normName]) return;
+                orphans.push({ rec: rec, domain: domain });
+            });
+        });
+
+        if (orphans.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="3" class="text-center text-muted py-3">All DNS records pointing to the NPM host have a proxy entry configured</td></tr>';
+            return;
+        }
+
+        var html = '';
+        orphans.forEach(function(item) {
+            var rec = item.rec;
+            var proxiedIcon = rec.proxied
+                ? ' <i class="bi bi-shield-fill text-warning" title="Cloudflare proxied" style="font-size:.75rem;"></i>'
+                : '';
+            html += '<tr>';
+            html += '<td><code class="small">' + escapeHtml(rec.name.replace(/\.$/, '')) + '</code>' + proxiedIcon + '</td>';
+            html += '<td><code class="small">' + escapeHtml(rec.content) + '</code></td>';
+            html += '<td><span class="text-muted small">' + escapeHtml(item.domain.name) + '</span></td>';
+            html += '</tr>';
+        });
+        tbody.innerHTML = html;
+    }
+
+    // ── Sync DB ───────────────────────────────────────────────────────────────
+
+    function openSyncModal() {
+        document.getElementById('sync-log').innerHTML = '<span class="text-muted">Click <strong>Start Sync</strong> to begin…</span>';
+        document.getElementById('btn-sync-start').disabled = false;
+        new bootstrap.Modal(document.getElementById('syncModal')).show();
+    }
+
+    function syncLog(icon, cls, msg) {
+        var log = document.getElementById('sync-log');
+        if (log.querySelector('.text-muted')) log.innerHTML = '';
+        var line = document.createElement('div');
+        line.className = 'mb-1';
+        line.innerHTML = '<i class="bi ' + icon + ' ' + cls + ' me-1"></i>' + msg;
+        log.appendChild(line);
+        log.scrollTop = log.scrollHeight;
+    }
+    function syncOk(msg)   { syncLog('bi-check-circle-fill', 'text-success', msg); }
+    function syncErr(msg)  { syncLog('bi-x-circle-fill',     'text-danger',  msg); }
+    function syncInfo(msg) { syncLog('bi-info-circle',        'text-info',    msg); }
+    function syncWarn(msg) { syncLog('bi-hourglass-split',    'text-warning', msg); }
+
+    function runSync() {
+        var btn = document.getElementById('btn-sync-start');
+        btn.disabled = true;
+        document.getElementById('sync-log').innerHTML = '';
+        syncInfo('Fetching Cloudflare zones…');
+
+        // Step 1: get CF zones
+        fetch('/api/domains/zones')
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                var zones = data.zones || [];
+                if (zones.length === 0) {
+                    syncWarn('No Cloudflare zones found — check credentials in Settings.');
+                    btn.disabled = false;
+                    return;
+                }
+                syncOk('Found ' + zones.length + ' zone(s).');
+
+                // Step 2: get locally tracked domains so we can match / create
+                return fetch('/api/domains')
+                    .then(function(r) { return r.json(); })
+                    .then(function(domData) {
+                        var localDomains = domData.domains || [];
+                        var localByZone  = {};
+                        localDomains.forEach(function(d) {
+                            if (d.cloudflare_zone_id) localByZone[d.cloudflare_zone_id] = d;
+                        });
+
+                        // Process zones sequentially to keep the log readable
+                        return zones.reduce(function(chain, zone) {
+                            return chain.then(function() { return syncZone(zone, localByZone); });
+                        }, Promise.resolve());
+                    });
+            })
+            .then(function() {
+                syncOk('<strong>Sync complete.</strong> Refreshing page data…');
+                btn.disabled = false;
+                loadAll();
+            })
+            .catch(function(err) {
+                syncErr('Unexpected error: ' + escapeHtml(String(err)));
+                btn.disabled = false;
+            });
+    }
+
+    function syncZone(zone, localByZone) {
+        var existing = localByZone[zone.id];
+
+        // If the zone isn't tracked locally yet, create it first
+        var ensureLocal = existing
+            ? Promise.resolve(existing)
+            : fetch('/api/domains', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name: zone.name, cloudflare_zone_id: zone.id })
+              })
+              .then(function(r) { return r.json(); })
+              .then(function(d) {
+                  if (d.error && d.domain) return d.domain; // already exists edge-case
+                  if (d.error) throw new Error(d.error);
+                  syncInfo('Registered new domain: <strong>' + escapeHtml(zone.name) + '</strong>');
+                  return d.domain;
+              });
+
+        return ensureLocal.then(function(domain) {
+            syncWarn('Syncing <strong>' + escapeHtml(zone.name) + '</strong>…');
+            return fetch('/api/domains/' + domain.id + '/sync', { method: 'POST' })
+                .then(function(r) { return r.json(); })
+                .then(function(data) {
+                    if (data.error) {
+                        syncErr(escapeHtml(zone.name) + ': ' + escapeHtml(data.error));
+                    } else {
+                        syncOk(escapeHtml(zone.name) + ': ' + data.synced + ' record(s) synced.');
+                    }
+                })
+                .catch(function(err) {
+                    syncErr(escapeHtml(zone.name) + ': ' + escapeHtml(String(err)));
+                });
+        });
     }
 
     // ── Tab switching ─────────────────────────────────────────────────────────
