@@ -1,8 +1,70 @@
+import logging
+import os
+import re
 from flask import render_template, redirect, url_for, request, flash, session
 from flask_login import login_required, current_user, login_user, logout_user
+from urllib.parse import urlparse
 from app import db
 from app.models.user import User
 from datetime import datetime
+
+_log = logging.getLogger(__name__)
+
+_LOGIN_MAX_ATTEMPTS = 10
+_LOGIN_WINDOW_SECONDS = 600  # 10-minute sliding window
+
+def _redis_client():
+    """Return a Redis client, or None if unavailable."""
+    try:
+        import redis as _redis
+        return _redis.from_url(os.environ.get('REDIS_URL', 'redis://redis:6379/0'),
+                               socket_connect_timeout=1, socket_timeout=1)
+    except Exception:
+        return None
+
+def _is_rate_limited(ip):
+    r = _redis_client()
+    if r is None:
+        return False
+    try:
+        val = r.get(f'login_fail:{ip}')
+        return val is not None and int(val) >= _LOGIN_MAX_ATTEMPTS
+    except Exception:
+        return False
+
+def _record_failure(ip):
+    r = _redis_client()
+    if r is None:
+        return
+    try:
+        key = f'login_fail:{ip}'
+        pipe = r.pipeline()
+        pipe.incr(key)
+        pipe.expire(key, _LOGIN_WINDOW_SECONDS)
+        pipe.execute()
+    except Exception:
+        pass
+
+def _clear_failures(ip):
+    r = _redis_client()
+    if r is None:
+        return
+    try:
+        r.delete(f'login_fail:{ip}')
+    except Exception:
+        pass
+
+def _check_password_complexity(password):
+    """Return an error string if the password fails complexity rules, else None."""
+    if len(password) < 12:
+        return 'New password must be at least 12 characters long'
+    if not re.search(r'[A-Z]', password):
+        return 'New password must contain at least one uppercase letter'
+    if not re.search(r'[a-z]', password):
+        return 'New password must contain at least one lowercase letter'
+    if not re.search(r'[0-9]', password):
+        return 'New password must contain at least one digit'
+    return None
 
 def register_routes(app):
     @app.before_request
@@ -31,6 +93,12 @@ def register_routes(app):
             return redirect(url_for('dashboard'))
 
         if request.method == 'POST':
+            client_ip = request.remote_addr or '0.0.0.0'
+
+            if _is_rate_limited(client_ip):
+                flash('Too many failed login attempts. Please try again later.', 'danger')
+                return render_template('login.html')
+
             email = request.form.get('email')
             password = request.form.get('password')
             remember = request.form.get('remember', False)
@@ -38,6 +106,8 @@ def register_routes(app):
             user = User.query.filter_by(email=email).first()
 
             if user and user.check_password(password):
+                _clear_failures(client_ip)
+
                 # Update last login
                 user.last_login = datetime.utcnow()
                 db.session.commit()
@@ -51,8 +121,15 @@ def register_routes(app):
 
                 flash('Login successful!', 'success')
                 next_page = request.args.get('next')
-                return redirect(next_page if next_page else url_for('dashboard'))
+                # Only allow relative redirects — reject any URL with a scheme or host
+                if next_page:
+                    parsed = urlparse(next_page)
+                    if parsed.scheme or parsed.netloc:
+                        next_page = None
+                return redirect(next_page or url_for('dashboard'))
             else:
+                _record_failure(client_ip)
+                _log.warning('Failed login attempt for %r from %s', email, client_ip)
                 flash('Invalid email or password', 'danger')
 
         return render_template('login.html')
@@ -77,9 +154,10 @@ def register_routes(app):
                 flash('Current password is incorrect', 'danger')
                 return render_template('change_password.html')
 
-            # Validate new password
-            if len(new_password) < 8:
-                flash('New password must be at least 8 characters long', 'danger')
+            # Validate new password complexity
+            complexity_error = _check_password_complexity(new_password)
+            if complexity_error:
+                flash(complexity_error, 'danger')
                 return render_template('change_password.html')
 
             if new_password != confirm_password:
