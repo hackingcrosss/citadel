@@ -222,7 +222,7 @@
                 }
                 tbody.innerHTML = instances.slice(0, 5).map(function(inst) {
                     var region = inst.az ? inst.az.replace(/[a-z]$/, '') : '-';
-                    return '<tr>' +
+                    return '<tr class="clickable-row" onclick="window.location.href=\'' + "{{ url_for('aws') }}" + '\'">' +
                         '<td><i class="bi bi-server"></i> ' + (inst.name || inst.id) + '</td>' +
                         '<td>' + inst.type + '</td>' +
                         '<td>' + region + '</td>' +
@@ -266,7 +266,7 @@
                         var hostParts = parts[0].split(':');
                         portDisplay = hostParts[hostParts.length - 1];
                     }
-                    return '<tr>' +
+                    return '<tr class="clickable-row" onclick="window.location.href=\'' + "{{ url_for('containers') }}" + '\'">' +
                         '<td><i class="bi bi-box"></i> ' + c.name + '</td>' +
                         '<td>' + c.image.split(':')[0].split('/').pop() + '</td>' +
                         '<td>' + portDisplay + '</td>' +

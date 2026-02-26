@@ -389,15 +389,15 @@
     }
 
     function deleteHost(hostId) {
-        if (!confirm('Delete this proxy host?')) return;
-
-        fetch('/api/npm/hosts/' + hostId, {method: 'DELETE'})
-            .then(r => r.json())
-            .then(data => {
-                if (data.error) { alert(data.error); return; }
-                loadHosts();
-            })
-            .catch(err => alert('Error: ' + err));
+        showConfirm('Delete Proxy Host', 'Delete this proxy host? This cannot be undone.', 'Delete', function() {
+            fetch('/api/npm/hosts/' + hostId, {method: 'DELETE'})
+                .then(r => r.json())
+                .then(data => {
+                    if (data.error) { showToast(data.error, 'danger'); return; }
+                    loadHosts();
+                })
+                .catch(err => showToast('Error: ' + err, 'danger'));
+        });
     }
 </script>
 {% endblock %}

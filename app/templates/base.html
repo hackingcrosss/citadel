@@ -223,6 +223,18 @@
         .task-entry-desc { font-size: 0.78rem; color: #6b7280; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .task-entry-meta { font-size: 0.72rem; color: #9ca3af; margin-top: 3px; }
         .task-entry-error { font-size: 0.72rem; color: #ef4444; margin-top: 2px; word-break: break-word; }
+
+        .clickable-row { cursor: pointer; }
+        .clickable-row:hover td { background: #f3f4f6; }
+
+        .nav-status-dot {
+            width: 7px; height: 7px; border-radius: 50%;
+            display: inline-block; background: transparent;
+            transition: background 0.3s;
+        }
+        .nav-status-dot.dot-ok   { background: #22c55e; }
+        .nav-status-dot.dot-warn { background: #f59e0b; }
+        .nav-status-dot.dot-err  { background: #ef4444; }
     </style>
     {% block extra_css %}{% endblock %}
 </head>
@@ -246,7 +258,10 @@
             <!-- Infrastructure section -->
             <button class="nav-section {% if request.endpoint not in infra_pages %}collapsed{% endif %}" data-bs-toggle="collapse" data-bs-target="#nav-infra">
                 <span><i class="bi bi-server"></i> Infrastructure</span>
-                <i class="bi bi-chevron-right"></i>
+                <span class="d-flex align-items-center gap-1">
+                    <span class="nav-status-dot" id="nav-dot-infra"></span>
+                    <i class="bi bi-chevron-right"></i>
+                </span>
             </button>
             <div class="collapse nav-collapse {% if request.endpoint in infra_pages %}show{% endif %}" id="nav-infra">
                 <a class="nav-link {% if request.endpoint == 'containers' %}active{% endif %}" href="{{ url_for('containers') }}">
@@ -268,7 +283,10 @@
             <!-- Phishing section -->
             <button class="nav-section {% if request.endpoint not in phishing_pages %}collapsed{% endif %}" data-bs-toggle="collapse" data-bs-target="#nav-phishing">
                 <span><i class="bi bi-envelope-at"></i> Phishing</span>
-                <i class="bi bi-chevron-right"></i>
+                <span class="d-flex align-items-center gap-1">
+                    <span class="nav-status-dot" id="nav-dot-phishing"></span>
+                    <i class="bi bi-chevron-right"></i>
+                </span>
             </button>
             <div class="collapse nav-collapse {% if request.endpoint in phishing_pages %}show{% endif %}" id="nav-phishing">
                 <a class="nav-link {% if request.endpoint == 'email' %}active{% endif %}" href="{{ url_for('email') }}">
@@ -284,7 +302,10 @@
             <!-- C2 section -->
             <button class="nav-section {% if request.endpoint not in c2_pages %}collapsed{% endif %}" data-bs-toggle="collapse" data-bs-target="#nav-c2">
                 <span><i class="bi bi-crosshair"></i> C2</span>
-                <i class="bi bi-chevron-right"></i>
+                <span class="d-flex align-items-center gap-1">
+                    <span class="nav-status-dot" id="nav-dot-c2"></span>
+                    <i class="bi bi-chevron-right"></i>
+                </span>
             </button>
             <div class="collapse nav-collapse {% if request.endpoint in c2_pages %}show{% endif %}" id="nav-c2">
                 <a class="nav-link {% if request.endpoint == 'cobaltstrike' %}active{% endif %}" href="{{ url_for('cobaltstrike') }}">
@@ -353,6 +374,28 @@
             <div id="task-log-empty" class="text-center text-muted py-5">
                 <i class="bi bi-check-all" style="font-size:2.2rem;opacity:0.35;"></i>
                 <div class="mt-2 small">No tasks yet</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast container -->
+    <div class="toast-container position-fixed top-0 end-0 p-3" id="toast-container" style="z-index:1200;"></div>
+
+    <!-- Global Confirmation Modal -->
+    <div class="modal fade" id="confirmModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-sm">
+            <div class="modal-content border-0 shadow">
+                <div class="modal-body text-center p-4">
+                    <div class="mb-3">
+                        <i class="bi bi-exclamation-triangle-fill text-warning" style="font-size:2.2rem;"></i>
+                    </div>
+                    <h6 class="fw-bold mb-2" id="confirmModal-title">Confirm Action</h6>
+                    <p class="text-muted mb-4" id="confirmModal-body" style="font-size:0.875rem;"></p>
+                    <div class="d-flex gap-2 justify-content-center">
+                        <button type="button" class="btn btn-secondary btn-sm px-4" data-bs-dismiss="modal">Cancel</button>
+                        <button type="button" class="btn btn-danger btn-sm px-4" id="confirmModal-confirm-btn">Confirm</button>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
@@ -532,6 +575,81 @@
             taskLogRefresh();
         });
     })();
+
+    // ── Sidebar credential status dots ─────────────────────────────────────────
+    (function() {
+        var SECTION_PROVIDERS = {
+            'infra':    ['docker', 'aws', 'npm', 'cloudflare'],
+            'phishing': ['mailgun', 'gophish'],
+            'c2':       ['cobaltstrike']
+        };
+
+        function updateNavDots() {
+            Object.keys(SECTION_PROVIDERS).forEach(function(section) {
+                var providers = SECTION_PROVIDERS[section];
+                var pending = providers.length;
+                var configured = 0;
+                providers.forEach(function(p) {
+                    fetch('/api/credentials/' + p)
+                        .then(function(r) { return r.json(); })
+                        .then(function(d) {
+                            if (Object.keys(d[p] || {}).length > 0) configured++;
+                        })
+                        .catch(function() {})
+                        .finally(function() {
+                            if (--pending === 0) {
+                                var dot = document.getElementById('nav-dot-' + section);
+                                if (!dot) return;
+                                dot.className = 'nav-status-dot ' + (
+                                    configured === providers.length ? 'dot-ok' :
+                                    configured > 0               ? 'dot-warn' : 'dot-err'
+                                );
+                            }
+                        });
+                });
+            });
+        }
+
+        document.addEventListener('DOMContentLoaded', updateNavDots);
+    })();
+
+    // ── Global toast ────────────────────────────────────────────────────────────
+    window.showToast = function(message, type) {
+        type = type || 'success';
+        var icons = {
+            success: 'bi-check-circle-fill',
+            danger:  'bi-x-circle-fill',
+            warning: 'bi-exclamation-triangle-fill',
+            info:    'bi-info-circle-fill'
+        };
+        var id = 'toast-' + Date.now();
+        var container = document.getElementById('toast-container');
+        container.insertAdjacentHTML('beforeend',
+            '<div id="' + id + '" class="toast align-items-center text-bg-' + type + ' border-0" role="alert">' +
+                '<div class="d-flex">' +
+                    '<div class="toast-body"><i class="bi ' + (icons[type] || 'bi-info-circle-fill') + ' me-2"></i>' + message + '</div>' +
+                    '<button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>' +
+                '</div>' +
+            '</div>'
+        );
+        var el = document.getElementById(id);
+        var t = new bootstrap.Toast(el, {delay: 4000});
+        t.show();
+        el.addEventListener('hidden.bs.toast', function() { el.remove(); });
+    };
+
+    // ── Global confirm modal ────────────────────────────────────────────────────
+    window.showConfirm = function(title, body, btnLabel, onConfirm) {
+        document.getElementById('confirmModal-title').textContent = title || 'Confirm Action';
+        document.getElementById('confirmModal-body').innerHTML = body || 'Are you sure?';
+        var btn = document.getElementById('confirmModal-confirm-btn');
+        btn.textContent = btnLabel || 'Confirm';
+        btn.onclick = function() {
+            bootstrap.Modal.getInstance(document.getElementById('confirmModal')).hide();
+            onConfirm();
+        };
+        bootstrap.Modal.getOrCreateInstance(document.getElementById('confirmModal')).show();
+    };
     </script>
     {% block extra_js %}{% endblock %}
 </body>

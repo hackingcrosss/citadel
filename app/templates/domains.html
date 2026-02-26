@@ -478,15 +478,15 @@
     }
 
     function deleteRecord(recordId) {
-        if (!confirm('Delete this DNS record?')) return;
-
-        fetch('/api/domains/zones/' + currentZoneId + '/records/' + recordId, {method: 'DELETE'})
-            .then(r => r.json())
-            .then(data => {
-                if (data.error) { alert(data.error); return; }
-                loadDNSRecords();
-            })
-            .catch(err => alert('Error: ' + err));
+        showConfirm('Delete DNS Record', 'Delete this DNS record? This cannot be undone.', 'Delete', function() {
+            fetch('/api/domains/zones/' + currentZoneId + '/records/' + recordId, {method: 'DELETE'})
+                .then(r => r.json())
+                .then(data => {
+                    if (data.error) { showToast(data.error, 'danger'); return; }
+                    loadDNSRecords();
+                })
+                .catch(err => showToast('Error: ' + err, 'danger'));
+        });
     }
 
     function showSSLModal() {
@@ -543,24 +543,24 @@
         if (!currentZoneId) return;
         const checked = Array.from(document.querySelectorAll('.domain-rec-cb:checked'));
         if (checked.length === 0) return;
-        if (!confirm('Delete ' + checked.length + ' DNS record(s)? This cannot be undone.')) return;
-
-        const btn = document.getElementById('btn-delete-selected-domain');
-        btn.disabled = true;
-
-        const ids = checked.map(cb => cb.dataset.recordId);
-
-        function deleteNext(i) {
-            if (i >= ids.length) {
-                loadDNSRecords();
-                return;
+        showConfirm(
+            'Delete DNS Records',
+            'Delete <strong>' + checked.length + ' DNS record(s)</strong>? This cannot be undone.',
+            'Delete All',
+            function() {
+                const btn = document.getElementById('btn-delete-selected-domain');
+                btn.disabled = true;
+                const ids = checked.map(cb => cb.dataset.recordId);
+                function deleteNext(i) {
+                    if (i >= ids.length) { loadDNSRecords(); return; }
+                    fetch('/api/domains/zones/' + currentZoneId + '/records/' + ids[i], {method: 'DELETE'})
+                        .then(r => r.json())
+                        .then(() => deleteNext(i + 1))
+                        .catch(() => deleteNext(i + 1));
+                }
+                deleteNext(0);
             }
-            fetch('/api/domains/zones/' + currentZoneId + '/records/' + ids[i], {method: 'DELETE'})
-                .then(r => r.json())
-                .then(() => deleteNext(i + 1))
-                .catch(() => deleteNext(i + 1));
-        }
-        deleteNext(0);
+        );
     }
 </script>
 {% endblock %}
