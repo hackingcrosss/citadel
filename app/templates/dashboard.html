@@ -10,10 +10,16 @@
         <button class="btn btn-sm btn-outline-secondary" onclick="refreshAll()">
             <i class="bi bi-arrow-clockwise"></i> Refresh
         </button>
-        <button class="btn btn-infrared">
-            <i class="bi bi-plus-circle"></i> Quick Deploy
-        </button>
     </div>
+</div>
+
+<!-- First-run guidance banner -->
+<div id="first-run-banner" class="alert alert-warning alert-dismissible mb-4 d-none" role="alert">
+    <i class="bi bi-exclamation-triangle-fill me-2"></i>
+    <strong>Getting started:</strong> The following services need credentials configured in
+    <a href="{{ url_for('settings') }}" class="alert-link">Settings</a> before they will work:
+    <span id="unconfigured-list" class="ms-1"></span>
+    <button type="button" class="btn-close" onclick="dismissBanner()"></button>
 </div>
 
 <!-- Stats Row -->
@@ -154,6 +160,7 @@
 
     document.addEventListener('DOMContentLoaded', function() {
         refreshAll();
+        checkFirstRun();
         refreshTimer = setInterval(refreshAll, 30000);
     });
 
@@ -340,6 +347,47 @@
                 document.getElementById('npm-subtitle').innerHTML =
                     '<span class="text-danger">Not configured</span>';
             });
+    }
+
+    // --- First-run banner ---
+    function checkFirstRun() {
+        if (sessionStorage.getItem('infrared_banner_dismissed')) return;
+
+        var providers = [
+            {key: 'aws',          label: 'AWS'},
+            {key: 'cloudflare',   label: 'Cloudflare'},
+            {key: 'npm',          label: 'NPM'},
+            {key: 'gophish',      label: 'GoPhish'},
+            {key: 'cobaltstrike', label: 'Cobalt Strike'},
+        ];
+
+        var pending = providers.length;
+        var unconfigured = [];
+
+        providers.forEach(function(p) {
+            fetch('/api/credentials/' + p.key)
+                .then(function(r) { return r.json(); })
+                .then(function(d) {
+                    var creds = d[p.key] || {};
+                    if (Object.keys(creds).length === 0) unconfigured.push(p.label);
+                })
+                .catch(function() {})
+                .finally(function() {
+                    pending--;
+                    if (pending === 0 && unconfigured.length > 0) {
+                        document.getElementById('unconfigured-list').innerHTML =
+                            unconfigured.map(function(l) {
+                                return '<span class="badge bg-secondary me-1">' + l + '</span>';
+                            }).join('');
+                        document.getElementById('first-run-banner').classList.remove('d-none');
+                    }
+                });
+        });
+    }
+
+    function dismissBanner() {
+        sessionStorage.setItem('infrared_banner_dismissed', '1');
+        document.getElementById('first-run-banner').classList.add('d-none');
     }
 
     // --- Error Helper ---
