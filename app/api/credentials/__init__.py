@@ -1,7 +1,10 @@
+import logging
 from flask import request, jsonify
 from flask_login import login_required
 from app.api import api_bp
 from app.services import credential_service
+
+_log = logging.getLogger(__name__)
 
 
 @api_bp.route('/credentials/<provider>', methods=['GET'])
@@ -49,7 +52,8 @@ def test_credentials(provider):
         result = tester()
         return jsonify({'success': True, 'result': result})
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 400
+        _log.warning('Credential test failed for provider %s: %s', provider, e)
+        return jsonify({'success': False, 'error': 'Connection test failed'}), 400
 
 
 @api_bp.route('/credentials/<provider>/<key_name>', methods=['GET'])

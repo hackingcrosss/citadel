@@ -1,6 +1,16 @@
+import re
 from flask import request, jsonify
 from flask_login import login_required
 from app.api import api_bp
+
+# Cloudflare zone IDs are 32-char hex strings
+_ZONE_ID_RE = re.compile(r'^[a-f0-9]{32}$')
+# DNS label: up to 63 chars, alphanumeric + hyphens, no leading/trailing hyphen
+_LABEL_RE = re.compile(r'^[a-z0-9]([a-z0-9\-]{0,61}[a-z0-9])?$')
+# FQDN (used for domain and zone_name)
+_DOMAIN_RE = re.compile(r'^(?:[a-z0-9](?:[a-z0-9\-]{0,61}[a-z0-9])?\.)+[a-z]{2,}$')
+# Deployed site folder names (lowercase alphanum, hyphens, underscores)
+_FOLDER_RE = re.compile(r'^[a-z0-9][a-z0-9_\-]{0,63}$')
 
 
 @api_bp.route('/website-generator/generate', methods=['POST'])
@@ -16,6 +26,15 @@ def website_generator_generate():
     zone_id = data.get('zone_id', '').strip() or ''
     zone_name = data.get('zone_name', '').strip() or ''
     extra_context = data.get('extra_context', '').strip() or None
+
+    if zone_id and not _ZONE_ID_RE.match(zone_id):
+        return jsonify({'error': 'Invalid zone_id format'}), 400
+    if zone_name and not _DOMAIN_RE.match(zone_name):
+        return jsonify({'error': 'Invalid zone_name format'}), 400
+    if domain and not _DOMAIN_RE.match(domain):
+        return jsonify({'error': 'Invalid domain format'}), 400
+    if subdomain and not _LABEL_RE.match(subdomain):
+        return jsonify({'error': 'Invalid subdomain format'}), 400
 
     from app.tasks.website_generator_tasks import generate_website_task
     from app.services import task_log_service
@@ -86,6 +105,12 @@ def website_generator_publish():
         return jsonify({'error': 'category is required'}), 400
     if not zone_id or not zone_name:
         return jsonify({'error': 'zone_id and zone_name are required'}), 400
+    if not _ZONE_ID_RE.match(zone_id):
+        return jsonify({'error': 'Invalid zone_id format'}), 400
+    if not _DOMAIN_RE.match(zone_name):
+        return jsonify({'error': 'Invalid zone_name format'}), 400
+    if subdomain and not _LABEL_RE.match(subdomain):
+        return jsonify({'error': 'Invalid subdomain format'}), 400
 
     try:
         from app.services import website_generator_service
@@ -117,6 +142,8 @@ def get_deployed_sites():
 @login_required
 def delete_deployed_site(folder_name):
     """Stop the container and remove its service from docker-compose.yaml."""
+    if not _FOLDER_RE.match(folder_name):
+        return jsonify({'error': 'Invalid folder name'}), 400
     try:
         from app.services import website_generator_service
         result = website_generator_service.remove_deployed_site(folder_name)

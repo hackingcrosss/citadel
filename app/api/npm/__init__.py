@@ -59,8 +59,16 @@ def update_proxy_host(host_id):
     if not data:
         return jsonify({'error': 'No data provided'}), 400
 
+    _ALLOWED_UPDATE_FIELDS = {
+        'domain_names', 'forward_host', 'forward_port', 'forward_scheme',
+        'ssl_forced', 'block_exploits', 'allow_websocket_upgrade',
+        'access_list_id', 'certificate_id', 'http2_support',
+        'hsts_enabled', 'hsts_subdomains', 'locations', 'advanced_config',
+    }
+    kwargs = {k: v for k, v in data.items() if k in _ALLOWED_UPDATE_FIELDS}
+
     try:
-        host = npm_service.update_proxy_host(host_id, **data)
+        host = npm_service.update_proxy_host(host_id, **kwargs)
         return jsonify({'host': host})
     except Exception as e:
         return jsonify({'error': str(e)}), 400

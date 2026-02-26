@@ -2,9 +2,12 @@ import io
 import json
 import random
 import re
+import shlex
 import string
 import yaml
 from app.services.credential_service import get_credential
+
+_EXTRA_CONTEXT_MAX = 500
 
 
 def _get_client():
@@ -42,9 +45,10 @@ The website will be hosted at **https://{domain}**.
 
     extra_hint = ''
     if extra_context and extra_context.strip():
+        sanitized_extra = extra_context.strip()[:_EXTRA_CONTEXT_MAX]
         extra_hint = f"""
-Additional instructions from the operator (follow these exactly):
-{extra_context.strip()}
+Design preferences:
+{sanitized_extra}
 """
 
     planning_prompt = f"""You are a creative web designer creating a website for a business in the {category} industry.
@@ -169,7 +173,7 @@ Color palette:
 
 Make this production-grade, visually striking, and unique. Avoid generic AI aesthetics.
 Use creative layouts, unexpected typography choices, engaging animations.
-{('Additional operator instructions (apply exactly): ' + extra_context.strip()) if extra_context and extra_context.strip() else ''}
+{('Design preferences: ' + extra_context.strip()[:_EXTRA_CONTEXT_MAX]) if extra_context and extra_context.strip() else ''}
 Return ONLY the complete HTML code, no explanations."""
 
     response = client.chat.completions.create(
@@ -262,7 +266,7 @@ def deploy_website(html, category):
     client = _get_ssh_client()
     try:
         # Create the directory
-        stdin, stdout, stderr = client.exec_command(f'mkdir -p {remote_dir}')
+        stdin, stdout, stderr = client.exec_command(f'mkdir -p {shlex.quote(remote_dir)}')
         stdout.channel.recv_exit_status()
 
         # Upload index.html and update docker-compose.yaml via SFTP
@@ -383,7 +387,7 @@ def _get_container_ip(container_name):
     """
     client = _get_ssh_client()
     try:
-        cmd = ('docker inspect ' + container_name +
+        cmd = ('docker inspect ' + shlex.quote(container_name) +
                " --format '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}'")
         stdin, stdout, stderr = client.exec_command(cmd)
         stdout.channel.recv_exit_status()
@@ -402,7 +406,7 @@ def relaunch_containers():
     deploy_path = (get_credential('npm', 'deploy_path') or '/var/www/html').rstrip('/')
     client = _get_ssh_client()
     try:
-        cmd = f'cd {deploy_path} && docker compose down && docker compose up -d'
+        cmd = f'cd {shlex.quote(deploy_path)} && docker compose down && docker compose up -d'
         stdin, stdout, stderr = client.exec_command(cmd)
         exit_code = stdout.channel.recv_exit_status()
         out = stdout.read().decode('utf-8', errors='replace')
@@ -514,7 +518,7 @@ def remove_deployed_site(folder_name):
     client = _get_ssh_client()
     try:
         # Stop and remove the container
-        cmd = f'docker stop {folder_name} && docker rm {folder_name}'
+        cmd = f'docker stop {shlex.quote(folder_name)} && docker rm {shlex.quote(folder_name)}'
         stdin, stdout, stderr = client.exec_command(cmd)
         stdout.channel.recv_exit_status()
         result['stopped'] = True

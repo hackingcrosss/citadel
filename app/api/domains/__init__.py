@@ -1,3 +1,4 @@
+import re
 from flask import request, jsonify
 from flask_login import login_required
 from app.api import api_bp
@@ -5,6 +6,11 @@ from app.services import dns_service
 from app import db
 from app.models.domain import Domain, DNSRecord
 from datetime import datetime
+
+# RFC-1123 hostname: labels separated by dots, each 1–63 chars [a-z0-9-]
+_DOMAIN_RE = re.compile(
+    r'^(?:[a-z0-9](?:[a-z0-9\-]{0,61}[a-z0-9])?\.)+[a-z]{2,}$'
+)
 
 
 # --- Local Domain Management ---
@@ -26,6 +32,12 @@ def create_local_domain():
         return jsonify({'error': 'Domain name is required'}), 400
 
     name = data['name'].strip().lower()
+
+    if len(name) > 253:
+        return jsonify({'error': 'Domain name too long (max 253 characters)'}), 400
+    if not _DOMAIN_RE.match(name):
+        return jsonify({'error': 'Invalid domain name format'}), 400
+
     existing = Domain.query.filter_by(name=name).first()
     if existing:
         return jsonify({'error': 'Domain already tracked', 'domain': existing.to_dict()}), 409
