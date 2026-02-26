@@ -41,10 +41,10 @@ The recommended spec provides comfortable headroom for multiple concurrent users
 - **GoPhish**: Sending profile management — view, create, and delete SMTP sending profiles
 - **Cobalt Strike**: Listener management — view, create (HTTP, HTTPS, DNS, SMB, TCP, Foreign, ExternalC2, UserDefinedC2), and delete listeners via the CS REST API (4.12+) with JWT authentication
 - **Setup** (Operations): Cross-service orchestration — set up email domains (Mailgun + Cloudflare DNS), push SMTP credentials to GoPhish, point domains to EC2 instances or containers via NPM, deploy full C2 infrastructure (CS listener + NPM proxy + Cloudflare DNS) in one workflow
-- **C2 Deployments**: View active deployments with auto-resolved DNS and NPM forward targets; teardown entire deployments (CS listener + NPM hosts + DNS records) with confirmation and real-time log
+- **C2 Deployments**: Two-tab view — *C2 Deployments* (active listeners cross-referenced with NPM and DNS, teardown with real-time log) and *Groomed Sites* (deployed phishing/redirect websites with container and domain info, deletable)
 - **Infrastructure Map**: Visual overview of the full infrastructure chain — domains, DNS records, EC2 instances, NPM proxies, containers, and CS listeners — in both table and interactive diagram form
-- **Website Generator**: Background generation of phishing/redirect HTML pages with configurable extra context; stoppable and resumable
-- **Domain Farming**: Queue HTML generation for domain/subdomain combinations and publish to Docker + NPM + Cloudflare in one step
+- **Website Generator**: AI-generated (Azure OpenAI) single-page websites for a given business category with optional design instructions; live preview with brand summary (colors, style, tagline); publish directly to Docker + NPM + Cloudflare in one step; runs as a background Celery task, resumable across page loads
+- **Domain Farming**: Queue website generation per domain/subdomain, publish to Docker + NPM + Cloudflare; deployed sites visible on the Groomed Sites tab of the Deployments page
 - **Secure Credential Storage**: All API keys encrypted with Fernet (AES-256) before database storage
 
 ---
@@ -230,6 +230,24 @@ The `web` container mounts `/var/run/docker.sock` for direct Docker container ma
 | POST   | `/api/cobaltstrike/listeners` | Create listener (type-aware validation) |
 | DELETE | `/api/cobaltstrike/listeners/<id>` | Stop and delete listener |
 
+### Website Generator (`/api/website-generator`)
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST   | `/api/website-generator/generate` | Start background generation task (returns `task_id`) |
+| GET    | `/api/website-generator/status/<task_id>` | Poll Celery task status |
+| POST   | `/api/website-generator/deploy` | Deploy generated HTML to a new Docker container |
+| POST   | `/api/website-generator/relaunch` | Relaunch all website containers |
+| POST   | `/api/website-generator/publish` | Full publish flow: deploy container + configure NPM + create Cloudflare DNS |
+| GET    | `/api/website-generator/deployed-sites` | List deployed sites (from docker-compose + NPM matching) |
+| DELETE | `/api/website-generator/deployed-sites/<folder_name>` | Stop container and remove its service |
+
+### Task Log (`/api/task-log`)
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET    | `/api/task-log` | List all tracked background tasks |
+| DELETE | `/api/task-log/completed` | Clear all completed/failed tasks from the log |
+| POST   | `/api/task-log/<task_id>/revoke` | Cancel a pending or running Celery task |
+
 ---
 
 ## Page Reference
@@ -275,11 +293,21 @@ Domain-centric cross-service orchestration. Zone selector drives all workflows o
 - **Setup Email Domain**: add a domain to Mailgun, push all DNS records to Cloudflare, verify with Mailgun, then push Mailgun SMTP credentials to GoPhish as a sending profile — all in one sequential flow with a live step log
 - **Point Domain**: create a Cloudflare A record pointing to an EC2 instance directly, or to the NPM host's public IP with an NPM reverse proxy forwarding to a container or custom target
 - **C2 Setup**: create a CS listener, create an NPM proxy host forwarding to the CS listener, and create Cloudflare DNS records pointing to RedWarden — modal-based with per-type field adaptation
+- **Website Generator**: generate a realistic, AI-powered (Azure OpenAI) single-page site for a given business category; optionally specify a subdomain, extra design instructions (color scheme, tone, content focus); runs as a background Celery task with resume support; displays a live brand summary (color palette, tagline, style) and an iframe preview on completion; one-click **Publish** deploys the site to a Docker container, creates an NPM reverse proxy, and adds the Cloudflare DNS A record
 
 ### C2 Deployments (`/orchestration`)
+Two-tab page for monitoring and tearing down active infrastructure.
+
+**C2 Deployments tab**
 - Lists active deployments by cross-referencing CS listeners with NPM proxy hosts and Cloudflare DNS records
-- Shows callback host, forward target (scheme://host:port), and resolved DNS A records
-- **Teardown**: deletes the CS listener, NPM proxy host, and DNS records with a confirmation dialog and real-time progress log
+- Shows listener name, type, stager host, bind port, callback hosts, NPM proxy entries, and resolved DNS A records
+- **Inspect**: JSON detail modal for the full deployment object
+- **Teardown**: deletes the CS listener, NPM proxy hosts, and DNS records with a confirmation dialog and real-time progress log
+
+**Groomed Sites tab**
+- Lists all deployed phishing/redirect websites published via the Website Generator
+- Shows domain, category, container name, and folder
+- **Delete**: stops the container, removes its service from docker-compose, and cleans up the site
 
 ### GoPhish (`/gophish`)
 - Table of all sending profiles (SMTP name, host, from address)
