@@ -295,6 +295,8 @@ docker compose exec web python init_db.py
 - `app/services/gophish_service.py` - GoPhish API (sending profiles CRUD, connection verification)
 - `app/services/cobaltstrike_service.py` - Cobalt Strike REST API v1 (JWT auth with token caching, listener CRUD via type-specific endpoints, empty-body response handling)
 - `app/services/credential_service.py` - Fernet encryption/decryption for all stored credentials
+- `app/services/website_generator_service.py` - AI website generation (Azure OpenAI), Docker container deploy, NPM proxy creation, Cloudflare DNS, deployed-site discovery and removal
+- `app/services/task_log_service.py` - Lightweight in-memory/Redis task tracking (log, list, clear, status enrichment)
 
 ### API Endpoints (all complete)
 - `/api/credentials` - Credential CRUD + test for all providers, single credential GET (aws, cloudflare, mailgun, npm, docker, gophish, cobaltstrike, redwarden)
@@ -305,6 +307,8 @@ docker compose exec web python init_db.py
 - `/api/email` - Mailgun domain and SMTP credential management
 - `/api/gophish` - GoPhish sending profile management (list, create, delete)
 - `/api/cobaltstrike` - Cobalt Strike listener management (list, create, delete with type-aware validation for http, https, dns, smb, tcp, foreignHttp, foreignHttps, externalC2, userDefinedC2)
+- `/api/website-generator` - AI website generation (generate → task_id, status poll, deploy, relaunch, publish full flow, list/delete deployed sites)
+- `/api/task-log` - Background task tracking (list all tasks, clear completed, revoke/cancel a task)
 
 ### Frontend (all complete)
 - Dashboard with live data from all services, auto-refresh every 30 seconds
@@ -313,8 +317,8 @@ docker compose exec web python init_db.py
 - Domains page with zone selector, DNS record editor, SSL settings
 - Email page with domain management, DNS verification, SMTP credentials
 - NPM page with proxy host management
-- Setup page (formerly Operations) with cross-service orchestration: email domain setup (region-aware) with GoPhish integration (auto-creates Mailgun SMTP credential + GoPhish sending profile), unified Point Domain card (EC2 direct or Service via NPM with container picker), C2 Setup card (modal-based, mirrors CS create listener form; auto-creates CS listener with random bind port, NPM proxy forwarding to CS Listener IP, and Cloudflare DNS records pointing to RedWarden)
-- C2 Deployments page showing active infrastructure: cross-references CS listeners with NPM proxy hosts (matched by callback host overlap, showing forward target as scheme://host:port) and Cloudflare DNS A records (auto-resolved from callback host domains — no manual zone selection needed); supports inspect (JSON detail modal) and teardown (deletes CS listener + NPM hosts + DNS records with confirmation and real-time log)
+- Setup page (formerly Operations) with cross-service orchestration: email domain setup (region-aware) with GoPhish integration (auto-creates Mailgun SMTP credential + GoPhish sending profile), unified Point Domain card (EC2 direct or Service via NPM with container picker), C2 Setup card (modal-based, mirrors CS create listener form; auto-creates CS listener with random bind port, NPM proxy forwarding to CS Listener IP, and Cloudflare DNS records pointing to RedWarden), Website Generator card (Azure OpenAI-powered, category + extra instructions, background Celery task with resume support, live brand summary + iframe preview, one-click Publish to Docker+NPM+CF)
+- C2 Deployments page (two tabs): C2 Deployments tab — cross-references CS listeners with NPM proxy hosts and Cloudflare DNS A records, inspect (JSON modal) and teardown (CS listener + NPM hosts + DNS records with confirmation and real-time log); Groomed Sites tab — deployed phishing/redirect websites from Website Generator (domain, category, container/folder), deletable
 - GoPhish page with sending profile table (view, create via modal, delete)
 - Cobalt Strike page with listener table and dynamic create modal (fields adapt per listener type: http, https, dns, smb, tcp, foreignHttp, foreignHttps, externalC2, userDefinedC2; with conditional guardRails, httpProxy, and UDC2 file upload sections; host fields auto-populate from configured CS Listener IP)
 - Settings page with credential management for all providers including Docker remote host, NPM public IP (with EC2 instance picker), GoPhish API credentials, Cobalt Strike teamserver credentials (including Listener IP — private IP of teamserver EC2, with EC2 private IP picker), and RedWarden IP (beacon reverse proxy)
@@ -324,6 +328,7 @@ docker compose exec web python init_db.py
 - `app/tasks/celery_app.py` - Celery instance with Flask app context integration
 - `app/tasks/dns_tasks.py` - Async DNS record CRUD + zone sync to local DB
 - `app/tasks/container_tasks.py` - Async container start/stop/restart/remove
+- `app/tasks/website_generator_tasks.py` - Async AI website generation task (stoppable via revoke)
 
 ## Common Issues & Solutions
 
