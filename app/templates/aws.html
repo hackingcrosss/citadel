@@ -638,22 +638,28 @@
     function bulkAction(action) {
         const ids = getSelectedIds();
         if (ids.length === 0) return;
-        if (!confirm(`${action.charAt(0).toUpperCase() + action.slice(1)} ${ids.length} instance(s)?`)) return;
-
-        fetch(`/api/aws/instances/${action}`, {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({instance_ids: ids, region: getRegion()})
-        })
-        .then(r => r.json())
-        .then(data => {
-            if (data.error) {
-                alert('Error: ' + data.error);
-            } else {
-                setTimeout(loadInstances, 2000);
+        const label = action.charAt(0).toUpperCase() + action.slice(1);
+        showConfirm(
+            label + ' Instances',
+            label + ' <strong>' + ids.length + ' instance(s)</strong>?',
+            label,
+            function() {
+                fetch(`/api/aws/instances/${action}`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({instance_ids: ids, region: getRegion()})
+                })
+                .then(r => r.json())
+                .then(data => {
+                    if (data.error) {
+                        showToast('Error: ' + data.error, 'danger');
+                    } else {
+                        setTimeout(loadInstances, 2000);
+                    }
+                })
+                .catch(err => showToast('Error: ' + err, 'danger'));
             }
-        })
-        .catch(err => alert('Error: ' + err));
+        );
     }
 
     // --- Single Instance Actions ---

@@ -30,6 +30,12 @@
         border-radius: 0 0 6px 6px; background: #fff; margin-bottom: 0;
     }
     .provider-block { margin-bottom: 6px; }
+    .config-status {
+        font-size: 0.68rem; padding: 1px 7px;
+        border-radius: 10px; font-weight: 400;
+    }
+    .config-status.is-set  { background: #d1fae5; color: #065f46; }
+    .config-status.not-set { background: #fef3c7; color: #92400e; }
 </style>
 
 <h1 class="h3 mb-4">Settings</h1>
@@ -38,8 +44,8 @@
     <!-- Settings Navigation -->
     <div class="col-md-3 mb-4">
         <div class="card-custom">
-            <div class="list-group list-group-flush">
-                <a href="#infrastructure" class="list-group-item list-group-item-action active">
+            <div class="list-group list-group-flush" id="settings-side-nav">
+                <a href="#infrastructure" class="list-group-item list-group-item-action">
                     <i class="bi bi-server"></i> Infrastructure
                 </a>
                 <a href="#phishing" class="list-group-item list-group-item-action">
@@ -77,6 +83,7 @@
                             <i class="bi bi-box-seam text-info"></i>
                             <strong>Docker</strong>
                             <span class="role-badge">Containers</span>
+                            <span class="config-status" id="docker-cfg"></span>
                         </span>
                         <i class="bi bi-chevron-down chevron"></i>
                     </button>
@@ -130,6 +137,7 @@
                             <i class="bi bi-cloud text-warning"></i>
                             <strong>AWS</strong>
                             <span class="role-badge">Instances</span>
+                            <span class="config-status" id="aws-cfg"></span>
                         </span>
                         <i class="bi bi-chevron-down chevron"></i>
                     </button>
@@ -174,6 +182,7 @@
                             <i class="bi bi-hdd-network text-primary"></i>
                             <strong>Nginx Proxy Manager</strong>
                             <span class="role-badge">Reverse Proxy</span>
+                            <span class="config-status" id="npm-cfg"></span>
                         </span>
                         <i class="bi bi-chevron-down chevron"></i>
                     </button>
@@ -279,6 +288,7 @@
                             <i class="bi bi-cloud-fog text-warning"></i>
                             <strong>Cloudflare</strong>
                             <span class="role-badge">Domains</span>
+                            <span class="config-status" id="cf-cfg"></span>
                         </span>
                         <i class="bi bi-chevron-down chevron"></i>
                     </button>
@@ -325,6 +335,7 @@
                             <i class="bi bi-envelope text-danger"></i>
                             <strong>Mailgun</strong>
                             <span class="role-badge">Email</span>
+                            <span class="config-status" id="mg-cfg"></span>
                         </span>
                         <i class="bi bi-chevron-down chevron"></i>
                     </button>
@@ -361,6 +372,7 @@
                             <i class="bi bi-send text-success"></i>
                             <strong>GoPhish</strong>
                             <span class="role-badge">Sending Profiles</span>
+                            <span class="config-status" id="gophish-cfg"></span>
                         </span>
                         <i class="bi bi-chevron-down chevron"></i>
                     </button>
@@ -407,6 +419,7 @@
                             <i class="bi bi-crosshair text-danger"></i>
                             <strong>Cobalt Strike</strong>
                             <span class="role-badge">Listeners</span>
+                            <span class="config-status" id="cs-cfg"></span>
                         </span>
                         <i class="bi bi-chevron-down chevron"></i>
                     </button>
@@ -458,6 +471,7 @@
                             <i class="bi bi-shield-shaded text-warning"></i>
                             <strong>RedWarden</strong>
                             <span class="role-badge">Beacon Reverse Proxy</span>
+                            <span class="config-status" id="rw-cfg"></span>
                         </span>
                         <i class="bi bi-chevron-down chevron"></i>
                     </button>
@@ -499,6 +513,7 @@
                             <i class="bi bi-stars text-info"></i>
                             <strong>OpenAI</strong>
                             <span class="role-badge">Website Generator</span>
+                            <span class="config-status" id="openai-cfg"></span>
                         </span>
                         <i class="bi bi-chevron-down chevron"></i>
                     </button>
@@ -627,7 +642,53 @@
         loadOpenAIStatus();
         loadNpmSshStatus();
         loadEc2ForNpm();
+        loadConfigBadges();
+        initScrollSpy();
     });
+
+    // ── Settings nav scrollspy ────────────────────────────────────────────────
+    function initScrollSpy() {
+        new bootstrap.ScrollSpy(document.body, {
+            target: '#settings-side-nav',
+            smoothScroll: true,
+            offset: 100
+        });
+        // Smooth scroll when clicking nav links
+        document.querySelectorAll('#settings-side-nav a[href^="#"]').forEach(function(link) {
+            link.addEventListener('click', function(e) {
+                e.preventDefault();
+                var target = document.querySelector(this.getAttribute('href'));
+                if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            });
+        });
+    }
+
+    // ── Provider config status badges ─────────────────────────────────────────
+    function loadConfigBadges() {
+        var PROVIDERS = [
+            { key: 'docker',       id: 'docker-cfg'  },
+            { key: 'aws',          id: 'aws-cfg'      },
+            { key: 'npm',          id: 'npm-cfg'      },
+            { key: 'cloudflare',   id: 'cf-cfg'       },
+            { key: 'mailgun',      id: 'mg-cfg'       },
+            { key: 'gophish',      id: 'gophish-cfg'  },
+            { key: 'cobaltstrike', id: 'cs-cfg'       },
+            { key: 'redwarden',    id: 'rw-cfg'       },
+            { key: 'openai',       id: 'openai-cfg'   },
+        ];
+        PROVIDERS.forEach(function(p) {
+            fetch('/api/credentials/' + p.key)
+                .then(function(r) { return r.json(); })
+                .then(function(d) {
+                    var el = document.getElementById(p.id);
+                    if (!el) return;
+                    var isSet = Object.keys(d[p.key] || {}).length > 0;
+                    el.className = 'config-status ' + (isSet ? 'is-set' : 'not-set');
+                    el.textContent = isSet ? '✓ Configured' : '⚠ Not set';
+                })
+                .catch(function() {});
+        });
+    }
 
     // --- AWS ---
 
@@ -666,7 +727,7 @@
         if (region) body.default_region = region;
 
         if (Object.keys(body).length === 0) {
-            alert('Enter at least one value to save.');
+            showToast('Enter at least one value to save.', 'warning');
             return;
         }
 
@@ -678,14 +739,15 @@
         .then(r => r.json())
         .then(data => {
             if (data.saved) {
-                alert('Saved: ' + data.saved.join(', '));
+                showToast('AWS credentials saved.');
                 document.getElementById('aws-access-key-id').value = '';
                 document.getElementById('aws-secret-access-key').value = '';
                 document.getElementById('aws-default-region').value = '';
                 loadAwsStatus();
+                loadConfigBadges();
             }
         })
-        .catch(err => alert('Error saving: ' + err));
+        .catch(err => showToast('Error saving: ' + err, 'danger'));
     }
 
     function testAwsConnection() {
@@ -753,7 +815,7 @@
         if (zoneId) body.zone_id = zoneId;
 
         if (Object.keys(body).length === 0) {
-            alert('Enter at least one value to save.');
+            showToast('Enter at least one value to save.', 'warning');
             return;
         }
 
@@ -765,13 +827,14 @@
         .then(r => r.json())
         .then(data => {
             if (data.saved) {
-                alert('Saved: ' + data.saved.join(', '));
+                showToast('Cloudflare credentials saved.');
                 document.getElementById('cf-api-token').value = '';
                 document.getElementById('cf-zone-id').value = '';
                 loadCloudflareStatus();
+                loadConfigBadges();
             }
         })
-        .catch(err => alert('Error saving: ' + err));
+        .catch(err => showToast('Error saving: ' + err, 'danger'));
     }
 
     function testCloudflareConnection() {
@@ -803,7 +866,7 @@
         if (domain) body.domain = domain;
 
         if (Object.keys(body).length === 0) {
-            alert('Enter at least one value to save.');
+            showToast('Enter at least one value to save.', 'warning');
             return;
         }
 
@@ -815,13 +878,14 @@
         .then(r => r.json())
         .then(data => {
             if (data.saved) {
-                alert('Saved: ' + data.saved.join(', '));
+                showToast('Mailgun credentials saved.');
                 document.getElementById('mg-api-key').value = '';
                 document.getElementById('mg-domain').value = '';
                 loadMailgunStatus();
+                loadConfigBadges();
             }
         })
-        .catch(err => alert('Error saving: ' + err));
+        .catch(err => showToast('Error saving: ' + err, 'danger'));
     }
 
     function testMailgunConnection() {
@@ -879,7 +943,7 @@
         if (publicIp) body.public_ip = publicIp;
 
         if (Object.keys(body).length === 0) {
-            alert('Enter at least one value to save.');
+            showToast('Enter at least one value to save.', 'warning');
             return;
         }
 
@@ -891,14 +955,15 @@
         .then(r => r.json())
         .then(data => {
             if (data.saved) {
-                alert('Saved: ' + data.saved.join(', '));
+                showToast('NPM credentials saved.');
                 document.getElementById('npm-api-url').value = '';
                 document.getElementById('npm-api-token').value = '';
                 document.getElementById('npm-public-ip').value = '';
                 loadNpmStatus();
+                loadConfigBadges();
             }
         })
-        .catch(err => alert('Error saving: ' + err));
+        .catch(err => showToast('Error saving: ' + err, 'danger'));
     }
 
     function testNpmConnection() {
@@ -948,7 +1013,7 @@
         if (tlsKey) body.tls_key = tlsKey;
 
         if (Object.keys(body).length === 0) {
-            alert('Enter at least the Docker Host URL.');
+            showToast('Enter at least the Docker Host URL.', 'warning');
             return;
         }
 
@@ -960,15 +1025,16 @@
         .then(r => r.json())
         .then(data => {
             if (data.saved) {
-                alert('Saved: ' + data.saved.join(', '));
+                showToast('Docker credentials saved.');
                 document.getElementById('docker-host').value = '';
                 document.getElementById('docker-tls-ca').value = '';
                 document.getElementById('docker-tls-cert').value = '';
                 document.getElementById('docker-tls-key').value = '';
                 loadDockerStatus();
+                loadConfigBadges();
             }
         })
-        .catch(err => alert('Error saving: ' + err));
+        .catch(err => showToast('Error saving: ' + err, 'danger'));
     }
 
     function testDockerConnection() {
@@ -1019,7 +1085,7 @@
         if (apiKey) body.api_key = apiKey;
 
         if (Object.keys(body).length === 0) {
-            alert('Enter at least one value to save.');
+            showToast('Enter at least one value to save.', 'warning');
             return;
         }
 
@@ -1031,13 +1097,14 @@
         .then(r => r.json())
         .then(data => {
             if (data.saved) {
-                alert('Saved: ' + data.saved.join(', '));
+                showToast('GoPhish credentials saved.');
                 document.getElementById('gophish-api-url').value = '';
                 document.getElementById('gophish-api-key').value = '';
                 loadGophishStatus();
+                loadConfigBadges();
             }
         })
-        .catch(err => alert('Error saving: ' + err));
+        .catch(err => showToast('Error saving: ' + err, 'danger'));
     }
 
     function testGophishConnection() {
@@ -1102,7 +1169,7 @@
         if (listenerIp) body.listener_ip = listenerIp;
 
         if (Object.keys(body).length === 0) {
-            alert('Enter at least one value to save.');
+            showToast('Enter at least one value to save.', 'warning');
             return;
         }
 
@@ -1114,15 +1181,16 @@
         .then(r => r.json())
         .then(data => {
             if (data.saved) {
-                alert('Saved: ' + data.saved.join(', '));
+                showToast('Cobalt Strike credentials saved.');
                 document.getElementById('cs-api-url').value = '';
                 document.getElementById('cs-username').value = '';
                 document.getElementById('cs-password').value = '';
                 document.getElementById('cs-listener-ip').value = '';
                 loadCobaltstrikeStatus();
+                loadConfigBadges();
             }
         })
-        .catch(err => alert('Error saving: ' + err));
+        .catch(err => showToast('Error saving: ' + err, 'danger'));
     }
 
     function testCobaltstrikeConnection() {
@@ -1161,7 +1229,7 @@
 
     function saveRedwardenCredentials() {
         const ip = document.getElementById('redwarden-ip').value.trim();
-        if (!ip) { alert('Enter a RedWarden IP address.'); return; }
+        if (!ip) { showToast('Enter a RedWarden IP address.', 'warning'); return; }
 
         fetch('/api/credentials/redwarden', {
             method: 'POST',
@@ -1171,12 +1239,13 @@
         .then(r => r.json())
         .then(data => {
             if (data.saved) {
-                alert('Saved: ' + data.saved.join(', '));
+                showToast('RedWarden credentials saved.');
                 document.getElementById('redwarden-ip').value = '';
                 loadRedwardenStatus();
+                loadConfigBadges();
             }
         })
-        .catch(err => alert('Error saving: ' + err));
+        .catch(err => showToast('Error saving: ' + err, 'danger'));
     }
 
     // --- NPM EC2 Picker ---
@@ -1302,7 +1371,7 @@
         if (key)      body.ssh_private_key = key;
 
         if (Object.keys(body).length === 0) {
-            alert('Enter at least one value to save.');
+            showToast('Enter at least one value to save.', 'warning');
             return;
         }
 
@@ -1370,7 +1439,7 @@
         if (deployment) body.deployment = deployment;
 
         if (Object.keys(body).length === 0) {
-            alert('Enter at least one value to save.');
+            showToast('Enter at least one value to save.', 'warning');
             return;
         }
 
@@ -1382,14 +1451,15 @@
         .then(r => r.json())
         .then(data => {
             if (data.saved) {
-                alert('Saved: ' + data.saved.join(', '));
+                showToast('OpenAI credentials saved.');
                 document.getElementById('openai-api-key').value = '';
                 document.getElementById('openai-endpoint').value = '';
                 document.getElementById('openai-deployment').value = '';
                 loadOpenAIStatus();
+                loadConfigBadges();
             }
         })
-        .catch(err => alert('Error saving: ' + err));
+        .catch(err => showToast('Error saving: ' + err, 'danger'));
     }
 
     function testOpenAIConnection() {
@@ -1413,7 +1483,7 @@
     function npmLogin() {
         const email = document.getElementById('npm-auth-email').value;
         const password = document.getElementById('npm-auth-password').value;
-        if (!email || !password) { alert('Enter NPM email and password'); return; }
+        if (!email || !password) { showToast('Enter NPM email and password.', 'warning'); return; }
 
         fetch('/api/npm/token', {
             method: 'POST',
@@ -1423,15 +1493,16 @@
         .then(r => r.json())
         .then(data => {
             if (data.success) {
-                alert('Token obtained and saved!');
+                showToast('NPM token obtained and saved.');
                 document.getElementById('npm-auth-email').value = '';
                 document.getElementById('npm-auth-password').value = '';
                 loadNpmStatus();
+                loadConfigBadges();
             } else {
-                alert('Login failed: ' + (data.error || 'Unknown error'));
+                showToast('Login failed: ' + (data.error || 'Unknown error'), 'danger');
             }
         })
-        .catch(err => alert('Error: ' + err));
+        .catch(err => showToast('Error: ' + err, 'danger'));
     }
 </script>
 {% endblock %}

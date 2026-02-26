@@ -267,20 +267,20 @@
     }
 
     function deleteDomain(name, region) {
-        if (!confirm('Delete domain ' + name + '? This cannot be undone.')) return;
-
-        fetch('/api/email/domains/' + name + '?region=' + region, {method: 'DELETE'})
-            .then(r => r.json())
-            .then(data => {
-                if (data.error) { alert(data.error); return; }
-                if (currentDomain === name) {
-                    currentDomain = null;
-                    currentDomainRegion = null;
-                    document.getElementById('domain-detail').style.display = 'none';
-                }
-                loadDomains();
-            })
-            .catch(err => alert('Error: ' + err));
+        showConfirm('Delete Domain', 'Delete domain <strong>' + name + '</strong>? This cannot be undone.', 'Delete', function() {
+            fetch('/api/email/domains/' + name + '?region=' + region, {method: 'DELETE'})
+                .then(r => r.json())
+                .then(data => {
+                    if (data.error) { showToast(data.error, 'danger'); return; }
+                    if (currentDomain === name) {
+                        currentDomain = null;
+                        currentDomainRegion = null;
+                        document.getElementById('domain-detail').style.display = 'none';
+                    }
+                    loadDomains();
+                })
+                .catch(err => showToast('Error: ' + err, 'danger'));
+        });
     }
 
     function selectDomain(name, region) {
@@ -450,15 +450,15 @@
     }
 
     function deleteSmtpCredential(login) {
-        if (!confirm('Delete SMTP credential ' + login + '?')) return;
-
-        fetch('/api/email/domains/' + currentDomain + '/credentials/' + login + '?region=' + currentDomainRegion, {method: 'DELETE'})
-            .then(r => r.json())
-            .then(data => {
-                if (data.error) { alert(data.error); return; }
-                loadSmtpCredentials();
-            })
-            .catch(err => alert('Error: ' + err));
+        showConfirm('Delete SMTP Credential', 'Delete SMTP credential <strong>' + login + '</strong>?', 'Delete', function() {
+            fetch('/api/email/domains/' + currentDomain + '/credentials/' + login + '?region=' + currentDomainRegion, {method: 'DELETE'})
+                .then(r => r.json())
+                .then(data => {
+                    if (data.error) { showToast(data.error, 'danger'); return; }
+                    loadSmtpCredentials();
+                })
+                .catch(err => showToast('Error: ' + err, 'danger'));
+        });
     }
 
     // --- Helpers ---
