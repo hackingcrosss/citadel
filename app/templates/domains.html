@@ -103,6 +103,7 @@
                             <input type="checkbox" id="domain-cb-all" title="Toggle all"
                                    onchange="toggleAllDomainCheckboxes(this.checked)">
                         </th>
+                        <th>Provider</th>
                         <th>Type</th>
                         <th>Name</th>
                         <th>Content</th>
@@ -112,7 +113,7 @@
                     </tr>
                 </thead>
                 <tbody id="records-tbody">
-                    <tr><td colspan="7" class="text-center text-muted py-4">Select a zone above</td></tr>
+                    <tr><td colspan="8" class="text-center text-muted py-4">Select a zone above</td></tr>
                 </tbody>
             </table>
         </div>
@@ -294,7 +295,7 @@
         if (!currentZoneId) {
             document.getElementById('zone-info-card').style.display = 'none';
             document.getElementById('records-tbody').innerHTML =
-                '<tr><td colspan="7" class="text-center text-muted py-4">Select a zone above</td></tr>';
+                '<tr><td colspan="8" class="text-center text-muted py-4">Select a zone above</td></tr>';
             updateDomainSelection();
             document.getElementById('record-count').textContent = '0 records';
             return;
@@ -336,7 +337,7 @@
         if (!currentZoneId) return;
 
         const tbody = document.getElementById('records-tbody');
-        tbody.innerHTML = '<tr><td colspan="7" class="text-center py-4"><i class="bi bi-hourglass-split"></i> Loading...</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="8" class="text-center py-4"><i class="bi bi-hourglass-split"></i> Loading...</td></tr>';
         updateDomainSelection();
 
         let url = '/api/domains/zones/' + currentZoneId + '/records';
@@ -347,7 +348,7 @@
             .then(r => r.json())
             .then(data => {
                 if (data.error) {
-                    tbody.innerHTML = '<tr><td colspan="7" class="text-danger text-center py-4">' + data.error + '</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="8" class="text-danger text-center py-4">' + data.error + '</td></tr>';
                     updateDomainSelection();
                     return;
                 }
@@ -356,7 +357,7 @@
                 document.getElementById('record-count').textContent = records.length + ' records';
 
                 if (records.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted py-4">No records found</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted py-4">No records found</td></tr>';
                     updateDomainSelection();
                     return;
                 }
@@ -372,6 +373,7 @@
 
                     return '<tr>' +
                         '<td><input type="checkbox" class="domain-rec-cb" data-record-id="' + r.id + '" onchange="updateDomainSelection()"></td>' +
+                        '<td><span class="badge bg-secondary">Cloudflare</span></td>' +
                         '<td><span class="badge bg-' + color + '">' + r.type + '</span></td>' +
                         '<td>' + r.name + '</td>' +
                         '<td class="text-truncate" style="max-width:250px" title="' + r.content + '">' + r.content + '</td>' +
@@ -392,7 +394,7 @@
                 updateDomainSelection();
             })
             .catch(err => {
-                tbody.innerHTML = '<tr><td colspan="7" class="text-danger text-center py-4">Failed to load records</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="8" class="text-danger text-center py-4">Failed to load records</td></tr>';
                 updateDomainSelection();
             });
     }

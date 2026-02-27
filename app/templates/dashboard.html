@@ -3,9 +3,15 @@
 {% block title %}Dashboard - InfraRed{% endblock %}
 
 {% block content %}
+{% set _tier_colors = {'community': 'bg-secondary', 'professional': 'bg-primary', 'team': 'bg-success', 'enterprise': 'bg-danger'} %}
 <div class="d-flex justify-content-between align-items-center mb-4">
     <h1 class="h3 mb-0">Dashboard</h1>
     <div class="d-flex align-items-center gap-3">
+        <a href="{% if current_user.is_admin %}{{ url_for('admin_license') }}{% else %}#{% endif %}"
+           class="badge {{ _tier_colors.get(current_plan.tier, 'bg-secondary') }} text-decoration-none"
+           title="Active plan: {{ current_plan.display_name }}{% if current_plan.org_name %} — {{ current_plan.org_name }}{% endif %}">
+            <i class="bi bi-patch-check me-1"></i>{{ current_plan.display_name }}
+        </a>
         <small class="text-muted" id="last-updated"></small>
         <button class="btn btn-sm btn-outline-secondary" onclick="refreshAll()">
             <i class="bi bi-arrow-clockwise"></i> Refresh

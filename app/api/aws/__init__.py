@@ -146,15 +146,16 @@ def aws_add_tag():
 
     instance_id = data.get('instance_id', '').strip()
     tag = data.get('tag', '').strip()
+    provider = data.get('provider', 'aws').strip() or 'aws'
 
     if not instance_id or not tag:
         return jsonify({'error': 'instance_id and tag are required'}), 400
 
-    existing = InstanceTag.query.filter_by(instance_id=instance_id, tag=tag).first()
+    existing = InstanceTag.query.filter_by(provider=provider, instance_id=instance_id, tag=tag).first()
     if existing:
         return jsonify({'tag': existing.to_dict()}), 200
 
-    new_tag = InstanceTag(instance_id=instance_id, tag=tag)
+    new_tag = InstanceTag(provider=provider, instance_id=instance_id, tag=tag)
     db.session.add(new_tag)
     db.session.commit()
     return jsonify({'tag': new_tag.to_dict()}), 201
@@ -169,11 +170,12 @@ def aws_remove_tag():
 
     instance_id = data.get('instance_id', '').strip()
     tag = data.get('tag', '').strip()
+    provider = data.get('provider', 'aws').strip() or 'aws'
 
     if not instance_id or not tag:
         return jsonify({'error': 'instance_id and tag are required'}), 400
 
-    existing = InstanceTag.query.filter_by(instance_id=instance_id, tag=tag).first()
+    existing = InstanceTag.query.filter_by(provider=provider, instance_id=instance_id, tag=tag).first()
     if not existing:
         return jsonify({'error': 'Tag not found'}), 404
 

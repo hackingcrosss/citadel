@@ -28,6 +28,7 @@
             <table class="table table-hover mb-0">
                 <thead>
                     <tr>
+                        <th>Provider</th>
                         <th>ID</th>
                         <th>Name</th>
                         <th>Type</th>
@@ -41,7 +42,7 @@
                 </thead>
                 <tbody id="listeners-table">
                     <tr>
-                        <td colspan="9" class="text-center text-muted py-4">
+                        <td colspan="10" class="text-center text-muted py-4">
                             <span class="spinner-border spinner-border-sm"></span> Loading...
                         </td>
                     </tr>
@@ -338,7 +339,7 @@
                 var tbody = document.getElementById('listeners-table');
 
                 if (listeners.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="9" class="text-center text-muted py-4">No listeners found</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="10" class="text-center text-muted py-4">No listeners found</td></tr>';
                     return;
                 }
 
@@ -365,6 +366,7 @@
                     if (!lBeacons) lBeacons = '-';
 
                     html += '<tr>';
+                    html += '<td><span class="badge bg-danger">Cobalt Strike</span></td>';
                     html += '<td>' + (l.id != null ? l.id : idx) + '</td>';
                     html += '<td><strong>' + escapeHtml(l.name || '-') + '</strong></td>';
                     html += '<td><span class="badge bg-secondary">' + escapeHtml(String(lType)) + '</span></td>';

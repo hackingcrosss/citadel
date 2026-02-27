@@ -629,6 +629,9 @@
         document.addEventListener('DOMContentLoaded', updateNavDots);
     })();
 
+    // ── Current user info ───────────────────────────────────────────────────────
+    window._INFRARED_USER_ROLE = '{{ current_user.role if current_user.is_authenticated else "" }}';
+
     // ── Global toast ────────────────────────────────────────────────────────────
     window.showToast = function(message, type) {
         type = type || 'success';
@@ -652,6 +655,18 @@
         var t = new bootstrap.Toast(el, {delay: 4000});
         t.show();
         el.addEventListener('hidden.bs.toast', function() { el.remove(); });
+    };
+
+    // ── Upgrade required prompt ─────────────────────────────────────────────────
+    window.showUpgradeRequired = function(message) {
+        var isAdmin = window._INFRARED_USER_ROLE === 'admin';
+        var body = (message || 'This feature is not available on your current plan.');
+        if (isAdmin) {
+            body += ' <a href="/admin/license" class="alert-link fw-semibold">Manage License →</a>';
+        } else {
+            body += ' Contact your administrator to upgrade.';
+        }
+        showToast(body, 'warning');
     };
 
     // ── Global confirm modal ────────────────────────────────────────────────────

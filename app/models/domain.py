@@ -13,6 +13,7 @@ class Domain(db.Model):
     purpose = db.Column(db.String(50))  # phishing, c2, redirect, staging
     notes = db.Column(db.Text)
     mailgun_region = db.Column(db.String(5))  # us, eu
+    provider = db.Column(db.String(50), nullable=False, default='cloudflare')
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     last_synced_at = db.Column(db.DateTime)
@@ -30,6 +31,7 @@ class Domain(db.Model):
             'purpose': self.purpose,
             'notes': self.notes,
             'mailgun_region': self.mailgun_region,
+            'provider': self.provider,
             'record_count': self.dns_records.count(),
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None,
@@ -53,6 +55,7 @@ class DNSRecord(db.Model):
     proxied = db.Column(db.Boolean, default=False)
     priority = db.Column(db.Integer)  # for MX records
     managed_by = db.Column(db.String(30), default='manual')  # manual, infrared, mailgun
+    provider = db.Column(db.String(50), nullable=False, default='cloudflare')
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -69,6 +72,7 @@ class DNSRecord(db.Model):
             'proxied': self.proxied,
             'priority': self.priority,
             'managed_by': self.managed_by,
+            'provider': self.provider,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None,
         }

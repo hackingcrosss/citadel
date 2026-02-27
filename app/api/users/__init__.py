@@ -4,6 +4,7 @@ from flask_login import login_required, current_user
 from app.api import api_bp
 from app import db
 from app.models.user import User, VALID_ROLES
+from app.services.plan_service import TIERS
 from app.services.plan_service import get_current_plan
 from app.utils.decorators import admin_required
 
@@ -93,6 +94,15 @@ def update_user(user_id):
             return jsonify({'error': 'Cannot deactivate your own account'}), 400
         user.is_active = bool(data['is_active'])
 
+    if 'plan_override' in data:
+        override = (data['plan_override'] or '').strip() or None
+        if override and override not in TIERS:
+            return jsonify({'error': f'Invalid plan tier. Must be one of: {", ".join(TIERS)}'}), 400
+        # Admins cannot have a plan override — they always get enterprise
+        if user.role == 'admin' and override:
+            return jsonify({'error': 'Admin users always have enterprise access; plan override is not applicable'}), 400
+        user.plan_override = override
+
     db.session.commit()
     _log.info('Admin %s updated user %s', current_user.email, user.email)
     return jsonify(_user_dict(user))
@@ -124,6 +134,7 @@ def _user_dict(user):
         'email': user.email,
         'display_name': user.display_name,
         'role': user.role,
+        'plan_override': user.plan_override,
         'is_active': user.is_active,
         'must_change_password': user.must_change_password,
         'created_at': user.created_at.isoformat() if user.created_at else None,

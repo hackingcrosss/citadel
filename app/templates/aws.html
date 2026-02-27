@@ -141,6 +141,7 @@
                     <thead class="table-light">
                         <tr>
                             <th style="width: 30px;"><input type="checkbox" id="selectAll" onchange="toggleSelectAll()"></th>
+                            <th>Provider</th>
                             <th>Name</th>
                             <th>Instance ID</th>
                             <th>Type</th>
@@ -495,6 +496,7 @@
             return `
             <tr>
                 <td><input type="checkbox" class="inst-check" value="${idAttr}" onchange="updateBulkButtons()"></td>
+                <td><span class="badge bg-warning text-dark">AWS</span></td>
                 <td>${nameHtml}</td>
                 <td><code class="text-primary" style="cursor:pointer" onclick="showDetail('${idAttr}')">${id}</code></td>
                 <td><small>${typeHtml}</small></td>

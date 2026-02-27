@@ -6,7 +6,8 @@ class InstanceSSHConfig(db.Model):
     __tablename__ = 'instance_ssh_configs'
 
     id = db.Column(db.Integer, primary_key=True)
-    instance_id = db.Column(db.String(30), nullable=False, unique=True, index=True)
+    provider = db.Column(db.String(50), nullable=False, default='aws')
+    instance_id = db.Column(db.String(30), nullable=False, index=True)
     ssh_username = db.Column(db.String(100), nullable=False, default='ec2-user')
     encrypted_private_key = db.Column(db.Text, nullable=False)
     use_public_ip = db.Column(db.Boolean, default=True)
@@ -14,9 +15,14 @@ class InstanceSSHConfig(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
+    __table_args__ = (
+        db.UniqueConstraint('provider', 'instance_id', name='uq_provider_instance_ssh'),
+    )
+
     def to_dict(self):
         return {
             'id': self.id,
+            'provider': self.provider,
             'instance_id': self.instance_id,
             'ssh_username': self.ssh_username,
             'use_public_ip': self.use_public_ip,
@@ -27,4 +33,4 @@ class InstanceSSHConfig(db.Model):
         }
 
     def __repr__(self):
-        return f'<InstanceSSHConfig {self.instance_id}>'
+        return f'<InstanceSSHConfig {self.provider}:{self.instance_id}>'

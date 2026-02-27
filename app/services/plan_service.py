@@ -131,9 +131,45 @@ def get_current_plan() -> PlanInfo:
 
     Cached on Flask's g object so the DB is queried at most once per request.
     Falls back to a Community plan if no license row exists.
+
+    Admin users always receive an unlimited Enterprise plan, bypassing all
+    license restrictions.
     """
     if hasattr(g, '_current_plan'):
         return g._current_plan
+
+    # Admin users bypass the license system entirely — they always get
+    # an unlimited Enterprise plan with every feature enabled.
+    # Non-admin users may have a per-user plan_override that takes precedence
+    # over the global license.
+    try:
+        from flask_login import current_user
+        if current_user.is_authenticated:
+            if current_user.is_admin:
+                plan = PlanInfo(
+                    tier='enterprise',
+                    max_users=-1,
+                    max_domains=-1,
+                    features=ALL_FEATURES,
+                    org_name='',
+                )
+                g._current_plan = plan
+                return plan
+
+            override = getattr(current_user, 'plan_override', None)
+            if override and override in TIERS:
+                tier_cfg = TIERS[override]
+                plan = PlanInfo(
+                    tier=override,
+                    max_users=tier_cfg['max_users'],
+                    max_domains=tier_cfg['max_domains'],
+                    features=tier_cfg['features'],
+                    org_name='',
+                )
+                g._current_plan = plan
+                return plan
+    except Exception:
+        pass
 
     try:
         from app.models.license import License

@@ -30,6 +30,7 @@
             <table class="table table-hover mb-0">
                 <thead>
                     <tr>
+                        <th>Provider</th>
                         <th>Domain</th>
                         <th>Region</th>
                         <th>State</th>
@@ -39,7 +40,7 @@
                     </tr>
                 </thead>
                 <tbody id="domains-tbody">
-                    <tr><td colspan="6" class="text-center text-muted py-4">Loading domains...</td></tr>
+                    <tr><td colspan="7" class="text-center text-muted py-4">Loading domains...</td></tr>
                 </tbody>
             </table>
         </div>
@@ -207,7 +208,7 @@
             .then(data => {
                 if (data.error) {
                     document.getElementById('domains-tbody').innerHTML =
-                        '<tr><td colspan="6" class="text-danger text-center py-4">' + data.error + '</td></tr>';
+                        '<tr><td colspan="7" class="text-danger text-center py-4">' + data.error + '</td></tr>';
                     return;
                 }
 
@@ -216,7 +217,7 @@
 
                 if (domains.length === 0) {
                     document.getElementById('domains-tbody').innerHTML =
-                        '<tr><td colspan="6" class="text-center text-muted py-4">No domains configured. Add one to get started.</td></tr>';
+                        '<tr><td colspan="7" class="text-center text-muted py-4">No domains configured. Add one to get started.</td></tr>';
                     return;
                 }
 
@@ -226,6 +227,7 @@
                     const region = d.region || 'US';
                     const regionClass = region === 'EU' ? 'bg-info' : 'bg-primary';
                     return '<tr>' +
+                        '<td><span class="badge bg-danger">Mailgun</span></td>' +
                         '<td><strong>' + d.name + '</strong></td>' +
                         '<td><span class="badge ' + regionClass + '">' + region + '</span></td>' +
                         '<td><span class="badge-status ' + stateClass + '">' + (d.state || 'unknown') + '</span></td>' +
@@ -246,7 +248,7 @@
             })
             .catch(err => {
                 document.getElementById('domains-tbody').innerHTML =
-                    '<tr><td colspan="6" class="text-danger text-center py-4">Failed to load - check Mailgun credentials in Settings</td></tr>';
+                    '<tr><td colspan="7" class="text-danger text-center py-4">Failed to load - check Mailgun credentials in Settings</td></tr>';
             });
     }
 

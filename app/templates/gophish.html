@@ -28,6 +28,7 @@
             <table class="table table-hover mb-0">
                 <thead>
                     <tr>
+                        <th>Provider</th>
                         <th>ID</th>
                         <th>Name</th>
                         <th>From Address</th>
@@ -39,7 +40,7 @@
                 </thead>
                 <tbody id="profiles-table">
                     <tr>
-                        <td colspan="7" class="text-center text-muted py-4">
+                        <td colspan="8" class="text-center text-muted py-4">
                             <span class="spinner-border spinner-border-sm"></span> Loading...
                         </td>
                     </tr>
@@ -123,13 +124,14 @@
                 var tbody = document.getElementById('profiles-table');
 
                 if (profiles.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted py-4">No sending profiles found</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted py-4">No sending profiles found</td></tr>';
                     return;
                 }
 
                 var html = '';
                 profiles.forEach(function(p) {
                     html += '<tr>';
+                    html += '<td><span class="badge bg-success">GoPhish</span></td>';
                     html += '<td>' + p.id + '</td>';
                     html += '<td><strong>' + escapeHtml(p.name) + '</strong></td>';
                     html += '<td>' + escapeHtml(p.from_address || '-') + '</td>';
