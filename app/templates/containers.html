@@ -91,6 +91,7 @@
             <table class="table table-hover mb-0">
                 <thead>
                     <tr>
+                        <th>Provider</th>
                         <th>Name</th>
                         <th>Image</th>
                         <th>Ports</th>
@@ -100,7 +101,7 @@
                     </tr>
                 </thead>
                 <tbody id="container-table">
-                    <tr><td colspan="6" class="text-center text-muted py-3">
+                    <tr><td colspan="7" class="text-center text-muted py-3">
                         <i class="bi bi-hourglass-split"></i> Loading containers...
                     </td></tr>
                 </tbody>
@@ -210,7 +211,7 @@
             .then(function(data) {
                 if (data.error) {
                     document.getElementById('container-table').innerHTML =
-                        '<tr><td colspan="6" class="text-center py-3">' +
+                        '<tr><td colspan="7" class="text-center py-3">' +
                         '<span class="text-danger"><i class="bi bi-exclamation-triangle"></i> ' + data.error + '</span>' +
                         '<br><small><a href="' + "{{ url_for('settings') }}" + '">Configure in Settings</a></small>' +
                         '</td></tr>';
@@ -222,7 +223,7 @@
             })
             .catch(function() {
                 document.getElementById('container-table').innerHTML =
-                    '<tr><td colspan="6" class="text-center py-3">' +
+                    '<tr><td colspan="7" class="text-center py-3">' +
                     '<span class="text-danger"><i class="bi bi-exclamation-triangle"></i> Failed to connect to Docker</span>' +
                     '<br><small><a href="' + "{{ url_for('settings') }}" + '">Configure in Settings</a></small>' +
                     '</td></tr>';
@@ -265,7 +266,7 @@
         if (containers === undefined) containers = allContainers;
         var tbody = document.getElementById('container-table');
         if (containers.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-3">No containers found</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted py-3">No containers found</td></tr>';
             return;
         }
 
@@ -309,6 +310,7 @@
             }
 
             return '<tr' + rowClass + '>' +
+                '<td><span class="badge bg-dark">Docker</span></td>' +
                 '<td><i class="bi bi-box"></i> <strong>' + escapeHtml(c.name) + '</strong>' +
                     '<br><small class="text-muted">' + c.short_id + '</small></td>' +
                 '<td>' + imageName + '</td>' +

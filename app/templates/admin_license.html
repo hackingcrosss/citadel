@@ -223,10 +223,8 @@ function saveLicense() {
             showToast(res.data.error || 'Failed to update license', 'danger');
             return;
         }
-        licenseData = res.data;
-        renderCurrentPlan(res.data);
-        renderTierCards(res.data);
         showToast('License updated to ' + res.data.display_name, 'success');
+        loadLicense();
     })
     .catch(function(e) {
         showToast('Error: ' + e.message, 'danger');

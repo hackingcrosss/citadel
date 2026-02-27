@@ -14,6 +14,7 @@ class User(UserMixin, db.Model):
     display_name = db.Column(db.String(100))
     is_active = db.Column(db.Boolean, default=True)
     role = db.Column(db.String(20), nullable=False, default='operator')
+    plan_override = db.Column(db.String(20), nullable=True)   # None = inherit global license
     must_change_password = db.Column(db.Boolean, default=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     last_login = db.Column(db.DateTime)

@@ -62,6 +62,7 @@ def create_local_domain():
         purpose=data.get('purpose'),
         notes=data.get('notes'),
         mailgun_region=data.get('mailgun_region'),
+        provider=data.get('provider', 'cloudflare').strip() or 'cloudflare',
     )
     db.session.add(domain)
     db.session.commit()
@@ -133,6 +134,7 @@ def sync_domain(domain_id):
             db_rec.ttl = rec.get('ttl', 1)
             db_rec.proxied = rec.get('proxied', False)
             db_rec.priority = rec.get('priority')
+            db_rec.provider = domain.provider or 'cloudflare'
         else:
             db_rec = DNSRecord(
                 domain_id=domain.id,
@@ -143,6 +145,7 @@ def sync_domain(domain_id):
                 ttl=rec.get('ttl', 1),
                 proxied=rec.get('proxied', False),
                 priority=rec.get('priority'),
+                provider=domain.provider or 'cloudflare',
             )
             db.session.add(db_rec)
 
@@ -228,6 +231,7 @@ def create_dns_record(zone_id):
                 proxied=record.get('proxied', False),
                 priority=record.get('priority'),
                 managed_by='infrared',
+                provider=domain.provider or 'cloudflare',
             )
             db.session.add(db_rec)
             db.session.commit()

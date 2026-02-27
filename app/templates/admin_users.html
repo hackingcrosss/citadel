@@ -18,6 +18,20 @@
     }
     .status-active   { color: #22c55e; }
     .status-inactive { color: #ef4444; }
+    .plan-badge-community    { background: #6b7280; color: #fff; }
+    .plan-badge-professional { background: #2563eb; color: #fff; }
+    .plan-badge-team         { background: #16a34a; color: #fff; }
+    .plan-badge-enterprise   { background: #dc2626; color: #fff; }
+    .plan-badge-default      { background: #374151; color: #9ca3af; border: 1px solid #4b5563; }
+    .plan-badge {
+        display: inline-block;
+        padding: 0.2em 0.55em;
+        font-size: 0.7rem;
+        font-weight: 600;
+        border-radius: 4px;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+    }
 </style>
 {% endblock %}
 
@@ -42,13 +56,14 @@
                     <th>Email</th>
                     <th>Display Name</th>
                     <th>Role</th>
+                    <th>Plan</th>
                     <th>Status</th>
                     <th>Last Login</th>
                     <th class="text-end">Actions</th>
                 </tr>
             </thead>
             <tbody id="users-tbody">
-                <tr><td colspan="6" class="text-center text-muted py-4">
+                <tr><td colspan="7" class="text-center text-muted py-4">
                     <span class="spinner-border spinner-border-sm me-2"></span>Loading…
                 </td></tr>
             </tbody>
@@ -127,11 +142,24 @@
                 </div>
                 <div class="mb-3">
                     <label class="form-label">Role</label>
-                    <select class="form-select" id="edit-role">
+                    <select class="form-select" id="edit-role" onchange="onEditRoleChange()">
                         <option value="operator">Operator</option>
                         <option value="viewer">Viewer</option>
                         <option value="admin">Admin</option>
                     </select>
+                </div>
+                <div class="mb-3" id="edit-plan-row">
+                    <label class="form-label">Plan Override
+                        <span class="text-muted small fw-normal ms-1">— overrides the global license for this user</span>
+                    </label>
+                    <select class="form-select" id="edit-plan-override">
+                        <option value="">Default (inherit global license)</option>
+                        <option value="community">Community</option>
+                        <option value="professional">Professional</option>
+                        <option value="team">Team</option>
+                        <option value="enterprise">Enterprise</option>
+                    </select>
+                    <div class="form-text text-muted">Admins always have Enterprise access regardless of this setting.</div>
                 </div>
                 <div class="mb-3">
                     <div class="form-check form-switch">
@@ -156,12 +184,29 @@
 <script>
 const CURRENT_USER_ID = {{ current_user.id }};
 
+var PLAN_LABELS = {
+    'community':    'Community',
+    'professional': 'Professional',
+    'team':         'Team',
+    'enterprise':   'Enterprise',
+};
+
 function roleBadge(role) {
     return `<span class="role-badge role-badge-${role}">${role}</span>`;
 }
 
+function planBadge(user) {
+    // Admins always get enterprise regardless of plan_override
+    if (user.role === 'admin') {
+        return '<span class="plan-badge plan-badge-enterprise" title="Admin — always Enterprise">Enterprise</span>';
+    }
+    if (user.plan_override && PLAN_LABELS[user.plan_override]) {
+        return `<span class="plan-badge plan-badge-${user.plan_override}" title="Personal override">${PLAN_LABELS[user.plan_override]}</span>`;
+    }
+    return '<span class="plan-badge plan-badge-default" title="Inherits global license">Default</span>';
+}
+
 function loadUsers() {
-    // Load users and license info in parallel for the usage counter
     Promise.all([
         fetch('/api/users').then(r => r.json()),
         fetch('/api/license').then(r => r.json()).catch(() => null),
@@ -174,41 +219,43 @@ function loadUsers() {
 
         const tbody = document.getElementById('users-tbody');
         if (!users.length) {
-            tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-4">No users found.</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted py-4">No users found.</td></tr>';
             return;
         }
-            tbody.innerHTML = users.map(u => {
-                const lastLogin = u.last_login
-                    ? new Date(u.last_login).toLocaleString()
-                    : '<span class="text-muted">Never</span>';
-                const statusIcon = u.is_active
-                    ? '<i class="bi bi-check-circle-fill status-active" title="Active"></i> Active'
-                    : '<i class="bi bi-x-circle-fill status-inactive" title="Inactive"></i> Inactive';
-                const isSelf = u.id === CURRENT_USER_ID;
-                const deleteBtn = isSelf
-                    ? ''
-                    : `<button class="btn btn-sm btn-outline-danger ms-1" onclick="deleteUser(${u.id}, '${u.email.replace(/'/g, "\\'")}')">
-                           <i class="bi bi-trash"></i>
-                       </button>`;
-                return `<tr>
-                    <td>${u.email}${isSelf ? ' <span class="badge bg-secondary">you</span>' : ''}</td>
-                    <td>${u.display_name || '<span class="text-muted">—</span>'}</td>
-                    <td>${roleBadge(u.role)}</td>
-                    <td>${statusIcon}</td>
-                    <td><small>${lastLogin}</small></td>
-                    <td class="text-end">
-                        <button class="btn btn-sm btn-outline-secondary" onclick="openEditModal(${u.id}, '${u.email.replace(/'/g, "\\'")}', '${u.display_name || ''}', '${u.role}', ${u.is_active})">
-                            <i class="bi bi-pencil"></i>
-                        </button>
-                        ${deleteBtn}
-                    </td>
-                </tr>`;
-            }).join('');
-        })
-        .catch(() => {
-            document.getElementById('users-tbody').innerHTML =
-                '<tr><td colspan="6" class="text-center text-danger py-4">Failed to load users.</td></tr>';
-        });
+        tbody.innerHTML = users.map(u => {
+            const lastLogin = u.last_login
+                ? new Date(u.last_login).toLocaleString()
+                : '<span class="text-muted">Never</span>';
+            const statusIcon = u.is_active
+                ? '<i class="bi bi-check-circle-fill status-active" title="Active"></i> Active'
+                : '<i class="bi bi-x-circle-fill status-inactive" title="Inactive"></i> Inactive';
+            const isSelf = u.id === CURRENT_USER_ID;
+            const deleteBtn = isSelf
+                ? ''
+                : `<button class="btn btn-sm btn-outline-danger ms-1" onclick="deleteUser(${u.id}, '${u.email.replace(/'/g, "\\'")}')">
+                       <i class="bi bi-trash"></i>
+                   </button>`;
+            const editData = JSON.stringify(u).replace(/'/g, '&#39;');
+            return `<tr>
+                <td>${u.email}${isSelf ? ' <span class="badge bg-secondary">you</span>' : ''}</td>
+                <td>${u.display_name || '<span class="text-muted">—</span>'}</td>
+                <td>${roleBadge(u.role)}</td>
+                <td>${planBadge(u)}</td>
+                <td>${statusIcon}</td>
+                <td><small>${lastLogin}</small></td>
+                <td class="text-end">
+                    <button class="btn btn-sm btn-outline-secondary" onclick="openEditModal('${editData.replace(/"/g, '&quot;')}')">
+                        <i class="bi bi-pencil"></i>
+                    </button>
+                    ${deleteBtn}
+                </td>
+            </tr>`;
+        }).join('');
+    })
+    .catch(() => {
+        document.getElementById('users-tbody').innerHTML =
+            '<tr><td colspan="7" class="text-center text-danger py-4">Failed to load users.</td></tr>';
+    });
 }
 
 function openCreateModal() {
@@ -253,6 +300,8 @@ function submitCreateUser() {
             bootstrap.Modal.getInstance(document.getElementById('createUserModal')).hide();
             showToast(`User ${data.email} created successfully.`, 'success');
             loadUsers();
+        } else if (status === 402 || data.upgrade_required) {
+            showUpgradeRequired(data.error);
         } else {
             errEl.textContent = data.error || 'Failed to create user.';
             errEl.classList.remove('d-none');
@@ -264,20 +313,37 @@ function submitCreateUser() {
     });
 }
 
-function openEditModal(id, email, displayName, role, isActive) {
-    document.getElementById('edit-user-id').value = id;
-    document.getElementById('edit-email-display').textContent = email;
-    document.getElementById('edit-display-name').value = displayName;
-    document.getElementById('edit-role').value = role;
-    document.getElementById('edit-active').checked = isActive;
+function openEditModal(userJson) {
+    const u = typeof userJson === 'string' ? JSON.parse(userJson) : userJson;
+    document.getElementById('edit-user-id').value = u.id;
+    document.getElementById('edit-email-display').textContent = u.email;
+    document.getElementById('edit-display-name').value = u.display_name || '';
+    document.getElementById('edit-role').value = u.role;
+    document.getElementById('edit-plan-override').value = u.plan_override || '';
+    document.getElementById('edit-active').checked = u.is_active;
     document.getElementById('edit-error').classList.add('d-none');
+    onEditRoleChange();
     new bootstrap.Modal(document.getElementById('editUserModal')).show();
+}
+
+function onEditRoleChange() {
+    // Plan override is meaningless for admins (they always get enterprise)
+    const role = document.getElementById('edit-role').value;
+    const planRow = document.getElementById('edit-plan-row');
+    if (role === 'admin') {
+        planRow.style.opacity = '0.4';
+        planRow.querySelector('select').disabled = true;
+    } else {
+        planRow.style.opacity = '1';
+        planRow.querySelector('select').disabled = false;
+    }
 }
 
 function submitEditUser() {
     const id = document.getElementById('edit-user-id').value;
     const displayName = document.getElementById('edit-display-name').value.trim();
     const role = document.getElementById('edit-role').value;
+    const planOverride = document.getElementById('edit-plan-override').value || null;
     const isActive = document.getElementById('edit-active').checked;
     const errEl = document.getElementById('edit-error');
 
@@ -286,7 +352,7 @@ function submitEditUser() {
     fetch(`/api/users/${id}`, {
         method: 'PUT',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({display_name: displayName, role, is_active: isActive})
+        body: JSON.stringify({display_name: displayName, role, is_active: isActive, plan_override: planOverride})
     })
     .then(r => r.json().then(d => ({status: r.status, data: d})))
     .then(({status, data}) => {
@@ -309,6 +375,7 @@ function deleteUser(id, email) {
     showConfirm(
         'Delete User',
         `Are you sure you want to delete <strong>${email}</strong>? This action cannot be undone.`,
+        'Delete',
         () => {
             fetch(`/api/users/${id}`, {method: 'DELETE'})
                 .then(r => r.json().then(d => ({status: r.status, data: d})))
