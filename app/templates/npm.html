@@ -5,9 +5,11 @@
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-4">
     <h1 class="h3 mb-0">Nginx Proxy Manager</h1>
+    {% if current_user.role != 'viewer' %}
     <button class="btn btn-infrared" data-bs-toggle="modal" data-bs-target="#addHostModal">
         <i class="bi bi-plus-circle"></i> Add Proxy Host
     </button>
+    {% endif %}
 </div>
 
 <!-- Proxy Hosts Table -->
@@ -176,6 +178,7 @@
 
 {% block extra_js %}
 <script>
+    const IS_VIEWER = {{ 'true' if current_user.role == 'viewer' else 'false' }};
     var allAccessLists = [];
 
     document.addEventListener('DOMContentLoaded', function() {
@@ -251,12 +254,12 @@
                         '<td>' + buildAclSelect(h.id, h.access_list_id) + '</td>' +
                         '<td>' +
                             '<div class="btn-group btn-group-sm">' +
-                                '<button class="btn btn-outline-primary" title="Edit" onclick="editHost(' + h.id + ')">' +
+                                (!IS_VIEWER ? '<button class="btn btn-outline-primary" title="Edit" onclick="editHost(' + h.id + ')">' +
                                     '<i class="bi bi-pencil"></i>' +
-                                '</button>' +
-                                '<button class="btn btn-outline-danger" title="Delete" onclick="deleteHost(' + h.id + ')">' +
+                                '</button>' : '') +
+                                (!IS_VIEWER ? '<button class="btn btn-outline-danger" title="Delete" onclick="deleteHost(' + h.id + ')">' +
                                     '<i class="bi bi-trash"></i>' +
-                                '</button>' +
+                                '</button>' : '') +
                             '</div>' +
                         '</td>' +
                     '</tr>';

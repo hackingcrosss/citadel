@@ -2,6 +2,7 @@ from flask import request, jsonify
 from flask_login import login_required
 from app.api import api_bp
 from app.services import cobaltstrike_service
+from app.utils.decorators import feature_required
 
 # Valid listener types — these are the exact URL slugs for POST /api/v1/listeners/{type}
 VALID_TYPES = {'http', 'https', 'dns', 'smb', 'tcp', 'foreignHttp', 'foreignHttps', 'externalC2', 'userDefinedC2'}
@@ -22,6 +23,7 @@ TYPE_REQUIRED = {
 
 @api_bp.route('/cobaltstrike/listeners', methods=['GET'])
 @login_required
+@feature_required('cobaltstrike')
 def list_cs_listeners():
     try:
         listeners = cobaltstrike_service.list_listeners()
@@ -32,6 +34,7 @@ def list_cs_listeners():
 
 @api_bp.route('/cobaltstrike/listeners/<path:listener_name>', methods=['GET'])
 @login_required
+@feature_required('cobaltstrike')
 def get_cs_listener(listener_name):
     try:
         listener = cobaltstrike_service.get_listener(listener_name)
@@ -42,6 +45,7 @@ def get_cs_listener(listener_name):
 
 @api_bp.route('/cobaltstrike/listeners', methods=['POST'])
 @login_required
+@feature_required('cobaltstrike')
 def create_cs_listener():
     data = request.get_json()
     if not data:
@@ -67,6 +71,7 @@ def create_cs_listener():
 
 @api_bp.route('/cobaltstrike/listeners/<path:listener_name>', methods=['DELETE'])
 @login_required
+@feature_required('cobaltstrike')
 def delete_cs_listener(listener_name):
     try:
         cobaltstrike_service.delete_listener(listener_name)

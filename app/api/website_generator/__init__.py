@@ -2,6 +2,7 @@ import re
 from flask import request, jsonify
 from flask_login import login_required
 from app.api import api_bp
+from app.utils.decorators import feature_required
 
 # Cloudflare zone IDs are 32-char hex strings
 _ZONE_ID_RE = re.compile(r'^[a-f0-9]{32}$')
@@ -15,6 +16,7 @@ _FOLDER_RE = re.compile(r'^[a-z0-9][a-z0-9_\-]{0,63}$')
 
 @api_bp.route('/website-generator/generate', methods=['POST'])
 @login_required
+@feature_required('website_generator')
 def website_generator_generate():
     data = request.get_json() or {}
     category = data.get('category', '').strip()
@@ -47,6 +49,7 @@ def website_generator_generate():
 
 @api_bp.route('/website-generator/status/<task_id>', methods=['GET'])
 @login_required
+@feature_required('website_generator')
 def website_generator_status(task_id):
     from app.tasks.celery_app import celery
     result = celery.AsyncResult(task_id)
@@ -61,6 +64,7 @@ def website_generator_status(task_id):
 
 @api_bp.route('/website-generator/deploy', methods=['POST'])
 @login_required
+@feature_required('website_generator')
 def website_generator_deploy():
     data = request.get_json() or {}
     html = data.get('html', '').strip()
@@ -80,6 +84,7 @@ def website_generator_deploy():
 
 @api_bp.route('/website-generator/relaunch', methods=['POST'])
 @login_required
+@feature_required('website_generator')
 def website_generator_relaunch():
     try:
         from app.services import website_generator_service
@@ -91,6 +96,7 @@ def website_generator_relaunch():
 
 @api_bp.route('/website-generator/publish', methods=['POST'])
 @login_required
+@feature_required('website_generator')
 def website_generator_publish():
     data = request.get_json() or {}
     html = data.get('html', '').strip()
@@ -128,6 +134,7 @@ def website_generator_publish():
 
 @api_bp.route('/website-generator/deployed-sites', methods=['GET'])
 @login_required
+@feature_required('website_generator')
 def get_deployed_sites():
     """Return sites discovered from docker-compose + NPM proxy host matching."""
     try:
@@ -140,6 +147,7 @@ def get_deployed_sites():
 
 @api_bp.route('/website-generator/deployed-sites/<folder_name>', methods=['DELETE'])
 @login_required
+@feature_required('website_generator')
 def delete_deployed_site(folder_name):
     """Stop the container and remove its service from docker-compose.yaml."""
     if not _FOLDER_RE.match(folder_name):

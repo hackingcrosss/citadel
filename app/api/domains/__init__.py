@@ -3,6 +3,7 @@ from flask import request, jsonify
 from flask_login import login_required
 from app.api import api_bp
 from app.services import dns_service
+from app.services.plan_service import get_current_plan
 from app import db
 from app.models.domain import Domain, DNSRecord
 from datetime import datetime
@@ -37,6 +38,17 @@ def create_local_domain():
         return jsonify({'error': 'Domain name too long (max 253 characters)'}), 400
     if not _DOMAIN_RE.match(name):
         return jsonify({'error': 'Invalid domain name format'}), 400
+
+    # Enforce plan domain limit
+    plan = get_current_plan()
+    current_count = Domain.query.count()
+    if plan.at_domain_limit(current_count):
+        limit_str = str(plan.max_domains)
+        return jsonify({
+            'error': f'Domain limit reached ({limit_str} domains on {plan.display_name} plan). Upgrade your plan to add more domains.',
+            'code': 'PLAN_LIMIT_EXCEEDED',
+            'upgrade_required': True,
+        }), 402
 
     existing = Domain.query.filter_by(name=name).first()
     if existing:

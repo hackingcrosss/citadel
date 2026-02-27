@@ -9,9 +9,11 @@
         <button class="btn btn-sm btn-outline-secondary" onclick="loadListeners()">
             <i class="bi bi-arrow-clockwise"></i> Refresh
         </button>
+        {% if current_user.role != 'viewer' %}
         <button class="btn btn-sm btn-infrared" data-bs-toggle="modal" data-bs-target="#createModal">
             <i class="bi bi-plus-circle"></i> New Listener
         </button>
+        {% endif %}
     </div>
 </div>
 
@@ -115,6 +117,7 @@
 
 {% block extra_js %}
 <script>
+    const IS_VIEWER = {{ 'true' if current_user.role == 'viewer' else 'false' }};
     // ---- Field definitions per listener type ----
     // Field IDs match the Cobalt Strike REST API JSON field names
     // POST /api/v1/listeners/{type} with body = { name, ...fields }
@@ -374,9 +377,11 @@
                     html += '<button class="btn btn-sm btn-outline-info me-1" onclick=\'showListenerJson(' + idx + ')\' title="Inspect">';
                     html += '<i class="bi bi-code-slash"></i>';
                     html += '</button>';
-                    html += '<button class="btn btn-sm btn-outline-danger" onclick="deleteListener(\'' + escapeHtml(l.name || '').replace(/'/g, "\\'") + '\')" title="Stop & Delete">';
-                    html += '<i class="bi bi-trash"></i>';
-                    html += '</button>';
+                    if (!IS_VIEWER) {
+                        html += '<button class="btn btn-sm btn-outline-danger" onclick="deleteListener(\'' + escapeHtml(l.name || '').replace(/'/g, "\\'") + '\')" title="Stop & Delete">';
+                        html += '<i class="bi bi-trash"></i>';
+                        html += '</button>';
+                    }
                     html += '</td>';
                     html += '</tr>';
                 });

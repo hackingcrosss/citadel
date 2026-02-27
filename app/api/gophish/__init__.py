@@ -2,10 +2,12 @@ from flask import request, jsonify
 from flask_login import login_required
 from app.api import api_bp
 from app.services import gophish_service
+from app.utils.decorators import feature_required
 
 
 @api_bp.route('/gophish/profiles', methods=['GET'])
 @login_required
+@feature_required('gophish')
 def list_gophish_profiles():
     try:
         profiles = gophish_service.list_sending_profiles()
@@ -16,6 +18,7 @@ def list_gophish_profiles():
 
 @api_bp.route('/gophish/profiles/<int:profile_id>', methods=['GET'])
 @login_required
+@feature_required('gophish')
 def get_gophish_profile(profile_id):
     try:
         profile = gophish_service.get_sending_profile(profile_id)
@@ -26,6 +29,7 @@ def get_gophish_profile(profile_id):
 
 @api_bp.route('/gophish/profiles', methods=['POST'])
 @login_required
+@feature_required('gophish')
 def create_gophish_profile():
     data = request.get_json()
     if not data:
@@ -55,6 +59,7 @@ def create_gophish_profile():
 
 @api_bp.route('/gophish/profiles/<int:profile_id>', methods=['DELETE'])
 @login_required
+@feature_required('gophish')
 def delete_gophish_profile(profile_id):
     try:
         gophish_service.delete_sending_profile(profile_id)

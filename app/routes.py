@@ -6,6 +6,7 @@ from flask_login import login_required, current_user, login_user, logout_user
 from urllib.parse import urlparse
 from app import db
 from app.models.user import User
+from app.utils.decorators import admin_required, feature_required
 from datetime import datetime
 
 _log = logging.getLogger(__name__)
@@ -206,6 +207,7 @@ def register_routes(app):
 
     @app.route('/infra-map')
     @login_required
+    @feature_required('infra_map')
     def infra_map():
         return render_template('infra_map.html')
 
@@ -216,11 +218,13 @@ def register_routes(app):
 
     @app.route('/gophish')
     @login_required
+    @feature_required('gophish')
     def gophish():
         return render_template('gophish.html')
 
     @app.route('/cobaltstrike')
     @login_required
+    @feature_required('cobaltstrike')
     def cobaltstrike():
         return render_template('cobaltstrike.html')
 
@@ -231,5 +235,18 @@ def register_routes(app):
 
     @app.route('/settings')
     @login_required
+    @admin_required
     def settings():
         return render_template('settings.html')
+
+    @app.route('/admin/users')
+    @login_required
+    @admin_required
+    def admin_users():
+        return render_template('admin_users.html')
+
+    @app.route('/admin/license')
+    @login_required
+    @admin_required
+    def admin_license():
+        return render_template('admin_license.html')
