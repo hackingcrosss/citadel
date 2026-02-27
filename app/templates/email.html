@@ -5,9 +5,11 @@
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-4">
     <h1 class="h3 mb-0">Email / Mailgun</h1>
+    {% if current_user.role != 'viewer' %}
     <button class="btn btn-infrared" data-bs-toggle="modal" data-bs-target="#addDomainModal">
         <i class="bi bi-plus-circle"></i> Add Domain
     </button>
+    {% endif %}
 </div>
 
 <!-- Domains Table -->
@@ -101,9 +103,11 @@
     <div class="card-custom mb-4">
         <div class="card-header d-flex justify-content-between align-items-center">
             <span><i class="bi bi-key"></i> SMTP Credentials</span>
+            {% if current_user.role != 'viewer' %}
             <button class="btn btn-sm btn-infrared" data-bs-toggle="modal" data-bs-target="#addCredentialModal">
                 <i class="bi bi-plus-circle"></i> Add Credential
             </button>
+            {% endif %}
         </div>
         <div class="card-body p-0">
             <div class="table-responsive">
@@ -187,6 +191,7 @@
 
 {% block extra_js %}
 <script>
+    const IS_VIEWER = {{ 'true' if current_user.role == 'viewer' else 'false' }};
     let currentDomain = null;
     let currentDomainRegion = null;
 
@@ -231,9 +236,9 @@
                                 '<button class="btn btn-outline-info" title="DNS & Credentials" onclick="selectDomain(\'' + d.name + '\', \'' + region.toLowerCase() + '\')">' +
                                     '<i class="bi bi-shield-check"></i>' +
                                 '</button>' +
-                                '<button class="btn btn-outline-danger" title="Delete" onclick="deleteDomain(\'' + d.name + '\', \'' + region.toLowerCase() + '\')">' +
+                                (!IS_VIEWER ? '<button class="btn btn-outline-danger" title="Delete" onclick="deleteDomain(\'' + d.name + '\', \'' + region.toLowerCase() + '\')">' +
                                     '<i class="bi bi-trash"></i>' +
-                                '</button>' +
+                                '</button>' : '') +
                             '</div>' +
                         '</td>' +
                     '</tr>';
@@ -404,9 +409,9 @@
                         '<td><code>' + c.login + '</code></td>' +
                         '<td>' + created + '</td>' +
                         '<td>' +
-                            '<button class="btn btn-sm btn-outline-danger" onclick="deleteSmtpCredential(\'' + c.login + '\')">' +
+                            (!IS_VIEWER ? '<button class="btn btn-sm btn-outline-danger" onclick="deleteSmtpCredential(\'' + c.login + '\')">' +
                                 '<i class="bi bi-trash"></i>' +
-                            '</button>' +
+                            '</button>' : '') +
                         '</td>' +
                     '</tr>';
                 }).join('');

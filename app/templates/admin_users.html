@@ -1,0 +1,341 @@
+{% extends "base.html" %}
+
+{% block title %}User Management - InfraRed{% endblock %}
+
+{% block extra_css %}
+<style>
+    .role-badge-admin    { background: #dc2626; color: #fff; }
+    .role-badge-operator { background: #d97706; color: #fff; }
+    .role-badge-viewer   { background: #2563eb; color: #fff; }
+    .role-badge {
+        display: inline-block;
+        padding: 0.2em 0.65em;
+        font-size: 0.75rem;
+        font-weight: 600;
+        border-radius: 4px;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+    }
+    .status-active   { color: #22c55e; }
+    .status-inactive { color: #ef4444; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h4 class="mb-0"><i class="bi bi-people-fill me-2"></i>User Management</h4>
+        <small class="text-muted">Manage platform users and their roles &nbsp;
+            <span id="user-limit-display" class="text-secondary"></span>
+        </small>
+    </div>
+    <button class="btn btn-danger btn-sm" onclick="openCreateModal()">
+        <i class="bi bi-person-plus-fill me-1"></i> New User
+    </button>
+</div>
+
+<div class="card bg-dark border-secondary">
+    <div class="card-body p-0">
+        <table class="table table-dark table-hover mb-0" id="users-table">
+            <thead>
+                <tr>
+                    <th>Email</th>
+                    <th>Display Name</th>
+                    <th>Role</th>
+                    <th>Status</th>
+                    <th>Last Login</th>
+                    <th class="text-end">Actions</th>
+                </tr>
+            </thead>
+            <tbody id="users-tbody">
+                <tr><td colspan="6" class="text-center text-muted py-4">
+                    <span class="spinner-border spinner-border-sm me-2"></span>Loading…
+                </td></tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Create User Modal -->
+<div class="modal fade" id="createUserModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content bg-dark border-secondary text-white">
+            <div class="modal-header border-secondary">
+                <h5 class="modal-title"><i class="bi bi-person-plus-fill me-2"></i>New User</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label">Email <span class="text-danger">*</span></label>
+                    <input type="email" class="form-control" id="create-email" placeholder="user@example.com">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Display Name</label>
+                    <input type="text" class="form-control" id="create-display-name" placeholder="Full Name">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Role <span class="text-danger">*</span></label>
+                    <select class="form-select" id="create-role">
+                        <option value="operator" selected>Operator — full infrastructure access, no settings</option>
+                        <option value="viewer">Viewer — read-only access to all pages</option>
+                        <option value="admin">Admin — full access including settings and user management</option>
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Initial Password <span class="text-danger">*</span></label>
+                    <div class="input-group">
+                        <input type="password" class="form-control" id="create-password" placeholder="Min. 12 characters">
+                        <button class="btn btn-outline-secondary" type="button" onclick="toggleVis('create-password', this)">
+                            <i class="bi bi-eye"></i>
+                        </button>
+                    </div>
+                    <div class="form-text text-muted">Min. 12 chars, uppercase, lowercase, and digit. User will be forced to change it on first login.</div>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Confirm Password <span class="text-danger">*</span></label>
+                    <input type="password" class="form-control" id="create-confirm-password">
+                </div>
+                <div id="create-error" class="alert alert-danger d-none py-2"></div>
+            </div>
+            <div class="modal-footer border-secondary">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-danger" onclick="submitCreateUser()">
+                    <i class="bi bi-person-check-fill me-1"></i> Create User
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Edit User Modal -->
+<div class="modal fade" id="editUserModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content bg-dark border-secondary text-white">
+            <div class="modal-header border-secondary">
+                <h5 class="modal-title"><i class="bi bi-pencil-fill me-2"></i>Edit User</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="edit-user-id">
+                <div class="mb-3">
+                    <label class="form-label text-muted">Email</label>
+                    <div class="form-control-plaintext text-white" id="edit-email-display"></div>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Display Name</label>
+                    <input type="text" class="form-control" id="edit-display-name">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Role</label>
+                    <select class="form-select" id="edit-role">
+                        <option value="operator">Operator</option>
+                        <option value="viewer">Viewer</option>
+                        <option value="admin">Admin</option>
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" id="edit-active">
+                        <label class="form-check-label" for="edit-active">Account Active</label>
+                    </div>
+                </div>
+                <div id="edit-error" class="alert alert-danger d-none py-2"></div>
+            </div>
+            <div class="modal-footer border-secondary">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-danger" onclick="submitEditUser()">
+                    <i class="bi bi-check-lg me-1"></i> Save Changes
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const CURRENT_USER_ID = {{ current_user.id }};
+
+function roleBadge(role) {
+    return `<span class="role-badge role-badge-${role}">${role}</span>`;
+}
+
+function loadUsers() {
+    // Load users and license info in parallel for the usage counter
+    Promise.all([
+        fetch('/api/users').then(r => r.json()),
+        fetch('/api/license').then(r => r.json()).catch(() => null),
+    ]).then(([users, lic]) => {
+        if (lic) {
+            const maxU = lic.max_users === -1 ? '∞' : lic.max_users;
+            const el = document.getElementById('user-limit-display');
+            if (el) el.textContent = `(${users.length} / ${maxU})`;
+        }
+
+        const tbody = document.getElementById('users-tbody');
+        if (!users.length) {
+            tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-4">No users found.</td></tr>';
+            return;
+        }
+            tbody.innerHTML = users.map(u => {
+                const lastLogin = u.last_login
+                    ? new Date(u.last_login).toLocaleString()
+                    : '<span class="text-muted">Never</span>';
+                const statusIcon = u.is_active
+                    ? '<i class="bi bi-check-circle-fill status-active" title="Active"></i> Active'
+                    : '<i class="bi bi-x-circle-fill status-inactive" title="Inactive"></i> Inactive';
+                const isSelf = u.id === CURRENT_USER_ID;
+                const deleteBtn = isSelf
+                    ? ''
+                    : `<button class="btn btn-sm btn-outline-danger ms-1" onclick="deleteUser(${u.id}, '${u.email.replace(/'/g, "\\'")}')">
+                           <i class="bi bi-trash"></i>
+                       </button>`;
+                return `<tr>
+                    <td>${u.email}${isSelf ? ' <span class="badge bg-secondary">you</span>' : ''}</td>
+                    <td>${u.display_name || '<span class="text-muted">—</span>'}</td>
+                    <td>${roleBadge(u.role)}</td>
+                    <td>${statusIcon}</td>
+                    <td><small>${lastLogin}</small></td>
+                    <td class="text-end">
+                        <button class="btn btn-sm btn-outline-secondary" onclick="openEditModal(${u.id}, '${u.email.replace(/'/g, "\\'")}', '${u.display_name || ''}', '${u.role}', ${u.is_active})">
+                            <i class="bi bi-pencil"></i>
+                        </button>
+                        ${deleteBtn}
+                    </td>
+                </tr>`;
+            }).join('');
+        })
+        .catch(() => {
+            document.getElementById('users-tbody').innerHTML =
+                '<tr><td colspan="6" class="text-center text-danger py-4">Failed to load users.</td></tr>';
+        });
+}
+
+function openCreateModal() {
+    document.getElementById('create-email').value = '';
+    document.getElementById('create-display-name').value = '';
+    document.getElementById('create-role').value = 'operator';
+    document.getElementById('create-password').value = '';
+    document.getElementById('create-confirm-password').value = '';
+    document.getElementById('create-error').classList.add('d-none');
+    new bootstrap.Modal(document.getElementById('createUserModal')).show();
+}
+
+function submitCreateUser() {
+    const email = document.getElementById('create-email').value.trim();
+    const displayName = document.getElementById('create-display-name').value.trim();
+    const role = document.getElementById('create-role').value;
+    const password = document.getElementById('create-password').value;
+    const confirm = document.getElementById('create-confirm-password').value;
+    const errEl = document.getElementById('create-error');
+
+    errEl.classList.add('d-none');
+
+    if (!email || !password) {
+        errEl.textContent = 'Email and password are required.';
+        errEl.classList.remove('d-none');
+        return;
+    }
+    if (password !== confirm) {
+        errEl.textContent = 'Passwords do not match.';
+        errEl.classList.remove('d-none');
+        return;
+    }
+
+    fetch('/api/users', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({email, display_name: displayName, role, password})
+    })
+    .then(r => r.json().then(d => ({status: r.status, data: d})))
+    .then(({status, data}) => {
+        if (status === 201) {
+            bootstrap.Modal.getInstance(document.getElementById('createUserModal')).hide();
+            showToast(`User ${data.email} created successfully.`, 'success');
+            loadUsers();
+        } else {
+            errEl.textContent = data.error || 'Failed to create user.';
+            errEl.classList.remove('d-none');
+        }
+    })
+    .catch(() => {
+        errEl.textContent = 'Request failed. Please try again.';
+        errEl.classList.remove('d-none');
+    });
+}
+
+function openEditModal(id, email, displayName, role, isActive) {
+    document.getElementById('edit-user-id').value = id;
+    document.getElementById('edit-email-display').textContent = email;
+    document.getElementById('edit-display-name').value = displayName;
+    document.getElementById('edit-role').value = role;
+    document.getElementById('edit-active').checked = isActive;
+    document.getElementById('edit-error').classList.add('d-none');
+    new bootstrap.Modal(document.getElementById('editUserModal')).show();
+}
+
+function submitEditUser() {
+    const id = document.getElementById('edit-user-id').value;
+    const displayName = document.getElementById('edit-display-name').value.trim();
+    const role = document.getElementById('edit-role').value;
+    const isActive = document.getElementById('edit-active').checked;
+    const errEl = document.getElementById('edit-error');
+
+    errEl.classList.add('d-none');
+
+    fetch(`/api/users/${id}`, {
+        method: 'PUT',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({display_name: displayName, role, is_active: isActive})
+    })
+    .then(r => r.json().then(d => ({status: r.status, data: d})))
+    .then(({status, data}) => {
+        if (status === 200) {
+            bootstrap.Modal.getInstance(document.getElementById('editUserModal')).hide();
+            showToast('User updated.', 'success');
+            loadUsers();
+        } else {
+            errEl.textContent = data.error || 'Failed to update user.';
+            errEl.classList.remove('d-none');
+        }
+    })
+    .catch(() => {
+        errEl.textContent = 'Request failed. Please try again.';
+        errEl.classList.remove('d-none');
+    });
+}
+
+function deleteUser(id, email) {
+    showConfirm(
+        'Delete User',
+        `Are you sure you want to delete <strong>${email}</strong>? This action cannot be undone.`,
+        () => {
+            fetch(`/api/users/${id}`, {method: 'DELETE'})
+                .then(r => r.json().then(d => ({status: r.status, data: d})))
+                .then(({status, data}) => {
+                    if (status === 200) {
+                        showToast(`User ${email} deleted.`, 'success');
+                        loadUsers();
+                    } else {
+                        showToast(data.error || 'Failed to delete user.', 'danger');
+                    }
+                })
+                .catch(() => showToast('Request failed.', 'danger'));
+        }
+    );
+}
+
+function toggleVis(inputId, btn) {
+    const input = document.getElementById(inputId);
+    if (input.type === 'password') {
+        input.type = 'text';
+        btn.innerHTML = '<i class="bi bi-eye-slash"></i>';
+    } else {
+        input.type = 'password';
+        btn.innerHTML = '<i class="bi bi-eye"></i>';
+    }
+}
+
+document.addEventListener('DOMContentLoaded', loadUsers);
+</script>
+{% endblock %}

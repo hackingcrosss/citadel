@@ -12,13 +12,15 @@
 
 <!-- Tabs -->
 <ul class="nav nav-tabs mb-3" id="deploymentTabs">
+    {% if current_plan.is_enabled('cobaltstrike') %}
     <li class="nav-item">
         <button class="nav-link active" id="tab-c2" onclick="switchTab('c2')">
             <i class="bi bi-crosshair"></i> C2 Deployments
         </button>
     </li>
+    {% endif %}
     <li class="nav-item">
-        <button class="nav-link" id="tab-groomed" onclick="switchTab('groomed')">
+        <button class="nav-link {% if not current_plan.is_enabled('cobaltstrike') %}active{% endif %}" id="tab-groomed" onclick="switchTab('groomed')">
             <i class="bi bi-globe2"></i> Groomed Sites
             <span id="groomed-badge" class="badge bg-secondary ms-1 d-none">0</span>
         </button>
@@ -26,7 +28,7 @@
 </ul>
 
 <!-- C2 Deployments tab -->
-<div id="pane-c2">
+<div id="pane-c2" {% if not current_plan.is_enabled('cobaltstrike') %}class="d-none"{% endif %}>
     <div class="card-custom">
         <div class="card-body p-0">
             <table class="table table-hover mb-0">
@@ -55,7 +57,7 @@
 </div>
 
 <!-- Groomed Sites tab -->
-<div id="pane-groomed" class="d-none">
+<div id="pane-groomed" {% if current_plan.is_enabled('cobaltstrike') %}class="d-none"{% endif %}>
     <div class="card-custom">
         <div class="card-body p-0">
             <table class="table table-hover mb-0">
@@ -159,6 +161,7 @@
 
 {% block extra_js %}
 <script>
+    const IS_VIEWER = {{ 'true' if current_user.role == 'viewer' else 'false' }};
     var allZones = [];
     var allListeners = [];
     var allNpmHosts = [];
@@ -179,9 +182,11 @@
     // --- Tab switching ---
 
     function switchTab(name) {
-        document.getElementById('pane-c2').classList.toggle('d-none', name !== 'c2');
+        var paneC2 = document.getElementById('pane-c2');
+        var tabC2  = document.getElementById('tab-c2');
+        if (paneC2) paneC2.classList.toggle('d-none', name !== 'c2');
+        if (tabC2)  tabC2.classList.toggle('active', name === 'c2');
         document.getElementById('pane-groomed').classList.toggle('d-none', name !== 'groomed');
-        document.getElementById('tab-c2').classList.toggle('active', name === 'c2');
         document.getElementById('tab-groomed').classList.toggle('active', name === 'groomed');
     }
 
@@ -405,9 +410,11 @@
             html += '<button class="btn btn-sm btn-outline-info me-1" onclick="inspectDeployment(' + idx + ')" title="Inspect">';
             html += '<i class="bi bi-code-slash"></i>';
             html += '</button>';
-            html += '<button class="btn btn-sm btn-outline-danger" onclick="confirmTeardown(' + idx + ')" title="Teardown">';
-            html += '<i class="bi bi-trash"></i>';
-            html += '</button>';
+            if (!IS_VIEWER) {
+                html += '<button class="btn btn-sm btn-outline-danger" onclick="confirmTeardown(' + idx + ')" title="Teardown">';
+                html += '<i class="bi bi-trash"></i>';
+                html += '</button>';
+            }
             html += '</td>';
             html += '</tr>';
         });
@@ -571,9 +578,11 @@
             html += '<td><span class="badge bg-secondary">' + escapeHtml(site.category || '—') + '</span></td>';
             html += '<td><code class="small">' + escapeHtml(site.folder || '—') + '</code></td>';
             html += '<td class="text-nowrap">';
-            html += '<button class="btn btn-sm btn-outline-danger" onclick="confirmGroomedTeardown(' + idx + ')" title="Teardown infrastructure">';
-            html += '<i class="bi bi-trash"></i>';
-            html += '</button>';
+            if (!IS_VIEWER) {
+                html += '<button class="btn btn-sm btn-outline-danger" onclick="confirmGroomedTeardown(' + idx + ')" title="Teardown infrastructure">';
+                html += '<i class="bi bi-trash"></i>';
+                html += '</button>';
+            }
             html += '</td>';
             html += '</tr>';
         });

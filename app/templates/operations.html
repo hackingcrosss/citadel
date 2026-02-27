@@ -45,6 +45,7 @@
                         <option value="eu">EU</option>
                     </select>
                 </div>
+                {% if current_user.role != 'viewer' %}
                 <div class="col-md-6 d-flex align-items-end gap-2 flex-wrap">
                     <button class="btn btn-infrared" id="btn-add-mailgun" onclick="setupEmail()">
                         <i class="bi bi-1-circle"></i> Add to Mailgun
@@ -56,7 +57,9 @@
                         <i class="bi bi-3-circle"></i> Verify Domain
                     </button>
                 </div>
+                {% endif %}
             </div>
+            {% if current_plan.is_enabled('gophish') %}
             <div class="row g-3 mb-3" id="gophish-row">
                 <div class="col-md-3">
                     <label class="form-label">SMTP Username</label>
@@ -65,12 +68,15 @@
                         <span class="input-group-text" id="email-smtp-suffix">@example.com</span>
                     </div>
                 </div>
+                {% if current_user.role != 'viewer' %}
                 <div class="col-md-3 d-flex align-items-end">
                     <button class="btn btn-outline-warning" id="btn-add-gophish" onclick="addToGophish()" disabled>
                         <i class="bi bi-4-circle"></i> Add to GoPhish
                     </button>
                 </div>
+                {% endif %}
             </div>
+            {% endif %}
             <div id="email-log" class="border rounded p-2" style="max-height: 200px; overflow-y: auto; background: #f8f9fa; min-height: 40px;">
                 <small class="text-muted">Waiting for action...</small>
             </div>
@@ -170,11 +176,13 @@
                 </div>
             </div>
 
+            {% if current_user.role != 'viewer' %}
             <div class="mb-3">
                 <button class="btn btn-infrared" id="btn-point-domain" onclick="pointDomain()">
                     <i class="bi bi-plus-circle"></i> Create
                 </button>
             </div>
+            {% endif %}
             <div id="point-log" class="border rounded p-2" style="max-height: 200px; overflow-y: auto; background: #f8f9fa; min-height: 40px;">
                 <small class="text-muted">Waiting for action...</small>
             </div>
@@ -202,11 +210,13 @@
                 <i class="bi bi-info-circle"></i> Stager host &amp; NPM forward target: <strong id="c2-csip-display"></strong>
             </div>
 
+            {% if current_user.role != 'viewer' %}
             <div class="mb-3">
                 <button class="btn btn-infrared" data-bs-toggle="modal" data-bs-target="#c2Modal">
                     <i class="bi bi-plus-circle"></i> New C2 Setup
                 </button>
             </div>
+            {% endif %}
             <div id="c2-log" class="border rounded p-2" style="max-height: 300px; overflow-y: auto; background: #f8f9fa; min-height: 40px;">
                 <small class="text-muted">Waiting for action...</small>
             </div>
@@ -271,6 +281,7 @@
     </div>
 
 
+    {% if current_plan.is_enabled('website_generator') %}
     <!-- Website Generator -->
     <div class="card-custom mb-4" id="website-generator-card">
         <div class="card-header d-flex justify-content-between align-items-center">
@@ -300,6 +311,7 @@
                     <label class="form-label">Business Category / Industry</label>
                     <input type="text" class="form-control" id="wg-category" placeholder="e.g. healthcare, fintech, law firm...">
                 </div>
+                {% if current_user.role != 'viewer' %}
                 <div class="col-md-6 d-flex align-items-end gap-2 flex-wrap">
                     <button class="btn btn-infrared" id="wg-btn-generate" onclick="generateWebsite()">
                         <i class="bi bi-stars"></i> Generate Website
@@ -311,6 +323,7 @@
                         <i class="bi bi-rocket-takeoff"></i> Publish
                     </button>
                 </div>
+                {% endif %}
             </div>
             <div class="mb-3">
                 <label class="form-label">Extra Instructions <span class="text-muted small">(optional)</span></label>
@@ -359,6 +372,7 @@
             <div id="wg-publish-log" class="d-none mt-3" style="background:#0d1117;border:1px solid #374151;border-radius:6px;padding:12px;max-height:220px;overflow-y:auto;font-family:monospace;font-size:0.82rem;"></div>
         </div>
     </div>
+    {% endif %}
 
 </div>
 
@@ -366,6 +380,7 @@
 
 {% block extra_js %}
 <script>
+    const IS_VIEWER = {{ 'true' if current_user.role == 'viewer' else 'false' }};
     var selectedZoneId = '';
     var selectedZoneName = '';
     var _pendingZone = null; // { zoneId, zoneName } — set before zones load, applied by loadZones()

@@ -155,6 +155,7 @@
 
 {% block extra_js %}
 <script>
+    var IS_VIEWER = {{ 'true' if current_user.role == 'viewer' else 'false' }};
     var allContainers = [];
     var currentLogsId = null;
 
@@ -277,19 +278,21 @@
             var imageName = escapeHtml(c.image);
 
             var actions = '';
-            if (isRunning) {
-                actions =
-                    '<button class="btn btn-outline-danger" title="Stop" onclick="containerAction(\'' + c.id + '\', \'stop\')">' +
-                        '<i class="bi bi-stop-fill"></i>' +
-                    '</button>' +
-                    '<button class="btn btn-outline-warning" title="Restart" onclick="containerAction(\'' + c.id + '\', \'restart\')">' +
-                        '<i class="bi bi-arrow-clockwise"></i>' +
-                    '</button>';
-            } else {
-                actions =
-                    '<button class="btn btn-outline-success" title="Start" onclick="containerAction(\'' + c.id + '\', \'start\')">' +
-                        '<i class="bi bi-play-fill"></i>' +
-                    '</button>';
+            if (!IS_VIEWER) {
+                if (isRunning) {
+                    actions =
+                        '<button class="btn btn-outline-danger" title="Stop" onclick="containerAction(\'' + c.id + '\', \'stop\')">' +
+                            '<i class="bi bi-stop-fill"></i>' +
+                        '</button>' +
+                        '<button class="btn btn-outline-warning" title="Restart" onclick="containerAction(\'' + c.id + '\', \'restart\')">' +
+                            '<i class="bi bi-arrow-clockwise"></i>' +
+                        '</button>';
+                } else {
+                    actions =
+                        '<button class="btn btn-outline-success" title="Start" onclick="containerAction(\'' + c.id + '\', \'start\')">' +
+                            '<i class="bi bi-play-fill"></i>' +
+                        '</button>';
+                }
             }
             actions +=
                 '<button class="btn btn-outline-info" title="Logs" onclick="showLogs(\'' + c.id + '\', \'' + escapeHtml(c.name) + '\')">' +
@@ -297,10 +300,13 @@
                 '</button>' +
                 '<button class="btn btn-outline-secondary" title="Details" onclick="showDetails(\'' + c.id + '\', \'' + escapeHtml(c.name) + '\')">' +
                     '<i class="bi bi-info-circle"></i>' +
-                '</button>' +
-                '<button class="btn btn-outline-danger" title="Remove" onclick="removeContainer(\'' + c.id + '\', \'' + escapeHtml(c.name) + '\', ' + isRunning + ')">' +
-                    '<i class="bi bi-trash"></i>' +
                 '</button>';
+            if (!IS_VIEWER) {
+                actions +=
+                    '<button class="btn btn-outline-danger" title="Remove" onclick="removeContainer(\'' + c.id + '\', \'' + escapeHtml(c.name) + '\', ' + isRunning + ')">' +
+                        '<i class="bi bi-trash"></i>' +
+                    '</button>';
+            }
 
             return '<tr' + rowClass + '>' +
                 '<td><i class="bi bi-box"></i> <strong>' + escapeHtml(c.name) + '</strong>' +

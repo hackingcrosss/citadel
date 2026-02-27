@@ -1,0 +1,236 @@
+{% extends "base.html" %}
+
+{% block title %}License — InfraRed{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1 class="h3 mb-0">License</h1>
+</div>
+
+<!-- Current Plan banner -->
+<div class="card-custom mb-4" id="current-plan-card">
+    <div class="card-body">
+        <div class="d-flex align-items-center gap-3 flex-wrap">
+            <div>
+                <div class="text-muted small text-uppercase fw-semibold mb-1">Active Plan</div>
+                <div class="d-flex align-items-center gap-2">
+                    <span class="badge fs-6 px-3 py-2" id="plan-tier-badge">—</span>
+                    <span class="text-muted small" id="plan-org-display"></span>
+                </div>
+            </div>
+            <div class="ms-auto d-flex gap-4 flex-wrap">
+                <div class="text-center">
+                    <div class="fw-bold fs-5" id="stat-users">—</div>
+                    <div class="text-muted small">Users</div>
+                </div>
+                <div class="text-center">
+                    <div class="fw-bold fs-5" id="stat-domains">—</div>
+                    <div class="text-muted small">Domains</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Usage meters -->
+        <div class="row g-3 mt-3" id="usage-meters">
+            <div class="col-md-6">
+                <div class="d-flex justify-content-between small mb-1">
+                    <span>Users</span>
+                    <span id="users-meter-label">— / —</span>
+                </div>
+                <div class="progress" style="height: 6px;">
+                    <div class="progress-bar bg-danger" id="users-progress" style="width: 0%"></div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="d-flex justify-content-between small mb-1">
+                    <span>Domains</span>
+                    <span id="domains-meter-label">— / —</span>
+                </div>
+                <div class="progress" style="height: 6px;">
+                    <div class="progress-bar bg-danger" id="domains-progress" style="width: 0%"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Features list -->
+        <div class="mt-4">
+            <div class="text-muted small fw-semibold text-uppercase mb-2">Features</div>
+            <div id="features-list" class="d-flex flex-wrap gap-2"></div>
+        </div>
+    </div>
+</div>
+
+<!-- Change Plan -->
+<div class="card-custom mb-4">
+    <div class="card-header">
+        <i class="bi bi-arrow-up-circle"></i> Change Plan
+    </div>
+    <div class="card-body">
+        <div class="row g-3 mb-4" id="tier-cards"></div>
+
+        <div class="row g-3 align-items-end">
+            <div class="col-md-4">
+                <label class="form-label">Organisation Name <span class="text-muted small">(optional)</span></label>
+                <input type="text" class="form-control" id="org-name-input" placeholder="e.g. Acme Red Team">
+            </div>
+            <div class="col-md-4 d-flex align-items-end">
+                <button class="btn btn-infrared" onclick="saveLicense()">
+                    <i class="bi bi-check-circle"></i> Save
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+var licenseData = null;
+var selectedTier = null;
+
+var TIER_COLORS = {
+    'community':    'bg-secondary',
+    'professional': 'bg-primary',
+    'team':         'bg-success',
+    'enterprise':   'bg-danger',
+};
+
+var ALL_FEATURE_LABELS = {
+    'gophish':           'GoPhish',
+    'website_generator': 'Website Generator',
+    'cobaltstrike':      'Cobalt Strike',
+    'infra_map':         'Infra Map',
+    'api_access':        'API Access',
+    'engagements':       'Engagements',
+};
+
+document.addEventListener('DOMContentLoaded', loadLicense);
+
+function loadLicense() {
+    fetch('/api/license')
+        .then(function(r) { return r.json(); })
+        .then(function(d) {
+            licenseData = d;
+            selectedTier = d.tier;
+            renderCurrentPlan(d);
+            renderTierCards(d);
+            document.getElementById('org-name-input').value = d.org_name || '';
+        })
+        .catch(function(e) {
+            showToast('Failed to load license data: ' + e.message, 'danger');
+        });
+}
+
+function renderCurrentPlan(d) {
+    var badge = document.getElementById('plan-tier-badge');
+    badge.textContent = d.display_name;
+    badge.className = 'badge fs-6 px-3 py-2 ' + (TIER_COLORS[d.tier] || 'bg-secondary');
+
+    var orgEl = document.getElementById('plan-org-display');
+    orgEl.textContent = d.org_name ? d.org_name : '';
+
+    var maxU = d.max_users === -1 ? '∞' : String(d.max_users);
+    var maxD = d.max_domains === -1 ? '∞' : String(d.max_domains);
+    document.getElementById('stat-users').textContent = d.current_users + ' / ' + maxU;
+    document.getElementById('stat-domains').textContent = d.current_domains + ' / ' + maxD;
+
+    // Progress bars
+    var uPct = d.max_users === -1 ? 0 : Math.min(100, Math.round(d.current_users / d.max_users * 100));
+    var dPct = d.max_domains === -1 ? 0 : Math.min(100, Math.round(d.current_domains / d.max_domains * 100));
+    document.getElementById('users-progress').style.width = uPct + '%';
+    document.getElementById('domains-progress').style.width = dPct + '%';
+    document.getElementById('users-meter-label').textContent = d.current_users + ' / ' + maxU;
+    document.getElementById('domains-meter-label').textContent = d.current_domains + ' / ' + maxD;
+
+    // Features
+    var allFeatures = Object.keys(ALL_FEATURE_LABELS);
+    var enabled = d.features || [];
+    var html = allFeatures.map(function(f) {
+        var on = enabled.indexOf(f) !== -1;
+        return '<span class="badge ' + (on ? 'bg-success' : 'bg-light text-muted border') + '">' +
+            '<i class="bi ' + (on ? 'bi-check-circle-fill' : 'bi-dash-circle') + ' me-1"></i>' +
+            ALL_FEATURE_LABELS[f] + '</span>';
+    }).join('');
+    document.getElementById('features-list').innerHTML = html;
+}
+
+function renderTierCards(d) {
+    var tiers = d.tiers || {};
+    var container = document.getElementById('tier-cards');
+    var tierOrder = ['community', 'professional', 'team', 'enterprise'];
+
+    container.innerHTML = tierOrder.map(function(tierKey) {
+        var t = tiers[tierKey];
+        if (!t) return '';
+        var isActive = tierKey === d.tier;
+        var color = TIER_COLORS[tierKey] || 'bg-secondary';
+        var maxU = t.max_users === -1 ? 'Unlimited' : t.max_users + ' users';
+        var maxD = t.max_domains === -1 ? 'Unlimited' : t.max_domains + ' domains';
+        var featHtml = (t.features || []).length === 0
+            ? '<li class="text-muted small">Core infrastructure only</li>'
+            : (t.features || []).map(function(f) {
+                return '<li class="small"><i class="bi bi-check text-success me-1"></i>' +
+                    (ALL_FEATURE_LABELS[f] || f) + '</li>';
+              }).join('');
+
+        return '<div class="col-md-3">' +
+            '<div class="card h-100 tier-card ' + (isActive ? 'border-danger border-2' : 'border') + '" ' +
+                'style="cursor:pointer;" ' +
+                'id="tier-card-' + tierKey + '" ' +
+                'onclick="selectTier(\'' + tierKey + '\')">' +
+                '<div class="card-body">' +
+                    '<div class="d-flex align-items-center gap-2 mb-2">' +
+                        '<span class="badge ' + color + '">' + t.display_name + '</span>' +
+                        (isActive ? '<span class="badge bg-danger ms-auto"><i class="bi bi-check2"></i> Active</span>' : '') +
+                    '</div>' +
+                    '<div class="small text-muted mb-1"><i class="bi bi-people me-1"></i>' + maxU + '</div>' +
+                    '<div class="small text-muted mb-2"><i class="bi bi-globe me-1"></i>' + maxD + '</div>' +
+                    '<ul class="list-unstyled mb-0">' + featHtml + '</ul>' +
+                '</div>' +
+            '</div>' +
+        '</div>';
+    }).join('');
+}
+
+function selectTier(tier) {
+    selectedTier = tier;
+    document.querySelectorAll('.tier-card').forEach(function(card) {
+        card.classList.remove('border-danger', 'border-2');
+        card.classList.add('border');
+    });
+    var selected = document.getElementById('tier-card-' + tier);
+    if (selected) {
+        selected.classList.remove('border');
+        selected.classList.add('border-danger', 'border-2');
+    }
+}
+
+function saveLicense() {
+    if (!selectedTier) {
+        showToast('Select a plan first', 'warning');
+        return;
+    }
+    var orgName = document.getElementById('org-name-input').value.trim();
+    fetch('/api/license', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tier: selectedTier, org_name: orgName })
+    })
+    .then(function(r) { return r.json().then(function(d) { return { ok: r.ok, data: d }; }); })
+    .then(function(res) {
+        if (!res.ok) {
+            showToast(res.data.error || 'Failed to update license', 'danger');
+            return;
+        }
+        licenseData = res.data;
+        renderCurrentPlan(res.data);
+        renderTierCards(res.data);
+        showToast('License updated to ' + res.data.display_name, 'success');
+    })
+    .catch(function(e) {
+        showToast('Error: ' + e.message, 'danger');
+    });
+}
+</script>
+{% endblock %}

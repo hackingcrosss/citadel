@@ -10,6 +10,7 @@ from app.models.credential import Credential
 from app.models.domain import Domain, DNSRecord
 from app.models.instance_tag import InstanceTag
 from app.models.instance_ssh_config import InstanceSSHConfig
+from app.models.license import License
 
 def init_database():
     app = create_app()
@@ -28,7 +29,7 @@ def init_database():
             admin = User(
                 email='admin@infrared.local',
                 display_name='Administrator',
-                is_admin=True,
+                role='admin',
                 must_change_password=True  # Force password change on first login
             )
             admin.set_password('admin')
@@ -42,7 +43,17 @@ def init_database():
             print("  ⚠️  You will be required to change the password on first login!")
         else:
             print("✓ Admin user already exists")
-        
+
+        # Create default Community license if none exists
+        if not License.query.first():
+            print("Creating default Community license...")
+            lic = License(tier='community', org_name='InfraRed')
+            db.session.add(lic)
+            db.session.commit()
+            print("✓ Default Community license created")
+        else:
+            print("✓ License record already exists")
+
         print("\n✓ Database initialization complete!")
 
 if __name__ == '__main__':

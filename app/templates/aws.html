@@ -114,6 +114,7 @@
         <div class="card-custom mb-4">
             <div class="card-header d-flex justify-content-between align-items-center">
                 <span><i class="bi bi-hdd-stack"></i> EC2 Instances</span>
+                {% if current_user.role != 'viewer' %}
                 <div>
                     <button class="btn btn-sm btn-outline-success" onclick="bulkAction('start')" id="btnBulkStart" disabled>
                         <i class="bi bi-play-fill"></i> Start
@@ -125,6 +126,7 @@
                         <i class="bi bi-arrow-repeat"></i> Reboot
                     </button>
                 </div>
+                {% endif %}
             </div>
             <div class="card-body p-0">
                 <div id="instancesLoading" class="text-center py-4">
@@ -349,6 +351,7 @@
 
 {% block extra_js %}
 <script>
+    const IS_VIEWER = {{ 'true' if current_user.role == 'viewer' else 'false' }};
     let allInstances = [];
     let allDistinctTags = [];
     let allServices = [];
@@ -502,11 +505,11 @@
                 <td>${renderTags(inst)}</td>
                 <td>
                     <div class="btn-group btn-group-sm">
-                        <button class="btn btn-sm ${sshBtnClass}" title="SSH Config" onclick="openSSHConfig('${idAttr}', '${nameAttr}')"><i class="bi bi-key"></i></button>
-                        ${inst.state === 'stopped' ? `<button class="btn btn-outline-success btn-sm" title="Start" onclick="instanceAction('start', '${idAttr}')"><i class="bi bi-play-fill"></i></button>` : ''}
-                        ${inst.state === 'running' ? `<button class="btn btn-outline-warning btn-sm" title="Stop" onclick="instanceAction('stop', '${idAttr}')"><i class="bi bi-stop-fill"></i></button>` : ''}
-                        ${inst.state === 'running' ? `<button class="btn btn-outline-info btn-sm" title="Reboot" onclick="instanceAction('reboot', '${idAttr}')"><i class="bi bi-arrow-repeat"></i></button>` : ''}
-                        <button class="btn btn-outline-danger btn-sm" title="Terminate" onclick="confirmTerminate('${idAttr}', '${nameAttr}')"><i class="bi bi-trash"></i></button>
+                        ${!IS_VIEWER ? `<button class="btn btn-sm ${sshBtnClass}" title="SSH Config" onclick="openSSHConfig('${idAttr}', '${nameAttr}')"><i class="bi bi-key"></i></button>` : ''}
+                        ${!IS_VIEWER && inst.state === 'stopped' ? `<button class="btn btn-outline-success btn-sm" title="Start" onclick="instanceAction('start', '${idAttr}')"><i class="bi bi-play-fill"></i></button>` : ''}
+                        ${!IS_VIEWER && inst.state === 'running' ? `<button class="btn btn-outline-warning btn-sm" title="Stop" onclick="instanceAction('stop', '${idAttr}')"><i class="bi bi-stop-fill"></i></button>` : ''}
+                        ${!IS_VIEWER && inst.state === 'running' ? `<button class="btn btn-outline-info btn-sm" title="Reboot" onclick="instanceAction('reboot', '${idAttr}')"><i class="bi bi-arrow-repeat"></i></button>` : ''}
+                        ${!IS_VIEWER ? `<button class="btn btn-outline-danger btn-sm" title="Terminate" onclick="confirmTerminate('${idAttr}', '${nameAttr}')"><i class="bi bi-trash"></i></button>` : ''}
                     </div>
                 </td>
             </tr>
@@ -521,10 +524,12 @@
         (inst.local_tags || []).forEach(function(t) {
             html += '<span class="badge bg-primary me-1 mb-1" style="font-size: 0.75em;">' +
                     escapeHtml(t) +
-                    ' <i class="bi bi-x" style="cursor:pointer" onclick="removeTag(\'' + escapeAttr(inst.id) + '\', \'' + escapeAttr(t) + '\')"></i>' +
+                    (!IS_VIEWER ? ' <i class="bi bi-x" style="cursor:pointer" onclick="removeTag(\'' + escapeAttr(inst.id) + '\', \'' + escapeAttr(t) + '\')"></i>' : '') +
                     '</span>';
         });
-        html += '<i class="bi bi-plus-circle text-muted" style="cursor:pointer; font-size: 0.85em;" onclick="showAddTag(\'' + escapeAttr(inst.id) + '\', this)" title="Add tag"></i>';
+        if (!IS_VIEWER) {
+            html += '<i class="bi bi-plus-circle text-muted" style="cursor:pointer; font-size: 0.85em;" onclick="showAddTag(\'' + escapeAttr(inst.id) + '\', this)" title="Add tag"></i>';
+        }
         return html;
     }
 
