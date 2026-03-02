@@ -60,6 +60,17 @@ def _headers(token=None):
     }
 
 
+def _is_jwt_error(resp):
+    """Return True if the response indicates a JWT signature/validity error."""
+    try:
+        body = resp.json()
+        text = str(body.get('detail') or body.get('message') or body.get('title') or '')
+    except Exception:
+        text = resp.text or ''
+    keywords = ('jwt', 'signature', 'token')
+    return any(k in text.lower() for k in keywords)
+
+
 def _request(method, path, **kwargs):
     url = _base_url() + path
     token = _get_token()
@@ -71,8 +82,9 @@ def _request(method, path, **kwargs):
         **kwargs
     )
 
-    # On 401, re-authenticate once and retry
-    if resp.status_code == 401:
+    # Re-authenticate on 401, or on 400 with a JWT error (CS returns 400 for
+    # stale tokens after a teamserver restart that regenerates the signing key).
+    if resp.status_code == 401 or (resp.status_code == 400 and _is_jwt_error(resp)):
         new_token = _get_token(force_refresh=True)
         resp = requests.request(
             method, url,
