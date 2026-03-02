@@ -81,6 +81,20 @@ with app.app_context():
 "
 ```
 
+## "Too many failed login attempts" — Rate Limit Lockout
+
+The login page allows 10 failed attempts per IP within a 10-minute window. After that, all further attempts from that IP are rejected until the window expires.
+
+To manually clear the lockout (replace `<IP>` with the client's IP address):
+
+```bash
+docker compose exec redis redis-cli DEL "login_fail:<IP>"
+```
+
+If Redis is unavailable, rate limiting is silently bypassed and no lockout occurs.
+
+---
+
 ## Password Reset
 
 If you've lost access to the admin account, reset the password directly:
@@ -108,7 +122,12 @@ This only resets the password. API credentials stored in the database are not af
 1. Login with `admin@infrared.local` / `admin`
 2. Automatically redirected to `/change-password`
 3. Enter current password: `admin`
-4. Enter new password (minimum 8 characters, must differ from current)
+4. Enter new password — must meet all of:
+   - Minimum 12 characters
+   - At least one uppercase letter
+   - At least one lowercase letter
+   - At least one digit
+   - Must differ from current password
 5. Confirm new password
 6. Redirected to dashboard
 
@@ -321,6 +340,28 @@ docker compose restart web celery
 
 #### Credentials saved with a different key
 If you change `MASTER_ENCRYPTION_KEY` after saving credentials, existing encrypted values cannot be decrypted. You'll need to re-enter all API credentials in Settings.
+
+## User Management Issues
+
+### "Administrator access required" on Settings or User Management
+Only `admin` role users can access `/settings`, `/admin/users`, and `/admin/license`. Operator and Viewer roles are redirected to the dashboard.
+
+### "User limit reached" when creating a user
+The current plan tier caps the number of users. Go to **License** (`/admin/license`) and upgrade the tier, or set a `plan_override` on an individual user in User Management.
+
+### Feature page redirects to dashboard with upgrade warning
+The feature is not included in the active plan tier. Check the License page for which tier enables the feature:
+- **GoPhish**: Professional and above
+- **Website Generator**: Professional and above
+- **Cobalt Strike**: Team and above
+- **Infrastructure Map**: Team and above
+
+Admin users bypass all plan restrictions and always have access to every feature.
+
+### Cannot demote or delete the last admin
+At least one admin must exist at all times. Create another admin user before changing the role or deleting the current one.
+
+---
 
 ## Flask Debug Mode
 
