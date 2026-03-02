@@ -38,13 +38,15 @@ The recommended spec provides comfortable headroom for multiple concurrent users
 - **AWS EC2 Monitoring**: Multi-region instance management, security groups, key pairs, start/stop/reboot/terminate, status/name/tag filtering, local instance tagging (stored in local DB)
 - **Nginx Proxy Manager**: Proxy host CRUD, enable/disable, certificates, redirections
 - **Email (Mailgun)**: Domain management, DNS verification, SMTP credential management, multi-region (US/EU)
-- **GoPhish**: Sending profile management — view, create, and delete SMTP sending profiles
-- **Cobalt Strike**: Listener management — view, create (HTTP, HTTPS, DNS, SMB, TCP, Foreign, ExternalC2, UserDefinedC2), and delete listeners via the CS REST API (4.12+) with JWT authentication
+- **GoPhish**: Sending profile management — view, create, and delete SMTP sending profiles *(Professional plan and above)*
+- **Cobalt Strike**: Listener management — view, create (HTTP, HTTPS, DNS, SMB, TCP, Foreign, ExternalC2, UserDefinedC2), and delete listeners via the CS REST API (4.12+) with JWT authentication *(Team plan and above)*
 - **Setup** (Operations): Cross-service orchestration — set up email domains (Mailgun + Cloudflare DNS), push SMTP credentials to GoPhish, point domains to EC2 instances or containers via NPM, deploy full C2 infrastructure (CS listener + NPM proxy + Cloudflare DNS) in one workflow
 - **C2 Deployments**: Two-tab view — *C2 Deployments* (active listeners cross-referenced with NPM and DNS, teardown with real-time log) and *Groomed Sites* (deployed phishing/redirect websites with container and domain info, deletable)
-- **Infrastructure Map**: Visual overview of the full infrastructure chain — domains, DNS records, EC2 instances, NPM proxies, containers, and CS listeners — in both table and interactive diagram form
-- **Website Generator**: AI-generated (Azure OpenAI) single-page websites for a given business category with optional design instructions; live preview with brand summary (colors, style, tagline); publish directly to Docker + NPM + Cloudflare in one step; runs as a background Celery task, resumable across page loads
+- **Infrastructure Map**: Visual overview of the full infrastructure chain — domains, DNS records, EC2 instances, NPM proxies, containers, and CS listeners — in both table and interactive diagram form *(Team plan and above)*
+- **Website Generator**: AI-generated (Azure OpenAI) single-page websites for a given business category with optional design instructions; live preview with brand summary (colors, style, tagline); publish directly to Docker + NPM + Cloudflare in one step; runs as a background Celery task, resumable across page loads *(Professional plan and above)*
 - **Domain Farming**: Queue website generation per domain/subdomain, publish to Docker + NPM + Cloudflare; deployed sites visible on the Groomed Sites tab of the Deployments page
+- **Multi-User RBAC**: Three roles (Admin, Operator, Viewer) with per-page and per-API enforcement; admin-only User Management and License pages
+- **Plan / License Tiers**: Community, Professional, Team, Enterprise — controls user limits, domain limits, and feature access; configurable via the License admin page
 - **Secure Credential Storage**: All API keys encrypted with Fernet (AES-256) before database storage
 
 ---
@@ -93,6 +95,8 @@ Open http://localhost in your browser.
 
 You will be forced to change the password on first login.
 
+> **Default credentials are for the `admin` role.** See [User Management](#user-management--roles) below for role details.
+
 ---
 
 ## Architecture
@@ -127,6 +131,43 @@ Browser  -->  Nginx (80/443)  -->  Flask/Gunicorn (5000)
 | `nginx`    | nginx:alpine       | 80, 443 | Reverse proxy             |
 
 The `web` container mounts `/var/run/docker.sock` for direct Docker container management.
+
+---
+
+## User Management & Roles
+
+InfraRed has three roles:
+
+| Role | Description |
+|------|-------------|
+| **Admin** | Full access to all features, Settings, User Management, and License Management. Always receives Enterprise-level plan access regardless of the license tier. |
+| **Operator** | Can use all features allowed by the active plan. Cannot access Settings, User Management, or License. |
+| **Viewer** | Read-only access — all write actions (create, delete, start/stop, etc.) are hidden or blocked. |
+
+### User Management (`/admin/users`)
+Admin-only page for creating, editing, and deleting users. Each user can optionally have a **plan override** that grants them a specific tier regardless of the global license (useful for giving a single user access to a feature not in the org's plan).
+
+### License (`/admin/license`)
+Admin-only page for setting the active plan tier and organisation name. Changing the tier takes effect immediately on the next page load.
+
+### API access
+All user and license endpoints require `admin` role. Non-admin users receive `403 Administrator access required` on these endpoints. Feature-gated endpoints return `402 upgrade_required: true` when the plan doesn't include the feature.
+
+---
+
+## Plan Tiers
+
+| Tier | Users | Domains | Features |
+|------|-------|---------|---------|
+| **Community** | 1 | 3 | Core infrastructure only (EC2, containers, domains, NPM, email) |
+| **Professional** | 5 | 20 | + GoPhish, Website Generator |
+| **Team** | 20 | Unlimited | + Cobalt Strike, Infrastructure Map |
+| **Enterprise** | Unlimited | Unlimited | All current and future features |
+
+- **Admin users** always get Enterprise access, bypassing plan limits entirely.
+- Per-user **plan overrides** can be set in User Management to grant a higher tier to a specific user.
+- Feature-gated pages redirect non-eligible users to the dashboard with an upgrade prompt.
+- Feature-gated API endpoints return `402` with `upgrade_required: true`.
 
 ---
 
@@ -248,6 +289,20 @@ The `web` container mounts `/var/run/docker.sock` for direct Docker container ma
 | DELETE | `/api/task-log/completed` | Clear all completed/failed tasks from the log |
 | POST   | `/api/task-log/<task_id>/revoke` | Cancel a pending or running Celery task |
 
+### Users (`/api/users`) — Admin only
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET    | `/api/users` | List all users |
+| POST   | `/api/users` | Create a new user |
+| PUT    | `/api/users/<id>` | Update user (display name, role, active status, plan override) |
+| DELETE | `/api/users/<id>` | Delete a user |
+
+### License (`/api/license`)
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET    | `/api/license` | Get current plan info, usage stats, and all tier definitions |
+| PATCH  | `/api/license` | Update active tier and/or org name (admin only) |
+
 ---
 
 ## Page Reference
@@ -351,8 +406,19 @@ The **Sync DB** button opens a modal that:
 
 > NPM proxy hosts are fetched live and are not stored in InfraRed's database. To remove stale NPM entries, delete them directly from the [NPM page](/npm).
 
+### User Management (`/admin/users`)
+Admin-only. Create, edit, and delete users. Fields per user: email, display name, role (admin/operator/viewer), active status, and optional plan override tier.
+
+- Cannot delete or demote the last admin user
+- Cannot deactivate your own account
+- New users are created with `must_change_password = true`
+- Creating a user is blocked when the current plan's user limit is reached
+
+### License (`/admin/license`)
+Admin-only. Select the active plan tier (Community, Professional, Team, Enterprise), set the organisation name, and view current usage (users, domains) vs. plan limits. Changes apply immediately on the next request.
+
 ### Settings (`/settings`)
-Configure API credentials for all integrated services:
+Admin-only. Configure API credentials for all integrated services:
 - **AWS**: Access Key ID, Secret Access Key, Default Region
 - **Cloudflare**: API Token
 - **Mailgun**: API Key
@@ -459,7 +525,12 @@ docker compose exec web python init_db.py
 - Password hashing with Werkzeug (PBKDF2)
 - Flask sessions secured with secret key
 - All routes and API endpoints require authentication (`@login_required`)
+- **Role-based access control**: Admin/Operator/Viewer roles enforced on routes and API endpoints
+- **Feature gating**: Plan-tier checks on GoPhish, Cobalt Strike, Website Generator, and Infrastructure Map
 - Forced password change on first login
+- **Password complexity**: minimum 12 characters, must include uppercase, lowercase, and a digit
+- **Login rate limiting**: 10 failed attempts per IP in a 10-minute window triggers a temporary lockout (tracked in Redis)
+- **Open-redirect protection**: `next` parameter on login validated to reject any URL with a scheme or host
 - Docker socket access scoped to the `web` container only
 - HTTPS strongly recommended for production (configure nginx with SSL certificates)
 

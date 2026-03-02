@@ -86,34 +86,43 @@ services:
 
 ### Authentication & Security
 - Flask-Login for session management
-- Password hashing with Werkzeug
+- Password hashing with Werkzeug (PBKDF2)
 - Forced password change on first login (default: admin@infrared.local / admin)
 - `must_change_password` flag on User model (enforced via `@app.before_request` hook)
+- Password complexity: 12+ chars, must have uppercase, lowercase, digit (`_check_password_complexity` in routes.py)
+- Login rate limiting: 10 failures/IP in 10-minute window, tracked in Redis (`login_fail:<ip>` key)
+- Open-redirect protection: `next` URL validated to reject scheme/host (only relative paths allowed)
 - Encrypted credential storage using Fernet (AES-256)
 - Master encryption key in environment variables
+- RBAC: `admin_required` and `feature_required` decorators in `app/utils/decorators.py`
+  - `admin_required`: 403 JSON for API routes, flash+redirect for page routes
+  - `feature_required(feature_name)`: 402 JSON (`upgrade_required: true`) for API, flash+redirect for pages
 
 ### User Flow
 1. Login with default credentials
 2. Forced redirect to change password
-3. Password validation (min 8 chars, must differ from current)
+3. Password validation (min 12 chars, uppercase + lowercase + digit, must differ from current)
 4. Access dashboard after password change
 
 ### Pages & Routes
 - `/` - Redirect to dashboard or login
-- `/login` - Authentication (GET/POST)
+- `/login` - Authentication (GET/POST); login rate-limit: 10 failures/IP in 600s → locked
 - `/logout` - Session termination
-- `/change-password` - Forced password change (GET/POST)
+- `/change-password` - Forced password change (GET/POST); complexity: 12+ chars, upper, lower, digit
 - `/dashboard` - Main overview (EC2, containers, domains)
 - `/domains` - Domain management interface
 - `/containers` - Docker container management
 - `/email` - Mailgun domain and SMTP credential management
 - `/aws` - AWS EC2 instance management
 - `/npm` - Nginx Proxy Manager host management
+- `/infra-map` - Infrastructure Map visualization (`@feature_required('infra_map')`)
 - `/operations` - Setup — cross-service orchestration (email setup, DNS pointing, C2 setup)
 - `/orchestration` - C2 Deployments — view active deployments, teardown infrastructure
-- `/gophish` - GoPhish sending profile management
-- `/cobaltstrike` - Cobalt Strike listener management
-- `/settings` - API credential configuration
+- `/gophish` - GoPhish sending profile management (`@feature_required('gophish')`)
+- `/cobaltstrike` - Cobalt Strike listener management (`@feature_required('cobaltstrike')`)
+- `/settings` - API credential configuration (`@admin_required`)
+- `/admin/users` - User Management — CRUD for users and roles (`@admin_required`)
+- `/admin/license` - License/plan tier management (`@admin_required`)
 - `/api/*` - REST endpoints for all services
 
 ## Database Models
@@ -126,10 +135,25 @@ class User(UserMixin, db.Model):
     password_hash: str
     display_name: str
     is_active: bool (default=True)
-    is_admin: bool (default=False)
+    role: str (default='operator')     # 'admin' | 'operator' | 'viewer'
+    plan_override: str | None          # override global license tier for this user
     must_change_password: bool (default=True)
     created_at: datetime
     last_login: datetime
+    # is_admin / is_viewer are Python @property helpers (role == 'admin' / 'viewer')
+```
+
+### License Model
+```python
+class License(db.Model):
+    id: int (primary key)
+    tier: str (default='community')    # 'community' | 'professional' | 'team' | 'enterprise'
+    org_name: str
+    license_key: Text                  # reserved for future cryptographic validation
+    custom_max_users: int | None       # overrides tier default when set
+    custom_max_domains: int | None     # overrides tier default when set
+    updated_at: datetime
+    updated_by_id: int (FK -> users.id)
 ```
 
 ### Credential Model
@@ -297,6 +321,7 @@ docker compose exec web python init_db.py
 - `app/services/credential_service.py` - Fernet encryption/decryption for all stored credentials
 - `app/services/website_generator_service.py` - AI website generation (Azure OpenAI), Docker container deploy, NPM proxy creation, Cloudflare DNS, deployed-site discovery and removal
 - `app/services/task_log_service.py` - Lightweight in-memory/Redis task tracking (log, list, clear, status enrichment)
+- `app/services/plan_service.py` - Plan/license tier definitions, `get_current_plan()` (cached on `g`), feature and limit checks; admins always get Enterprise
 
 ### API Endpoints (all complete)
 - `/api/credentials` - Credential CRUD + test for all providers, single credential GET (aws, cloudflare, mailgun, npm, docker, gophish, cobaltstrike, redwarden)
@@ -309,6 +334,8 @@ docker compose exec web python init_db.py
 - `/api/cobaltstrike` - Cobalt Strike listener management (list, create, delete with type-aware validation for http, https, dns, smb, tcp, foreignHttp, foreignHttps, externalC2, userDefinedC2)
 - `/api/website-generator` - AI website generation (generate → task_id, status poll, deploy, relaunch, publish full flow, list/delete deployed sites)
 - `/api/task-log` - Background task tracking (list all tasks, clear completed, revoke/cancel a task)
+- `/api/users` - User CRUD (admin only): list, create, update (role/display_name/is_active/plan_override), delete; enforces plan user limit on create
+- `/api/license` - GET plan info + tier definitions (all authenticated); PATCH to update tier/org_name (admin only)
 
 ### Frontend (all complete)
 - Dashboard with live data from all services, auto-refresh every 30 seconds
@@ -323,6 +350,10 @@ docker compose exec web python init_db.py
 - Cobalt Strike page with listener table and dynamic create modal (fields adapt per listener type: http, https, dns, smb, tcp, foreignHttp, foreignHttps, externalC2, userDefinedC2; with conditional guardRails, httpProxy, and UDC2 file upload sections; host fields auto-populate from configured CS Listener IP)
 - Settings page with credential management for all providers including Docker remote host, NPM public IP (with EC2 instance picker), GoPhish API credentials, Cobalt Strike teamserver credentials (including Listener IP — private IP of teamserver EC2, with EC2 private IP picker), and RedWarden IP (beacon reverse proxy)
 - Sidebar organized into collapsible sections: Management (Domains, Email, Containers, AWS, NPM, GoPhish, Cobalt Strike) and Red Team Ops (Setup, Deployments), with Dashboard and Settings as top-level items; sections auto-expand for active page
+- User Management page (`admin_users.html`) — user table with create modal, role badge, plan override, activate/deactivate, delete; enforces plan user limit with upgrade prompt
+- License page (`admin_license.html`) — tier selector, org name field, usage progress bars (users, domains), tier comparison table
+- `IS_VIEWER` JS const injected into all 9 action templates via Jinja; viewer role hides/disables write actions
+- Feature-gated pages (GoPhish, CS, Infra Map, Website Generator) redirect non-plan users to dashboard
 
 ### Celery Tasks (all complete)
 - `app/tasks/celery_app.py` - Celery instance with Flask app context integration
