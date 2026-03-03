@@ -17,7 +17,13 @@
     <div class="card-body">
         <div class="row g-3 align-items-end">
             <div class="col-md-4">
-                <label class="form-label mb-1">Cloudflare Zone</label>
+                <label class="form-label mb-1">
+                    Cloudflare Zone
+                    <span id="zones-loading-indicator" class="ms-1 d-none">
+                        <span class="spinner-border spinner-border-sm text-muted" style="width:.8rem;height:.8rem"></span>
+                        <small class="text-muted">fetching…</small>
+                    </span>
+                </label>
                 <select class="form-select" id="zone-select" onchange="onZoneChange()">
                     <option value="">Loading zones...</option>
                 </select>
@@ -261,10 +267,21 @@
 
     document.addEventListener('DOMContentLoaded', loadZones);
 
+    function _setZonesLoading(loading) {
+        const select   = document.getElementById('zone-select');
+        const spinner  = document.getElementById('zones-loading-indicator');
+        const refreshBtn = document.querySelector('[onclick="refreshZones()"]');
+        select.disabled = loading;
+        spinner.classList.toggle('d-none', !loading);
+        if (refreshBtn) refreshBtn.disabled = loading;
+    }
+
     function loadZones() {
+        _setZonesLoading(true);
         fetch('/api/domains/zones')
             .then(r => r.json())
             .then(data => {
+                _setZonesLoading(false);
                 if (data.error) {
                     document.getElementById('zone-select').innerHTML =
                         '<option value="">Error: ' + data.error + '</option>';
@@ -275,18 +292,20 @@
                 (data.zones || []).forEach(z => {
                     const opt = document.createElement('option');
                     opt.value = z.id;
-                    opt.textContent = z.name + ' (' + z.status + ')';
+                    const acct = z.account_label && z.account_label !== 'default' ? ' [' + z.account_label + ']' : '';
+                    opt.textContent = z.name + acct + ' (' + z.status + ')';
                     select.appendChild(opt);
                 });
             })
-            .catch(err => {
+            .catch(() => {
+                _setZonesLoading(false);
                 document.getElementById('zone-select').innerHTML =
                     '<option value="">Failed to load zones - check Cloudflare credentials in Settings</option>';
             });
     }
 
     function refreshZones() {
-        document.getElementById('zone-select').innerHTML = '<option value="">Refreshing...</option>';
+        document.getElementById('zone-select').innerHTML = '<option value=""></option>';
         loadZones();
     }
 

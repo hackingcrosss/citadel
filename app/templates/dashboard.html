@@ -287,6 +287,11 @@
 
     // --- Cloudflare Zones ---
     function loadDomains() {
+        document.getElementById('domain-count').innerHTML =
+            '<span class="spinner-border spinner-border-sm text-muted" style="width:.9rem;height:.9rem"></span>';
+        document.getElementById('domain-subtitle').innerHTML =
+            '<span class="text-muted">Fetching zones…</span>';
+
         fetch('/api/domains/zones')
             .then(function(r) { return r.json(); })
             .then(function(data) {
@@ -326,6 +331,7 @@
                 }).join('');
             })
             .catch(function() {
+                document.getElementById('domain-count').textContent = '!';
                 showError('domain', 'Failed to load - check Cloudflare credentials');
             });
     }

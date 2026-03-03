@@ -6,9 +6,15 @@
 <div class="d-flex justify-content-between align-items-center mb-4">
     <h1 class="h3 mb-0">Setup</h1>
     <div class="d-flex align-items-center gap-3">
-        <select id="zoneSelect" class="form-select form-select-sm" style="width: 300px;" onchange="onZoneChange()">
-            <option value="">Select a Cloudflare zone...</option>
-        </select>
+        <div class="d-flex align-items-center gap-2">
+            <select id="zoneSelect" class="form-select form-select-sm" style="width: 300px;" onchange="onZoneChange()">
+                <option value="">Select a Cloudflare zone...</option>
+            </select>
+            <span id="zones-loading-indicator" class="d-none text-muted">
+                <span class="spinner-border spinner-border-sm" style="width:.8rem;height:.8rem"></span>
+                <small>fetching…</small>
+            </span>
+        </div>
         <button class="btn btn-sm btn-outline-secondary" onclick="loadAll()">
             <i class="bi bi-arrow-clockwise"></i> Refresh
         </button>
@@ -464,10 +470,19 @@
 
     // --- Zone Selector ---
 
+    function _setZonesLoading(loading) {
+        var select  = document.getElementById('zoneSelect');
+        var spinner = document.getElementById('zones-loading-indicator');
+        select.disabled = loading;
+        if (spinner) spinner.classList.toggle('d-none', !loading);
+    }
+
     function loadZones() {
+        _setZonesLoading(true);
         fetch('/api/domains/zones')
             .then(function(r) { return r.json(); })
             .then(function(data) {
+                _setZonesLoading(false);
                 if (data.error) return;
                 var zones = data.zones || [];
                 var select = document.getElementById('zoneSelect');
@@ -476,7 +491,8 @@
                 zones.forEach(function(z) {
                     var opt = document.createElement('option');
                     opt.value = z.id + '|' + z.name;
-                    opt.textContent = z.name + (z.status === 'active' ? '' : ' (' + z.status + ')');
+                    var acctSuffix = z.account_label && z.account_label !== 'default' ? ' [' + z.account_label + ']' : '';
+                    opt.textContent = z.name + acctSuffix + (z.status === 'active' ? '' : ' (' + z.status + ')');
                     select.appendChild(opt);
                 });
                 if (current) {
@@ -488,7 +504,7 @@
                     if (select.value === target) onZoneChange();
                 }
             })
-            .catch(function() {});
+            .catch(function() { _setZonesLoading(false); });
     }
 
     function onZoneChange() {

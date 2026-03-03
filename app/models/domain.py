@@ -14,6 +14,7 @@ class Domain(db.Model):
     notes = db.Column(db.Text)
     mailgun_region = db.Column(db.String(5))  # us, eu
     provider = db.Column(db.String(50), nullable=False, default='cloudflare')
+    credential_label = db.Column(db.String(100), nullable=False, default='default')
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     last_synced_at = db.Column(db.DateTime)
@@ -32,6 +33,7 @@ class Domain(db.Model):
             'notes': self.notes,
             'mailgun_region': self.mailgun_region,
             'provider': self.provider,
+            'credential_label': self.credential_label,
             'record_count': self.dns_records.count(),
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None,
