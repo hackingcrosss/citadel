@@ -5,8 +5,31 @@ from app.services import aws_service
 from app import db
 from app.models.instance_tag import InstanceTag
 from app.models.instance_ssh_config import InstanceSSHConfig
-from app.services.credential_service import _get_fernet
+from app.services.credential_service import _get_fernet, get_account_labels
 from app.services import ssh_service
+
+
+def _instance_label(instance_id):
+    """Resolve account label for an instance_id.
+
+    Resolution order:
+    1. In-memory cache populated by list_instances_all_accounts().
+    2. First available AWS account label.
+    """
+    cached = aws_service._instance_account_cache.get(instance_id)
+    if cached:
+        return cached
+    labels = get_account_labels('aws')
+    return labels[0] if labels else 'default'
+
+
+def _group_by_label(instance_ids):
+    """Group instance IDs by their resolved account label."""
+    groups = {}
+    for iid in instance_ids:
+        lbl = _instance_label(iid)
+        groups.setdefault(lbl, []).append(iid)
+    return groups
 
 
 # --- Instances ---
@@ -16,7 +39,7 @@ from app.services import ssh_service
 def aws_list_instances():
     region = request.args.get('region')
     try:
-        instances = aws_service.list_instances(region)
+        instances = aws_service.list_instances_all_accounts(region)
 
         # Enrich instances with local tags
         instance_ids = [i['id'] for i in instances]
@@ -53,7 +76,7 @@ def aws_list_instances():
 def aws_get_instance(instance_id):
     region = request.args.get('region')
     try:
-        instance = aws_service.get_instance(instance_id, region)
+        instance = aws_service.get_instance(instance_id, region, label=_instance_label(instance_id))
         return jsonify({'instance': instance})
     except Exception as e:
         return jsonify({'error': str(e)}), 400
@@ -68,8 +91,10 @@ def aws_start_instances():
     if not ids:
         return jsonify({'error': 'No instance IDs provided'}), 400
     try:
-        result = aws_service.start_instances(ids, region)
-        return jsonify({'result': result})
+        results = []
+        for lbl, grp in _group_by_label(ids).items():
+            results.extend(aws_service.start_instances(grp, region, label=lbl))
+        return jsonify({'result': results})
     except Exception as e:
         return jsonify({'error': str(e)}), 400
 
@@ -83,8 +108,10 @@ def aws_stop_instances():
     if not ids:
         return jsonify({'error': 'No instance IDs provided'}), 400
     try:
-        result = aws_service.stop_instances(ids, region)
-        return jsonify({'result': result})
+        results = []
+        for lbl, grp in _group_by_label(ids).items():
+            results.extend(aws_service.stop_instances(grp, region, label=lbl))
+        return jsonify({'result': results})
     except Exception as e:
         return jsonify({'error': str(e)}), 400
 
@@ -98,8 +125,9 @@ def aws_reboot_instances():
     if not ids:
         return jsonify({'error': 'No instance IDs provided'}), 400
     try:
-        result = aws_service.reboot_instances(ids, region)
-        return jsonify({'result': result})
+        for lbl, grp in _group_by_label(ids).items():
+            aws_service.reboot_instances(grp, region, label=lbl)
+        return jsonify({'result': {'rebooted': ids}})
     except Exception as e:
         return jsonify({'error': str(e)}), 400
 
@@ -113,8 +141,10 @@ def aws_terminate_instances():
     if not ids:
         return jsonify({'error': 'No instance IDs provided'}), 400
     try:
-        result = aws_service.terminate_instances(ids, region)
-        return jsonify({'result': result})
+        results = []
+        for lbl, grp in _group_by_label(ids).items():
+            results.extend(aws_service.terminate_instances(grp, region, label=lbl))
+        return jsonify({'result': results})
     except Exception as e:
         return jsonify({'error': str(e)}), 400
 
@@ -190,8 +220,9 @@ def aws_remove_tag():
 @login_required
 def aws_list_security_groups():
     region = request.args.get('region')
+    label = request.args.get('label', 'default')
     try:
-        groups = aws_service.list_security_groups(region)
+        groups = aws_service.list_security_groups(region, label=label)
         return jsonify({'security_groups': groups})
     except Exception as e:
         return jsonify({'error': str(e)}), 400
@@ -201,8 +232,9 @@ def aws_list_security_groups():
 @login_required
 def aws_get_security_group(group_id):
     region = request.args.get('region')
+    label = request.args.get('label', 'default')
     try:
-        group = aws_service.get_security_group(group_id, region)
+        group = aws_service.get_security_group(group_id, region, label=label)
         return jsonify({'security_group': group})
     except Exception as e:
         return jsonify({'error': str(e)}), 400
@@ -214,8 +246,9 @@ def aws_get_security_group(group_id):
 @login_required
 def aws_list_key_pairs():
     region = request.args.get('region')
+    label = request.args.get('label', 'default')
     try:
-        pairs = aws_service.list_key_pairs(region)
+        pairs = aws_service.list_key_pairs(region, label=label)
         return jsonify({'key_pairs': pairs})
     except Exception as e:
         return jsonify({'error': str(e)}), 400
@@ -353,8 +386,9 @@ def aws_service_action(instance_id, service_name, action):
 @api_bp.route('/aws/regions', methods=['GET'])
 @login_required
 def aws_list_regions():
+    label = request.args.get('label', 'default')
     try:
-        regions = aws_service.list_regions()
+        regions = aws_service.list_regions(label=label)
         return jsonify({'regions': regions})
     except Exception as e:
         return jsonify({'error': str(e)}), 400

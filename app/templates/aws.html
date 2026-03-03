@@ -496,7 +496,7 @@
             return `
             <tr>
                 <td><input type="checkbox" class="inst-check" value="${idAttr}" onchange="updateBulkButtons()"></td>
-                <td><span class="badge bg-warning text-dark">AWS</span></td>
+                <td><span class="badge bg-warning text-dark" title="${escapeHtml(inst.account_label || 'default')}">${escapeHtml(inst.account_label && inst.account_label !== 'default' ? inst.account_label : 'AWS')}</span></td>
                 <td>${nameHtml}</td>
                 <td><code class="text-primary" style="cursor:pointer" onclick="showDetail('${idAttr}')">${id}</code></td>
                 <td><small>${typeHtml}</small></td>

@@ -143,34 +143,74 @@
                     </button>
                     <div class="collapse" id="aws-body">
                         <div class="provider-body">
-                            <div class="row g-3">
-                                <div class="col-md-4">
-                                    <label class="form-label">Access Key ID</label>
-                                    <div class="input-group">
-                                        <input type="password" class="form-control" id="aws-access-key-id" placeholder="Enter AWS Access Key ID">
-                                        <button class="btn btn-outline-secondary" type="button"><i class="bi bi-eye"></i></button>
+                            <div class="d-flex align-items-center justify-content-between mb-2">
+                                <small class="text-muted">One entry per AWS account / IAM user.</small>
+                                <button class="btn btn-sm btn-outline-primary" onclick="toggleAwsAddForm()">
+                                    <i class="bi bi-plus-circle"></i> Add Account
+                                </button>
+                            </div>
+
+                            <!-- Add-account form (hidden by default) -->
+                            <div id="aws-add-form" class="card bg-dark border-secondary mb-3" style="display:none!important">
+                                <div class="card-body p-3">
+                                    <div class="row g-2 align-items-end">
+                                        <div class="col-md-3">
+                                            <label class="form-label form-label-sm">Account label</label>
+                                            <input type="text" class="form-control form-control-sm" id="aws-new-label"
+                                                   placeholder="e.g. Prod">
+                                        </div>
+                                        <div class="col-md-3">
+                                            <label class="form-label form-label-sm">Access Key ID</label>
+                                            <div class="input-group input-group-sm">
+                                                <input type="password" class="form-control" id="aws-new-access-key"
+                                                       placeholder="AKIA...">
+                                                <button class="btn btn-outline-secondary" type="button"
+                                                        onclick="toggleVisibility('aws-new-access-key', this)">
+                                                    <i class="bi bi-eye"></i>
+                                                </button>
+                                            </div>
+                                        </div>
+                                        <div class="col-md-3">
+                                            <label class="form-label form-label-sm">Secret Access Key</label>
+                                            <div class="input-group input-group-sm">
+                                                <input type="password" class="form-control" id="aws-new-secret-key"
+                                                       placeholder="Secret key">
+                                                <button class="btn btn-outline-secondary" type="button"
+                                                        onclick="toggleVisibility('aws-new-secret-key', this)">
+                                                    <i class="bi bi-eye"></i>
+                                                </button>
+                                            </div>
+                                        </div>
+                                        <div class="col-md-2">
+                                            <label class="form-label form-label-sm">Default Region</label>
+                                            <input type="text" class="form-control form-control-sm" id="aws-new-region"
+                                                   placeholder="eu-west-1">
+                                        </div>
+                                        <div class="col-md-1 d-flex gap-1">
+                                            <button class="btn btn-sm btn-primary w-100" onclick="addAwsAccount()">
+                                                <i class="bi bi-check-lg"></i>
+                                            </button>
+                                        </div>
                                     </div>
-                                    <small class="text-muted" id="aws-access-key-id-status"></small>
-                                </div>
-                                <div class="col-md-4">
-                                    <label class="form-label">Secret Access Key</label>
-                                    <div class="input-group">
-                                        <input type="password" class="form-control" id="aws-secret-access-key" placeholder="Enter AWS Secret Access Key">
-                                        <button class="btn btn-outline-secondary" type="button"><i class="bi bi-eye"></i></button>
-                                    </div>
-                                    <small class="text-muted" id="aws-secret-access-key-status"></small>
-                                </div>
-                                <div class="col-md-4">
-                                    <label class="form-label">Default Region</label>
-                                    <input type="text" class="form-control" id="aws-default-region" placeholder="eu-west-1">
-                                    <small class="text-muted" id="aws-default-region-status"></small>
-                                </div>
-                                <div class="col-12">
-                                    <button class="btn btn-sm btn-outline-primary" onclick="saveAwsCredentials()"><i class="bi bi-pencil"></i> Update</button>
-                                    <button class="btn btn-sm btn-outline-success" onclick="testAwsConnection()"><i class="bi bi-check-circle"></i> Test Connection</button>
-                                    <span id="aws-test-result" class="ms-2"></span>
                                 </div>
                             </div>
+
+                            <!-- Accounts table -->
+                            <table class="table table-sm table-dark table-bordered mb-0" id="aws-accounts-table">
+                                <thead>
+                                    <tr>
+                                        <th>Label</th>
+                                        <th>Access Key ID</th>
+                                        <th>Updated</th>
+                                        <th style="width:160px"></th>
+                                    </tr>
+                                </thead>
+                                <tbody id="aws-accounts-tbody">
+                                    <tr id="aws-accounts-empty">
+                                        <td colspan="4" class="text-muted text-center">No accounts configured</td>
+                                    </tr>
+                                </tbody>
+                            </table>
                         </div>
                     </div>
                 </div>
@@ -751,44 +791,73 @@
 
     // --- AWS ---
 
-    function loadAwsStatus() {
+    function loadAwsStatus() { loadAwsAccounts(); }
+
+    function loadAwsAccounts() {
         fetch('/api/credentials/aws')
             .then(r => r.json())
             .then(data => {
-                const creds = data.aws || {};
-                if (creds.access_key_id) {
-                    document.getElementById('aws-access-key-id').placeholder = creds.access_key_id.masked;
-                    document.getElementById('aws-access-key-id-status').textContent =
-                        'Last updated: ' + new Date(creds.access_key_id.updated_at).toLocaleString();
+                const aws = data.aws || {};
+                const accounts = aws.accounts || [];
+                const tbody = document.getElementById('aws-accounts-tbody');
+                const emptyRow = document.getElementById('aws-accounts-empty');
+
+                Array.from(tbody.querySelectorAll('tr[data-aws-row]')).forEach(r => r.remove());
+
+                if (accounts.length === 0) {
+                    emptyRow.style.display = '';
+                    return;
                 }
-                if (creds.secret_access_key) {
-                    document.getElementById('aws-secret-access-key').placeholder = creds.secret_access_key.masked;
-                    document.getElementById('aws-secret-access-key-status').textContent =
-                        'Last updated: ' + new Date(creds.secret_access_key.updated_at).toLocaleString();
-                }
-                if (creds.default_region) {
-                    document.getElementById('aws-default-region').placeholder = creds.default_region.masked;
-                    document.getElementById('aws-default-region-status').textContent =
-                        'Last updated: ' + new Date(creds.default_region.updated_at).toLocaleString();
-                }
+                emptyRow.style.display = 'none';
+
+                accounts.forEach(acc => {
+                    const lbl = acc.label || 'default';
+                    const key = acc.access_key_id || {};
+                    const masked = key.masked || '—';
+                    const updated = key.updated_at ? new Date(key.updated_at).toLocaleString() : '—';
+
+                    const tr = document.createElement('tr');
+                    tr.setAttribute('data-aws-row', lbl);
+                    tr.innerHTML = `
+                        <td><code>${escHtml(lbl)}</code></td>
+                        <td><span class="font-monospace text-muted">${escHtml(masked)}</span></td>
+                        <td><small class="text-muted">${escHtml(updated)}</small></td>
+                        <td>
+                            <button class="btn btn-sm btn-outline-success me-1"
+                                    onclick="testAwsAccount('${escHtml(lbl)}', this)">
+                                <i class="bi bi-check-circle"></i> Test
+                            </button>
+                            <button class="btn btn-sm btn-outline-danger"
+                                    onclick="deleteAwsAccount('${escHtml(lbl)}')">
+                                <i class="bi bi-trash"></i>
+                            </button>
+                            <span class="aws-test-result ms-1" data-label="${escHtml(lbl)}"></span>
+                        </td>`;
+                    tbody.appendChild(tr);
+                });
             })
-            .catch(err => console.error('Failed to load AWS credentials:', err));
+            .catch(err => console.error('Failed to load AWS accounts:', err));
     }
 
-    function saveAwsCredentials() {
-        const accessKey = document.getElementById('aws-access-key-id').value;
-        const secretKey = document.getElementById('aws-secret-access-key').value;
-        const region = document.getElementById('aws-default-region').value;
+    function toggleAwsAddForm() {
+        const form = document.getElementById('aws-add-form');
+        const hidden = form.style.display === 'none' || form.style.cssText.includes('none');
+        form.style.cssText = hidden ? 'display:block!important' : 'display:none!important';
+    }
 
-        const body = {};
-        if (accessKey) body.access_key_id = accessKey;
-        if (secretKey) body.secret_access_key = secretKey;
-        if (region) body.default_region = region;
+    function addAwsAccount() {
+        const label = (document.getElementById('aws-new-label').value || '').trim() || 'default';
+        const accessKey = document.getElementById('aws-new-access-key').value.trim();
+        const secretKey = document.getElementById('aws-new-secret-key').value.trim();
+        const region = document.getElementById('aws-new-region').value.trim();
 
-        if (Object.keys(body).length === 0) {
-            showToast('Enter at least one value to save.', 'warning');
+        if (!accessKey || !secretKey) {
+            showToast('Access Key ID and Secret Access Key are required.', 'warning');
             return;
         }
+
+        const body = {label, access_key_id: accessKey, secret_access_key: secretKey};
+        if (region) body.default_region = region;
 
         fetch('/api/credentials/aws', {
             method: 'POST',
@@ -798,33 +867,61 @@
         .then(r => r.json())
         .then(data => {
             if (data.saved) {
-                showToast('AWS credentials saved.');
-                document.getElementById('aws-access-key-id').value = '';
-                document.getElementById('aws-secret-access-key').value = '';
-                document.getElementById('aws-default-region').value = '';
-                loadAwsStatus();
+                showToast(`Account '${label}' saved.`);
+                document.getElementById('aws-new-label').value = '';
+                document.getElementById('aws-new-access-key').value = '';
+                document.getElementById('aws-new-secret-key').value = '';
+                document.getElementById('aws-new-region').value = '';
+                document.getElementById('aws-add-form').style.cssText = 'display:none!important';
+                loadAwsAccounts();
                 loadConfigBadges();
+            } else {
+                showToast(data.error || 'Failed to save.', 'danger');
             }
         })
-        .catch(err => showToast('Error saving: ' + err, 'danger'));
+        .catch(err => showToast('Error: ' + err, 'danger'));
     }
 
-    function testAwsConnection() {
-        const resultEl = document.getElementById('aws-test-result');
-        resultEl.innerHTML = '<span class="text-muted"><i class="bi bi-hourglass-split"></i> Testing...</span>';
+    function testAwsAccount(label, btn) {
+        const resultEl = document.querySelector(`.aws-test-result[data-label="${label}"]`);
+        if (resultEl) resultEl.innerHTML = '<span class="text-muted"><i class="bi bi-hourglass-split"></i></span>';
+        if (btn) btn.disabled = true;
 
-        fetch('/api/credentials/aws/test', {method: 'POST'})
+        fetch('/api/credentials/aws/test', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({label})
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (btn) btn.disabled = false;
+            if (resultEl) {
+                resultEl.innerHTML = data.success
+                    ? `<span class="text-success"><i class="bi bi-check-circle-fill"></i> ${escHtml(data.result?.account || 'OK')}</span>`
+                    : '<span class="text-danger"><i class="bi bi-x-circle-fill"></i></span>';
+            }
+        })
+        .catch(() => {
+            if (btn) btn.disabled = false;
+            if (resultEl) resultEl.innerHTML = '<span class="text-danger"><i class="bi bi-x-circle-fill"></i></span>';
+        });
+    }
+
+    function deleteAwsAccount(label) {
+        if (!confirm(`Delete AWS account '${label}'? This cannot be undone.`)) return;
+
+        fetch(`/api/credentials/aws/account/${encodeURIComponent(label)}`, {method: 'DELETE'})
             .then(r => r.json())
             .then(data => {
-                if (data.success) {
-                    resultEl.innerHTML = '<span class="text-success"><i class="bi bi-check-circle-fill"></i> Connected (Account: ' + (data.result.account || 'OK') + ')</span>';
+                if (data.deleted) {
+                    showToast(`Account '${label}' deleted.`);
+                    loadAwsAccounts();
+                    loadConfigBadges();
                 } else {
-                    resultEl.innerHTML = '<span class="text-danger"><i class="bi bi-x-circle-fill"></i> ' + data.error + '</span>';
+                    showToast(data.error || 'Failed to delete.', 'danger');
                 }
             })
-            .catch(err => {
-                resultEl.innerHTML = '<span class="text-danger"><i class="bi bi-x-circle-fill"></i> Request failed</span>';
-            });
+            .catch(err => showToast('Error: ' + err, 'danger'));
     }
 
     function loadCloudflareStatus() { loadCloudflareAccounts(); }
