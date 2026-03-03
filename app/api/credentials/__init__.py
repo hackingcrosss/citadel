@@ -11,7 +11,16 @@ _log = logging.getLogger(__name__)
 @login_required
 def get_credentials(provider):
     data = credential_service.get_all_for_provider(provider)
-    return jsonify({provider: data})
+    if provider == 'cloudflare':
+        # Return accounts grouped by label for the multi-account UI
+        accounts = [
+            {'label': lbl, **keys}
+            for lbl, keys in sorted(data.items())
+        ]
+        return jsonify({provider: {'configured': len(accounts) > 0, 'accounts': accounts}})
+    # All other providers: flat {key_name: {...}} format (backward compat)
+    flat = data.get('default', {})
+    return jsonify({provider: flat})
 
 
 @api_bp.route('/credentials/<provider>', methods=['POST'])
@@ -21,13 +30,34 @@ def save_credentials(provider):
     if not payload:
         return jsonify({'error': 'No data provided'}), 400
 
+    if provider == 'cloudflare':
+        label = (payload.pop('label', None) or 'default').strip()
+        saved = []
+        for key_name, value in payload.items():
+            if value and str(value).strip():
+                credential_service.set_credential(provider, key_name, str(value).strip(), label=label)
+                saved.append(key_name)
+        return jsonify({'saved': saved, 'provider': provider, 'label': label})
+
+    # Other providers: always use label='default'
     saved = []
     for key_name, value in payload.items():
-        if value and value.strip():
-            credential_service.set_credential(provider, key_name, value.strip())
+        if value and str(value).strip():
+            credential_service.set_credential(provider, key_name, str(value).strip())
             saved.append(key_name)
-
     return jsonify({'saved': saved, 'provider': provider})
+
+
+@api_bp.route('/credentials/cloudflare/account/<label>', methods=['DELETE'])
+@login_required
+def delete_cloudflare_account(label):
+    labels = credential_service.get_account_labels('cloudflare')
+    if len(labels) <= 1:
+        return jsonify({'error': 'Cannot delete the last Cloudflare account'}), 400
+    deleted = credential_service.delete_account('cloudflare', label)
+    if deleted:
+        return jsonify({'deleted': True, 'label': label})
+    return jsonify({'error': 'Account not found'}), 404
 
 
 @api_bp.route('/credentials/<provider>/test', methods=['POST'])
@@ -49,7 +79,9 @@ def test_credentials(provider):
         return jsonify({'error': f'No test available for {provider}'}), 400
 
     try:
-        result = tester()
+        payload = request.get_json(silent=True) or {}
+        label = payload.get('label', 'default') if provider == 'cloudflare' else 'default'
+        result = tester(label=label) if provider == 'cloudflare' else tester()
         return jsonify({'success': True, 'result': result})
     except Exception as e:
         _log.warning('Credential test failed for provider %s: %s', provider, e)
@@ -75,9 +107,9 @@ def delete_credential(provider, key_name):
     return jsonify({'error': 'Credential not found'}), 404
 
 
-def _test_cloudflare():
+def _test_cloudflare(label='default'):
     from app.services import dns_service
-    result = dns_service.verify_token()
+    result = dns_service.verify_token(label=label)
     return {'status': result.get('status', 'unknown')}
 
 

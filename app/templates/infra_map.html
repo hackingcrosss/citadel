@@ -895,7 +895,7 @@
             : fetch('/api/domains', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ name: zone.name, cloudflare_zone_id: zone.id })
+                body: JSON.stringify({ name: zone.name, cloudflare_zone_id: zone.id, credential_label: zone.account_label || 'default' })
               })
               .then(function(r) { return r.json(); })
               .then(function(d) {

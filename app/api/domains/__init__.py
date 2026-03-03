@@ -3,6 +3,7 @@ from flask import request, jsonify
 from flask_login import login_required
 from app.api import api_bp
 from app.services import dns_service
+from app.services.credential_service import get_account_labels
 from app.services.plan_service import get_current_plan
 from app import db
 from app.models.domain import Domain, DNSRecord
@@ -12,6 +13,28 @@ from datetime import datetime
 _DOMAIN_RE = re.compile(
     r'^(?:[a-z0-9](?:[a-z0-9\-]{0,61}[a-z0-9])?\.)+[a-z]{2,}$'
 )
+
+
+def _zone_label(zone_id):
+    """Return the credential label to use for a given zone_id.
+
+    Resolution order:
+    1. Local domain record (most authoritative — set when a domain is imported).
+    2. The in-memory cache populated by list_zones_all_accounts() — covers zones
+       that are visible in the selector but not yet imported locally.
+    3. First available Cloudflare account label — safe fallback when neither of
+       the above is populated (e.g. direct API calls before any zone listing).
+    """
+    domain = Domain.query.filter_by(cloudflare_zone_id=zone_id).first()
+    if domain:
+        return domain.credential_label
+
+    cached = dns_service._zone_account_cache.get(zone_id)
+    if cached:
+        return cached
+
+    labels = get_account_labels('cloudflare')
+    return labels[0] if labels else 'default'
 
 
 # --- Local Domain Management ---
@@ -63,6 +86,7 @@ def create_local_domain():
         notes=data.get('notes'),
         mailgun_region=data.get('mailgun_region'),
         provider=data.get('provider', 'cloudflare').strip() or 'cloudflare',
+        credential_label=data.get('credential_label', 'default') or 'default',
     )
     db.session.add(domain)
     db.session.commit()
@@ -88,7 +112,7 @@ def update_local_domain(domain_id):
     if not data:
         return jsonify({'error': 'No data provided'}), 400
 
-    for field in ('registrar', 'status', 'purpose', 'notes', 'mailgun_region', 'cloudflare_zone_id'):
+    for field in ('registrar', 'status', 'purpose', 'notes', 'mailgun_region', 'cloudflare_zone_id', 'credential_label'):
         if field in data:
             setattr(domain, field, data[field])
 
@@ -115,7 +139,7 @@ def sync_domain(domain_id):
         return jsonify({'error': 'Domain has no Cloudflare zone ID linked'}), 400
 
     try:
-        records = dns_service.list_dns_records(domain.cloudflare_zone_id)
+        records = dns_service.list_dns_records(domain.cloudflare_zone_id, label=domain.credential_label)
     except Exception as e:
         return jsonify({'error': str(e)}), 400
 
@@ -164,10 +188,11 @@ def sync_domain(domain_id):
 @login_required
 def list_zones():
     try:
-        name_filter = request.args.get('name')
-        page = request.args.get('page', 1, type=int)
-        zones, page_info = dns_service.list_zones(name_filter=name_filter, page=page)
-        return jsonify({'zones': zones, 'page_info': page_info})
+        zones = dns_service.list_zones_all_accounts()
+        name_filter = request.args.get('name', '').lower()
+        if name_filter:
+            zones = [z for z in zones if name_filter in z.get('name', '').lower()]
+        return jsonify({'zones': zones, 'page_info': {'total_count': len(zones)}})
     except Exception as e:
         return jsonify({'error': str(e)}), 400
 
@@ -176,7 +201,7 @@ def list_zones():
 @login_required
 def get_zone(zone_id):
     try:
-        zone = dns_service.get_zone(zone_id)
+        zone = dns_service.get_zone(zone_id, label=_zone_label(zone_id))
         return jsonify({'zone': zone})
     except Exception as e:
         return jsonify({'error': str(e)}), 400
@@ -190,7 +215,7 @@ def list_dns_records(zone_id):
     try:
         record_type = request.args.get('type')
         name = request.args.get('name')
-        records = dns_service.list_dns_records(zone_id, record_type=record_type, name=name)
+        records = dns_service.list_dns_records(zone_id, record_type=record_type, name=name, label=_zone_label(zone_id))
         return jsonify({'records': records})
     except Exception as e:
         return jsonify({'error': str(e)}), 400
@@ -215,7 +240,8 @@ def create_dns_record(zone_id):
             content=data['content'],
             ttl=data.get('ttl', 1),
             proxied=data.get('proxied', False),
-            priority=data.get('priority')
+            priority=data.get('priority'),
+            label=_zone_label(zone_id),
         )
 
         # Sync to local DB if domain is tracked
@@ -260,7 +286,8 @@ def update_dns_record(zone_id, record_id):
             content=data['content'],
             ttl=data.get('ttl', 1),
             proxied=data.get('proxied', False),
-            priority=data.get('priority')
+            priority=data.get('priority'),
+            label=_zone_label(zone_id),
         )
 
         # Update local DB if tracked
@@ -283,7 +310,7 @@ def update_dns_record(zone_id, record_id):
 @login_required
 def delete_dns_record(zone_id, record_id):
     try:
-        dns_service.delete_dns_record(zone_id, record_id)
+        dns_service.delete_dns_record(zone_id, record_id, label=_zone_label(zone_id))
 
         # Remove from local DB if tracked
         db_rec = DNSRecord.query.filter_by(cloudflare_record_id=record_id).first()
@@ -302,7 +329,7 @@ def delete_dns_record(zone_id, record_id):
 @login_required
 def get_ssl(zone_id):
     try:
-        result = dns_service.get_ssl_setting(zone_id)
+        result = dns_service.get_ssl_setting(zone_id, label=_zone_label(zone_id))
         return jsonify({'ssl': result})
     except Exception as e:
         return jsonify({'error': str(e)}), 400
@@ -317,7 +344,7 @@ def set_ssl(zone_id):
         return jsonify({'error': 'Invalid SSL value. Use: off, flexible, full, strict'}), 400
 
     try:
-        result = dns_service.set_ssl_setting(zone_id, value)
+        result = dns_service.set_ssl_setting(zone_id, value, label=_zone_label(zone_id))
         return jsonify({'ssl': result})
     except Exception as e:
         return jsonify({'error': str(e)}), 400
