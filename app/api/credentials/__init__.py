@@ -7,11 +7,14 @@ from app.services import credential_service
 _log = logging.getLogger(__name__)
 
 
+_MULTI_ACCOUNT_PROVIDERS = {'cloudflare', 'aws'}
+
+
 @api_bp.route('/credentials/<provider>', methods=['GET'])
 @login_required
 def get_credentials(provider):
     data = credential_service.get_all_for_provider(provider)
-    if provider == 'cloudflare':
+    if provider in _MULTI_ACCOUNT_PROVIDERS:
         # Return accounts grouped by label for the multi-account UI
         accounts = [
             {'label': lbl, **keys}
@@ -30,7 +33,7 @@ def save_credentials(provider):
     if not payload:
         return jsonify({'error': 'No data provided'}), 400
 
-    if provider == 'cloudflare':
+    if provider in _MULTI_ACCOUNT_PROVIDERS:
         label = (payload.pop('label', None) or 'default').strip()
         saved = []
         for key_name, value in payload.items():
@@ -60,6 +63,18 @@ def delete_cloudflare_account(label):
     return jsonify({'error': 'Account not found'}), 404
 
 
+@api_bp.route('/credentials/aws/account/<label>', methods=['DELETE'])
+@login_required
+def delete_aws_account(label):
+    labels = credential_service.get_account_labels('aws')
+    if len(labels) <= 1:
+        return jsonify({'error': 'Cannot delete the last AWS account'}), 400
+    deleted = credential_service.delete_account('aws', label)
+    if deleted:
+        return jsonify({'deleted': True, 'label': label})
+    return jsonify({'error': 'Account not found'}), 404
+
+
 @api_bp.route('/credentials/<provider>/test', methods=['POST'])
 @login_required
 def test_credentials(provider):
@@ -80,8 +95,8 @@ def test_credentials(provider):
 
     try:
         payload = request.get_json(silent=True) or {}
-        label = payload.get('label', 'default') if provider == 'cloudflare' else 'default'
-        result = tester(label=label) if provider == 'cloudflare' else tester()
+        label = payload.get('label', 'default') if provider in _MULTI_ACCOUNT_PROVIDERS else 'default'
+        result = tester(label=label) if provider in _MULTI_ACCOUNT_PROVIDERS else tester()
         return jsonify({'success': True, 'result': result})
     except Exception as e:
         _log.warning('Credential test failed for provider %s: %s', provider, e)
@@ -125,9 +140,9 @@ def _test_npm():
     return result
 
 
-def _test_aws():
+def _test_aws(label='default'):
     from app.services import aws_service
-    result = aws_service.verify_credentials()
+    result = aws_service.verify_credentials(label=label)
     return result
 
 
