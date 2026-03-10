@@ -1,10 +1,16 @@
 import re
-from flask import request, jsonify
-from flask_login import login_required
+from flask import request, jsonify, abort
+from flask_login import login_required, current_user
 from app.api import api_bp
 from app.services import dns_service
 from app.services.credential_service import get_account_labels
 from app.services.plan_service import get_current_plan
+from app.services.project_service import (
+    get_user_project_ids,
+    get_user_project_role,
+    assert_domain_accessible,
+)
+from app.utils.decorators import admin_required
 from app import db
 from app.models.domain import Domain, DNSRecord
 from datetime import datetime
@@ -37,20 +43,84 @@ def _zone_label(zone_id):
     return labels[0] if labels else 'default'
 
 
-# --- Local Domain Management ---
+def _assert_zone_accessible(zone_id, write=False):
+    """Abort 403 if the current user cannot access this Cloudflare zone.
+
+    Admins: always allowed.
+    Operators / white_team: only if the zone maps to a domain checked out
+    to one of their projects.
+
+    write=True: additionally requires project_role='operator' (blocks white_team).
+    """
+    if current_user.is_admin:
+        return
+    domain = Domain.query.filter_by(cloudflare_zone_id=zone_id).first()
+    if not domain or domain.checkout_project_id is None:
+        abort(403)
+    if domain.checkout_project_id not in get_user_project_ids(current_user):
+        abort(403)
+    if write:
+        role = get_user_project_role(current_user.id, domain.checkout_project_id)
+        if role != 'operator':
+            abort(403)
+
+
+# ---------------------------------------------------------------------------
+# Local Domain Management
+# ---------------------------------------------------------------------------
 
 @api_bp.route('/domains', methods=['GET'])
 @login_required
 def list_local_domains():
-    """List all locally tracked domains."""
-    domains = Domain.query.order_by(Domain.name).all()
+    """List locally tracked domains.
+
+    Admin:
+      - Returns all domains by default.
+      - ?pool=true  → only available (un-checked-out) domains.
+      - ?project_id=<id> → only domains checked out to that project.
+    Operator / white_team:
+      - Returns only domains checked out to their projects.
+      - ?project_id=<id> further narrows to a single project they belong to.
+    """
+    if current_user.is_admin:
+        pool_only = request.args.get('pool') == 'true'
+        project_filter = request.args.get('project_id', type=int)
+
+        if pool_only:
+            domains = Domain.query.filter_by(
+                checkout_project_id=None
+            ).order_by(Domain.name).all()
+        elif project_filter:
+            domains = Domain.query.filter_by(
+                checkout_project_id=project_filter
+            ).order_by(Domain.name).all()
+        else:
+            domains = Domain.query.order_by(Domain.name).all()
+    else:
+        project_ids = get_user_project_ids(current_user)
+        if not project_ids:
+            return jsonify({'domains': []})
+
+        project_filter = request.args.get('project_id', type=int)
+        if project_filter:
+            if project_filter not in project_ids:
+                return jsonify({'error': 'Not a member of this project'}), 403
+            domains = Domain.query.filter_by(
+                checkout_project_id=project_filter
+            ).order_by(Domain.name).all()
+        else:
+            domains = Domain.query.filter(
+                Domain.checkout_project_id.in_(project_ids)
+            ).order_by(Domain.name).all()
+
     return jsonify({'domains': [d.to_dict() for d in domains]})
 
 
 @api_bp.route('/domains', methods=['POST'])
 @login_required
+@admin_required
 def create_local_domain():
-    """Track a new domain locally."""
+    """Track a new domain locally (admin only — adds a domain to the pool)."""
     data = request.get_json()
     if not data or not data.get('name'):
         return jsonify({'error': 'Domain name is required'}), 400
@@ -98,6 +168,7 @@ def create_local_domain():
 def get_local_domain(domain_id):
     """Get a locally tracked domain with its DNS records."""
     domain = Domain.query.get_or_404(domain_id)
+    assert_domain_accessible(domain, current_user)
     result = domain.to_dict()
     result['dns_records'] = [r.to_dict() for r in domain.dns_records]
     return jsonify({'domain': result})
@@ -105,14 +176,16 @@ def get_local_domain(domain_id):
 
 @api_bp.route('/domains/<int:domain_id>', methods=['PUT'])
 @login_required
+@admin_required
 def update_local_domain(domain_id):
-    """Update a locally tracked domain."""
+    """Update a locally tracked domain (admin only — pool management)."""
     domain = Domain.query.get_or_404(domain_id)
     data = request.get_json()
     if not data:
         return jsonify({'error': 'No data provided'}), 400
 
-    for field in ('registrar', 'status', 'purpose', 'notes', 'mailgun_region', 'cloudflare_zone_id', 'credential_label'):
+    for field in ('registrar', 'status', 'purpose', 'notes', 'mailgun_region',
+                  'cloudflare_zone_id', 'credential_label'):
         if field in data:
             setattr(domain, field, data[field])
 
@@ -122,9 +195,24 @@ def update_local_domain(domain_id):
 
 @api_bp.route('/domains/<int:domain_id>', methods=['DELETE'])
 @login_required
+@admin_required
 def delete_local_domain(domain_id):
-    """Remove a domain from local tracking (does not affect Cloudflare)."""
+    """Remove a domain from local tracking (admin only).
+
+    Blocked if the domain is currently checked out to a project.
+    """
     domain = Domain.query.get_or_404(domain_id)
+
+    if domain.checkout_project_id is not None:
+        from app.models.project import Project
+        project = Project.query.get(domain.checkout_project_id)
+        code = project.code if project else str(domain.checkout_project_id)
+        return jsonify({
+            'error': f'Cannot delete domain while checked out to project {code}. '
+                     'Release the domain first.',
+            'checkout_project_id': domain.checkout_project_id,
+        }), 409
+
     db.session.delete(domain)
     db.session.commit()
     return jsonify({'deleted': True})
@@ -133,13 +221,29 @@ def delete_local_domain(domain_id):
 @api_bp.route('/domains/<int:domain_id>/sync', methods=['POST'])
 @login_required
 def sync_domain(domain_id):
-    """Sync a domain's DNS records from Cloudflare into the local database."""
+    """Sync a domain's DNS records from Cloudflare into the local database.
+
+    Admin: any domain.
+    Operator: only their checked-out domains (not white_team — read-only).
+    """
     domain = Domain.query.get_or_404(domain_id)
+
+    if not current_user.is_admin:
+        # assert_domain_accessible checks checkout and project membership
+        assert_domain_accessible(domain, current_user)
+        # Additionally block white_team from triggering syncs
+        if domain.checkout_project_id:
+            role = get_user_project_role(current_user.id, domain.checkout_project_id)
+            if role != 'operator':
+                return jsonify({'error': 'Operator access required to sync domain'}), 403
+
     if not domain.cloudflare_zone_id:
         return jsonify({'error': 'Domain has no Cloudflare zone ID linked'}), 400
 
     try:
-        records = dns_service.list_dns_records(domain.cloudflare_zone_id, label=domain.credential_label)
+        records = dns_service.list_dns_records(
+            domain.cloudflare_zone_id, label=domain.credential_label
+        )
     except Exception as e:
         return jsonify({'error': str(e)}), 400
 
@@ -182,10 +286,13 @@ def sync_domain(domain_id):
     return jsonify({'synced': len(records), 'domain': domain.to_dict()})
 
 
-# --- Cloudflare Zones ---
+# ---------------------------------------------------------------------------
+# Cloudflare Zones  (admin only — zone enumeration is not for operators)
+# ---------------------------------------------------------------------------
 
 @api_bp.route('/domains/zones', methods=['GET'])
 @login_required
+@admin_required
 def list_zones():
     try:
         zones = dns_service.list_zones_all_accounts()
@@ -199,6 +306,7 @@ def list_zones():
 
 @api_bp.route('/domains/zones/<zone_id>', methods=['GET'])
 @login_required
+@admin_required
 def get_zone(zone_id):
     try:
         zone = dns_service.get_zone(zone_id, label=_zone_label(zone_id))
@@ -207,15 +315,23 @@ def get_zone(zone_id):
         return jsonify({'error': str(e)}), 400
 
 
-# --- DNS Records (Cloudflare) ---
+# ---------------------------------------------------------------------------
+# DNS Records (Cloudflare)
+# Admin: unrestricted.
+# Operator: only zones belonging to their checked-out domains.
+# White team: read-only access to their checked-out domain zones.
+# ---------------------------------------------------------------------------
 
 @api_bp.route('/domains/zones/<zone_id>/records', methods=['GET'])
 @login_required
 def list_dns_records(zone_id):
+    _assert_zone_accessible(zone_id, write=False)
     try:
         record_type = request.args.get('type')
         name = request.args.get('name')
-        records = dns_service.list_dns_records(zone_id, record_type=record_type, name=name, label=_zone_label(zone_id))
+        records = dns_service.list_dns_records(
+            zone_id, record_type=record_type, name=name, label=_zone_label(zone_id)
+        )
         return jsonify({'records': records})
     except Exception as e:
         return jsonify({'error': str(e)}), 400
@@ -224,6 +340,7 @@ def list_dns_records(zone_id):
 @api_bp.route('/domains/zones/<zone_id>/records', methods=['POST'])
 @login_required
 def create_dns_record(zone_id):
+    _assert_zone_accessible(zone_id, write=True)
     data = request.get_json()
     if not data:
         return jsonify({'error': 'No data provided'}), 400
@@ -270,6 +387,7 @@ def create_dns_record(zone_id):
 @api_bp.route('/domains/zones/<zone_id>/records/<record_id>', methods=['PUT'])
 @login_required
 def update_dns_record(zone_id, record_id):
+    _assert_zone_accessible(zone_id, write=True)
     data = request.get_json()
     if not data:
         return jsonify({'error': 'No data provided'}), 400
@@ -309,6 +427,7 @@ def update_dns_record(zone_id, record_id):
 @api_bp.route('/domains/zones/<zone_id>/records/<record_id>', methods=['DELETE'])
 @login_required
 def delete_dns_record(zone_id, record_id):
+    _assert_zone_accessible(zone_id, write=True)
     try:
         dns_service.delete_dns_record(zone_id, record_id, label=_zone_label(zone_id))
 
@@ -323,11 +442,14 @@ def delete_dns_record(zone_id, record_id):
         return jsonify({'error': str(e)}), 400
 
 
-# --- SSL ---
+# ---------------------------------------------------------------------------
+# SSL
+# ---------------------------------------------------------------------------
 
 @api_bp.route('/domains/zones/<zone_id>/ssl', methods=['GET'])
 @login_required
 def get_ssl(zone_id):
+    _assert_zone_accessible(zone_id, write=False)
     try:
         result = dns_service.get_ssl_setting(zone_id, label=_zone_label(zone_id))
         return jsonify({'ssl': result})
@@ -338,6 +460,7 @@ def get_ssl(zone_id):
 @api_bp.route('/domains/zones/<zone_id>/ssl', methods=['PATCH'])
 @login_required
 def set_ssl(zone_id):
+    _assert_zone_accessible(zone_id, write=True)
     data = request.get_json()
     value = data.get('value') if data else None
     if value not in ('off', 'flexible', 'full', 'strict'):
