@@ -292,16 +292,38 @@ def sync_domain(domain_id):
 
 @api_bp.route('/domains/zones', methods=['GET'])
 @login_required
-@admin_required
 def list_zones():
-    try:
-        zones = dns_service.list_zones_all_accounts()
-        name_filter = request.args.get('name', '').lower()
-        if name_filter:
-            zones = [z for z in zones if name_filter in z.get('name', '').lower()]
-        return jsonify({'zones': zones, 'page_info': {'total_count': len(zones)}})
-    except Exception as e:
-        return jsonify({'error': str(e)}), 400
+    # Admins: full list from Cloudflare across all accounts
+    if current_user.is_admin:
+        try:
+            zones = dns_service.list_zones_all_accounts()
+            name_filter = request.args.get('name', '').lower()
+            if name_filter:
+                zones = [z for z in zones if name_filter in z.get('name', '').lower()]
+            return jsonify({'zones': zones, 'page_info': {'total_count': len(zones)}})
+        except Exception as e:
+            return jsonify({'error': str(e)}), 400
+
+    # Operators / white_team: return only zones for domains checked out to their projects
+    project_ids = get_user_project_ids(current_user)
+    if not project_ids:
+        return jsonify({'zones': [], 'page_info': {'total_count': 0}})
+
+    checked_out = Domain.query.filter(
+        Domain.checkout_project_id.in_(project_ids),
+        Domain.cloudflare_zone_id.isnot(None),
+    ).order_by(Domain.name).all()
+
+    zones = [
+        {
+            'id': d.cloudflare_zone_id,
+            'name': d.name,
+            'status': d.status or 'active',
+            'account_label': d.credential_label,
+        }
+        for d in checked_out
+    ]
+    return jsonify({'zones': zones, 'page_info': {'total_count': len(zones)}})
 
 
 @api_bp.route('/domains/zones/<zone_id>', methods=['GET'])
