@@ -36,6 +36,7 @@ def list_cs_listeners():
             tag = tag_map.get(listener.get('name', ''))
             listener['project_id'] = tag['project_id'] if tag else None
             listener['project_code'] = tag['project_code'] if tag else None
+            listener['project_resource_id'] = tag['project_resource_id'] if tag else None
 
         return jsonify({'listeners': listeners})
     except Exception as e:

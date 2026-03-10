@@ -177,7 +177,7 @@ def build_project_tag_map(resource_type, external_ids):
         .all()
     )
     return {
-        r.external_id: {'project_id': r.project_id, 'project_code': code}
+        r.external_id: {'project_id': r.project_id, 'project_code': code, 'project_resource_id': r.id}
         for r, code in rows
     }
 

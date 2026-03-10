@@ -97,11 +97,12 @@
                         <th>Ports</th>
                         <th>Status</th>
                         <th>Created</th>
+                        <th>Project</th>
                         <th>Actions</th>
                     </tr>
                 </thead>
                 <tbody id="container-table">
-                    <tr><td colspan="7" class="text-center text-muted py-3">
+                    <tr><td colspan="8" class="text-center text-muted py-3">
                         <i class="bi bi-hourglass-split"></i> Loading containers...
                     </td></tr>
                 </tbody>
@@ -157,6 +158,9 @@
 {% block extra_js %}
 <script>
     var IS_VIEWER = {{ 'true' if current_user.role == 'viewer' else 'false' }};
+    var IS_ADMIN = {{ 'true' if current_user.is_admin else 'false' }};
+    var ACTIVE_PROJECT_ID = {{ active_project.id if active_project else 'null' }};
+    var ACTIVE_PROJECT_CODE = {{ active_project.code | tojson if active_project else 'null' }};
     var allContainers = [];
     var currentLogsId = null;
 
@@ -204,6 +208,40 @@
         return div.innerHTML;
     }
 
+    function escapeAttr(str) {
+        return String(str).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/'/g,'&#x27;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    }
+
+    function projectBadge(rType, extId, projId, projCode, projResId) {
+        if (projId) {
+            var canUntag = IS_ADMIN || projId === ACTIVE_PROJECT_ID;
+            return '<span class="badge bg-danger me-1" style="font-size:0.7rem">' + escapeHtml(projCode || '') + '</span>' +
+                (canUntag && !IS_VIEWER ? '<i class="bi bi-x-circle text-muted" style="cursor:pointer;font-size:0.8rem" title="Untag" onclick="untagResource(' + projId + ',' + projResId + ')"></i>' : '');
+        }
+        if (!IS_VIEWER && ACTIVE_PROJECT_ID !== null) {
+            return '<i class="bi bi-tag text-muted" style="cursor:pointer;font-size:0.85rem" title="Tag to ' + escapeAttr(ACTIVE_PROJECT_CODE || 'active project') + '" onclick="tagResource(\'' + escapeAttr(rType) + '\',\'' + escapeAttr(extId) + '\')"></i>';
+        }
+        return '<span class="text-muted" style="font-size:0.75rem">—</span>';
+    }
+
+    async function tagResource(rType, extId) {
+        const res = await fetch('/api/projects/' + ACTIVE_PROJECT_ID + '/resources', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({resource_type: rType, external_id: extId}),
+        });
+        if (!res.ok) { const d = await res.json(); showToast(d.error || 'Tag failed', 'danger'); return; }
+        loadContainers();
+    }
+
+    async function untagResource(projId, resId) {
+        const confirmed = await showConfirm('Remove project tag from this container?');
+        if (!confirmed) return;
+        const res = await fetch('/api/projects/' + projId + '/resources/' + resId, {method: 'DELETE'});
+        if (!res.ok) { const d = await res.json(); showToast(d.error || 'Untag failed', 'danger'); return; }
+        loadContainers();
+    }
+
     // --- Load Containers ---
     function loadContainers() {
         fetch('/api/containers')
@@ -211,7 +249,7 @@
             .then(function(data) {
                 if (data.error) {
                     document.getElementById('container-table').innerHTML =
-                        '<tr><td colspan="7" class="text-center py-3">' +
+                        '<tr><td colspan="8" class="text-center py-3">' +
                         '<span class="text-danger"><i class="bi bi-exclamation-triangle"></i> ' + data.error + '</span>' +
                         '<br><small><a href="' + "{{ url_for('settings') }}" + '">Configure in Settings</a></small>' +
                         '</td></tr>';
@@ -223,7 +261,7 @@
             })
             .catch(function() {
                 document.getElementById('container-table').innerHTML =
-                    '<tr><td colspan="7" class="text-center py-3">' +
+                    '<tr><td colspan="8" class="text-center py-3">' +
                     '<span class="text-danger"><i class="bi bi-exclamation-triangle"></i> Failed to connect to Docker</span>' +
                     '<br><small><a href="' + "{{ url_for('settings') }}" + '">Configure in Settings</a></small>' +
                     '</td></tr>';
@@ -266,7 +304,7 @@
         if (containers === undefined) containers = allContainers;
         var tbody = document.getElementById('container-table');
         if (containers.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted py-3">No containers found</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted py-3">No containers found</td></tr>';
             return;
         }
 
@@ -317,6 +355,7 @@
                 '<td>' + ports + '</td>' +
                 '<td>' + stateBadge(c.state) + '</td>' +
                 '<td><small>' + timeAgo(c.created) + '</small></td>' +
+                '<td>' + projectBadge('container', c.id, c.project_id, c.project_code, c.project_resource_id) + '</td>' +
                 '<td><div class="btn-group btn-group-sm">' + actions + '</div></td>' +
             '</tr>';
         }).join('');

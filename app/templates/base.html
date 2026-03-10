@@ -368,6 +368,28 @@
 
     <!-- Topbar -->
     <div class="topbar">
+        {% if current_user.is_authenticated and user_projects %}
+        <div class="dropdown me-2">
+            <button class="btn btn-sm btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown" title="Active project">
+                <i class="bi bi-folder2 me-1"></i>{% if active_project %}<strong>{{ active_project.code }}</strong>{% else %}<span class="text-muted">No Project</span>{% endif %}
+            </button>
+            <ul class="dropdown-menu dropdown-menu-end">
+                {% if active_project %}
+                <li><a class="dropdown-item text-danger" href="#" onclick="clearActiveProject(); return false;">
+                    <i class="bi bi-x-circle me-1"></i> Clear Active Project
+                </a></li>
+                <li><hr class="dropdown-divider m-0"></li>
+                {% endif %}
+                {% for p in user_projects %}
+                <li><a class="dropdown-item d-flex align-items-center gap-2 {% if active_project and active_project.id == p.id %}active{% endif %}"
+                        href="#" onclick="setActiveProject({{ p.id }}); return false;">
+                    <span class="badge bg-danger" style="font-size:0.65rem;min-width:60px;text-align:center">{{ p.code }}</span>
+                    <span>{{ p.name }}</span>
+                </a></li>
+                {% endfor %}
+            </ul>
+        </div>
+        {% endif %}
         <button class="btn btn-sm btn-light position-relative px-2"
                 data-bs-toggle="offcanvas" data-bs-target="#taskLogOffcanvas"
                 title="Background tasks">
@@ -673,17 +695,43 @@
         showToast(body, 'warning');
     };
 
-    // ── Global confirm modal ────────────────────────────────────────────────────
+    // ── Global confirm modal ─────────────────────────────────────────────────────
+    // Returns a Promise<boolean>. Also accepts legacy 4-arg callback form.
     window.showConfirm = function(title, body, btnLabel, onConfirm) {
+        // Single-string shorthand: showConfirm('Are you sure?') → Promise
+        if (body === undefined || typeof body === 'function') {
+            onConfirm = body;
+            body = title;
+            title = 'Confirm Action';
+            btnLabel = 'Confirm';
+        }
         document.getElementById('confirmModal-title').textContent = title || 'Confirm Action';
         document.getElementById('confirmModal-body').innerHTML = body || 'Are you sure?';
         var btn = document.getElementById('confirmModal-confirm-btn');
         btn.textContent = btnLabel || 'Confirm';
-        btn.onclick = function() {
-            bootstrap.Modal.getInstance(document.getElementById('confirmModal')).hide();
-            onConfirm();
-        };
-        bootstrap.Modal.getOrCreateInstance(document.getElementById('confirmModal')).show();
+        var modal = document.getElementById('confirmModal');
+        return new Promise(function(resolve) {
+            btn.onclick = function() {
+                bootstrap.Modal.getInstance(modal).hide();
+                resolve(true);
+                if (typeof onConfirm === 'function') onConfirm();
+            };
+            modal.addEventListener('hidden.bs.modal', function handler() {
+                modal.removeEventListener('hidden.bs.modal', handler);
+                resolve(false);
+            });
+            bootstrap.Modal.getOrCreateInstance(modal).show();
+        });
+    };
+
+    // ── Project switcher ────────────────────────────────────────────────────────
+    window.setActiveProject = function(id) {
+        fetch('/api/projects/' + id + '/activate', {method: 'POST'})
+            .then(function() { location.reload(); });
+    };
+    window.clearActiveProject = function() {
+        fetch('/api/projects/active', {method: 'DELETE'})
+            .then(function() { location.reload(); });
     };
     </script>
     {% block extra_js %}{% endblock %}

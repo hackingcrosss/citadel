@@ -37,12 +37,13 @@
                         <th>Bind Port</th>
                         <th>Callback Hosts</th>
                         <th>Status</th>
+                        <th>Project</th>
                         <th>Actions</th>
                     </tr>
                 </thead>
                 <tbody id="listeners-table">
                     <tr>
-                        <td colspan="10" class="text-center text-muted py-4">
+                        <td colspan="11" class="text-center text-muted py-4">
                             <span class="spinner-border spinner-border-sm"></span> Loading...
                         </td>
                     </tr>
@@ -119,6 +120,9 @@
 {% block extra_js %}
 <script>
     const IS_VIEWER = {{ 'true' if current_user.role == 'viewer' else 'false' }};
+    const IS_ADMIN = {{ 'true' if current_user.is_admin else 'false' }};
+    const ACTIVE_PROJECT_ID = {{ active_project.id if active_project else 'null' }};
+    const ACTIVE_PROJECT_CODE = {{ active_project.code | tojson if active_project else 'null' }};
     // ---- Field definitions per listener type ----
     // Field IDs match the Cobalt Strike REST API JSON field names
     // POST /api/v1/listeners/{type} with body = { name, ...fields }
@@ -339,7 +343,7 @@
                 var tbody = document.getElementById('listeners-table');
 
                 if (listeners.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="10" class="text-center text-muted py-4">No listeners found</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="11" class="text-center text-muted py-4">No listeners found</td></tr>';
                     return;
                 }
 
@@ -375,6 +379,7 @@
                     html += '<td>' + escapeHtml(String(lBindPort)) + '</td>';
                     html += '<td><small>' + escapeHtml(String(lBeacons)) + '</small></td>';
                     html += '<td><span class="badge badge-status badge-running">Active</span></td>';
+                    html += '<td>' + projectBadge('cs_listener', l.name || '', l.project_id, l.project_code, l.project_resource_id) + '</td>';
                     html += '<td>';
                     html += '<button class="btn btn-sm btn-outline-info me-1" onclick=\'showListenerJson(' + idx + ')\' title="Inspect">';
                     html += '<i class="bi bi-code-slash"></i>';
@@ -556,6 +561,39 @@
         var div = document.createElement('div');
         div.appendChild(document.createTextNode(str));
         return div.innerHTML;
+    }
+
+    function escapeAttr(str) {
+        return String(str).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/'/g,'&#x27;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    }
+
+    function projectBadge(rType, extId, projId, projCode, projResId) {
+        if (projId) {
+            var canUntag = IS_ADMIN || projId === ACTIVE_PROJECT_ID;
+            return '<span class="badge bg-danger me-1" style="font-size:0.7rem">' + escapeHtml(projCode || '') + '</span>' +
+                (canUntag && !IS_VIEWER ? '<i class="bi bi-x-circle text-muted" style="cursor:pointer;font-size:0.8rem" title="Untag" onclick="untagResource(' + projId + ',' + projResId + ')"></i>' : '');
+        }
+        if (!IS_VIEWER && ACTIVE_PROJECT_ID !== null) {
+            return '<i class="bi bi-tag text-muted" style="cursor:pointer;font-size:0.85rem" title="Tag to ' + escapeAttr(ACTIVE_PROJECT_CODE || 'active project') + '" onclick="tagResource(\'' + escapeAttr(rType) + '\',\'' + escapeAttr(extId) + '\')"></i>';
+        }
+        return '<span class="text-muted" style="font-size:0.75rem">—</span>';
+    }
+
+    async function tagResource(rType, extId) {
+        const res = await fetch('/api/projects/' + ACTIVE_PROJECT_ID + '/resources', {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({resource_type: rType, external_id: extId}),
+        });
+        if (!res.ok) { const d = await res.json(); showToast(d.error || 'Tag failed', 'danger'); return; }
+        loadListeners();
+    }
+
+    async function untagResource(projId, resId) {
+        const confirmed = await showConfirm('Remove project tag from this listener?');
+        if (!confirmed) return;
+        const res = await fetch('/api/projects/' + projId + '/resources/' + resId, {method: 'DELETE'});
+        if (!res.ok) { const d = await res.json(); showToast(d.error || 'Untag failed', 'danger'); return; }
+        loadListeners();
     }
 </script>
 {% endblock %}

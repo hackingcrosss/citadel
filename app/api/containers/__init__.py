@@ -21,6 +21,7 @@ def list_containers():
             tag = tag_map.get(c['id'])
             c['project_id'] = tag['project_id'] if tag else None
             c['project_code'] = tag['project_code'] if tag else None
+            c['project_resource_id'] = tag['project_resource_id'] if tag else None
 
         return jsonify({'containers': containers})
     except Exception as e:

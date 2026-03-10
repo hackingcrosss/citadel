@@ -20,6 +20,7 @@ def list_proxy_hosts():
             tag = tag_map.get(str(h.get('id', '')))
             h['project_id'] = tag['project_id'] if tag else None
             h['project_code'] = tag['project_code'] if tag else None
+            h['project_resource_id'] = tag['project_resource_id'] if tag else None
 
         return jsonify({'hosts': hosts})
     except Exception as e:
