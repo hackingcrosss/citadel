@@ -588,7 +588,7 @@
                 <i class="bi bi-speedometer2"></i> Dashboard
             </a>
 
-            {% if current_user.is_authenticated and user_projects %}
+            {% if current_user.is_authenticated and user_projects and current_plan.is_enabled('projects') %}
             <a class="nav-link {% if request.endpoint == 'projects' %}active{% endif %}" href="{{ url_for('projects') }}">
                 <i class="bi bi-folder2-open"></i> My Projects
             </a>
@@ -708,7 +708,7 @@
 
     <!-- Topbar -->
     <div class="topbar">
-        {% if current_user.is_authenticated and user_projects %}
+        {% if current_user.is_authenticated and user_projects and current_plan.is_enabled('projects') %}
         <div class="dropdown me-2">
             <button class="btn btn-sm btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown" title="Active project">
                 <i class="bi bi-folder2 me-1"></i>{% if active_project %}<strong>{{ active_project.code }}</strong>{% else %}<span class="text-muted">No Project</span>{% endif %}

@@ -5,7 +5,7 @@
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-4">
     <h1 class="h3 mb-0">Nginx Proxy Manager</h1>
-    {% if current_user.role != 'viewer' %}
+    {% if current_user.role != 'viewer' and active_project_role != 'white_team' %}
     <button class="btn btn-infrared" data-bs-toggle="modal" data-bs-target="#addHostModal">
         <i class="bi bi-plus-circle"></i> Add Proxy Host
     </button>
@@ -181,6 +181,8 @@
 {% block extra_js %}
 <script>
     const IS_VIEWER = {{ 'true' if current_user.role == 'viewer' else 'false' }};
+    const IS_WHITE_TEAM = {{ 'true' if active_project_role == 'white_team' else 'false' }};
+    const IS_READONLY = IS_VIEWER || IS_WHITE_TEAM;
     const IS_ADMIN = {{ 'true' if current_user.is_admin else 'false' }};
     const ACTIVE_PROJECT_ID = {{ active_project.id if active_project else 'null' }};
     const ACTIVE_PROJECT_CODE = {{ active_project.code | tojson if active_project else 'null' }};
@@ -199,9 +201,9 @@
         if (projId) {
             var canUntag = IS_ADMIN || projId === ACTIVE_PROJECT_ID;
             return '<span class="badge bg-danger me-1" style="font-size:0.7rem">' + (projCode || '') + '</span>' +
-                (canUntag && !IS_VIEWER ? '<i class="bi bi-x-circle text-muted" style="cursor:pointer;font-size:0.8rem" title="Untag" onclick="untagResource(' + projId + ',' + projResId + ')"></i>' : '');
+                (canUntag && !IS_READONLY ? '<i class="bi bi-x-circle text-muted" style="cursor:pointer;font-size:0.8rem" title="Untag" onclick="untagResource(' + projId + ',' + projResId + ')"></i>' : '');
         }
-        if (!IS_VIEWER && ACTIVE_PROJECT_ID !== null) {
+        if (!IS_READONLY && ACTIVE_PROJECT_ID !== null) {
             return '<i class="bi bi-tag text-muted" style="cursor:pointer;font-size:0.85rem" title="Tag to ' + escapeAttr(ACTIVE_PROJECT_CODE || 'active project') + '" onclick="tagResource(\'' + escapeAttr(rType) + '\',\'' + escapeAttr(extId) + '\')"></i>';
         }
         return '<span class="text-muted" style="font-size:0.75rem">—</span>';
@@ -294,10 +296,10 @@
                         '<td>' + buildAclSelect(h.id, h.access_list_id) + '</td>' +
                         '<td>' +
                             '<div class="btn-group btn-group-sm">' +
-                                (!IS_VIEWER ? '<button class="btn btn-outline-primary" title="Edit" onclick="editHost(' + h.id + ')">' +
+                                (!IS_READONLY ? '<button class="btn btn-outline-primary" title="Edit" onclick="editHost(' + h.id + ')">' +
                                     '<i class="bi bi-pencil"></i>' +
                                 '</button>' : '') +
-                                (!IS_VIEWER ? '<button class="btn btn-outline-danger" title="Delete" onclick="deleteHost(' + h.id + ')">' +
+                                (!IS_READONLY ? '<button class="btn btn-outline-danger" title="Delete" onclick="deleteHost(' + h.id + ')">' +
                                     '<i class="bi bi-trash"></i>' +
                                 '</button>' : '') +
                             '</div>' +

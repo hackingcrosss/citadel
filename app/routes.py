@@ -253,6 +253,7 @@ def register_routes(app):
 
     @app.route('/projects')
     @login_required
+    @feature_required('projects')
     def projects():
         return render_template('projects.html')
 

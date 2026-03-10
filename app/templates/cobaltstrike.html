@@ -9,7 +9,7 @@
         <button class="btn btn-sm btn-outline-secondary" onclick="loadListeners()">
             <i class="bi bi-arrow-clockwise"></i> Refresh
         </button>
-        {% if current_user.role != 'viewer' %}
+        {% if current_user.role != 'viewer' and active_project_role != 'white_team' %}
         <button class="btn btn-sm btn-infrared" data-bs-toggle="modal" data-bs-target="#createModal">
             <i class="bi bi-plus-circle"></i> New Listener
         </button>
@@ -120,6 +120,8 @@
 {% block extra_js %}
 <script>
     const IS_VIEWER = {{ 'true' if current_user.role == 'viewer' else 'false' }};
+    const IS_WHITE_TEAM = {{ 'true' if active_project_role == 'white_team' else 'false' }};
+    const IS_READONLY = IS_VIEWER || IS_WHITE_TEAM;
     const IS_ADMIN = {{ 'true' if current_user.is_admin else 'false' }};
     const ACTIVE_PROJECT_ID = {{ active_project.id if active_project else 'null' }};
     const ACTIVE_PROJECT_CODE = {{ active_project.code | tojson if active_project else 'null' }};
@@ -384,7 +386,7 @@
                     html += '<button class="btn btn-sm btn-outline-info me-1" onclick=\'showListenerJson(' + idx + ')\' title="Inspect">';
                     html += '<i class="bi bi-code-slash"></i>';
                     html += '</button>';
-                    if (!IS_VIEWER) {
+                    if (!IS_READONLY) {
                         html += '<button class="btn btn-sm btn-outline-danger" onclick="deleteListener(\'' + escapeHtml(l.name || '').replace(/'/g, "\\'") + '\')" title="Stop & Delete">';
                         html += '<i class="bi bi-trash"></i>';
                         html += '</button>';
@@ -571,9 +573,9 @@
         if (projId) {
             var canUntag = IS_ADMIN || projId === ACTIVE_PROJECT_ID;
             return '<span class="badge bg-danger me-1" style="font-size:0.7rem">' + escapeHtml(projCode || '') + '</span>' +
-                (canUntag && !IS_VIEWER ? '<i class="bi bi-x-circle text-muted" style="cursor:pointer;font-size:0.8rem" title="Untag" onclick="untagResource(' + projId + ',' + projResId + ')"></i>' : '');
+                (canUntag && !IS_READONLY ? '<i class="bi bi-x-circle text-muted" style="cursor:pointer;font-size:0.8rem" title="Untag" onclick="untagResource(' + projId + ',' + projResId + ')"></i>' : '');
         }
-        if (!IS_VIEWER && ACTIVE_PROJECT_ID !== null) {
+        if (!IS_READONLY && ACTIVE_PROJECT_ID !== null) {
             return '<i class="bi bi-tag text-muted" style="cursor:pointer;font-size:0.85rem" title="Tag to ' + escapeAttr(ACTIVE_PROJECT_CODE || 'active project') + '" onclick="tagResource(\'' + escapeAttr(rType) + '\',\'' + escapeAttr(extId) + '\')"></i>';
         }
         return '<span class="text-muted" style="font-size:0.75rem">—</span>';
