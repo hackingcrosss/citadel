@@ -155,3 +155,54 @@ def get_resources_by_project(project_id, resource_type=None):
     if resource_type:
         q = q.filter_by(resource_type=resource_type)
     return q.all()
+
+
+def build_project_tag_map(resource_type, external_ids):
+    """Bulk-fetch project tags for a list of external resource IDs.
+
+    Returns {external_id: {'project_id': int, 'project_code': str}}.
+    Single JOIN query — safe to call on large lists.
+    """
+    if not external_ids:
+        return {}
+    from app import db
+    from app.models.project import Project
+    rows = (
+        db.session.query(ProjectResource, Project.code)
+        .join(Project, ProjectResource.project_id == Project.id)
+        .filter(
+            ProjectResource.resource_type == resource_type,
+            ProjectResource.external_id.in_(external_ids),
+        )
+        .all()
+    )
+    return {
+        r.external_id: {'project_id': r.project_id, 'project_code': code}
+        for r, code in rows
+    }
+
+
+def assert_resource_writable(resource_type, external_id, user):
+    """Abort 403 if the user cannot perform write actions on this external resource.
+
+    Rules:
+    - Admins: always allowed.
+    - Pure white_team users (no operator memberships at all): always blocked.
+    - Operators: allowed if the resource is untagged (no ProjectResource row) OR
+      tagged to one of their own projects. Blocked if tagged to another project.
+    """
+    if user.is_admin:
+        return
+
+    from app.models.project import ProjectMember
+    has_operator_role = ProjectMember.query.filter_by(
+        user_id=user.id, project_role='operator'
+    ).first() is not None
+    if not has_operator_role:
+        abort(403)
+
+    resource = ProjectResource.query.filter_by(
+        resource_type=resource_type, external_id=str(external_id)
+    ).first()
+    if resource is not None and resource.project_id not in get_user_project_ids(user):
+        abort(403)

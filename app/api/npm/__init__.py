@@ -1,7 +1,8 @@
 from flask import request, jsonify
-from flask_login import login_required
+from flask_login import login_required, current_user
 from app.api import api_bp
 from app.services import npm_service
+from app.services.project_service import build_project_tag_map, assert_resource_writable
 
 
 # --- Proxy Hosts ---
@@ -11,6 +12,15 @@ from app.services import npm_service
 def list_proxy_hosts():
     try:
         hosts = npm_service.list_proxy_hosts()
+
+        # Enrich hosts with project tag (NPM host IDs are integers; store as strings)
+        host_ids = [str(h['id']) for h in hosts if h.get('id') is not None]
+        tag_map = build_project_tag_map('npm_host', host_ids)
+        for h in hosts:
+            tag = tag_map.get(str(h.get('id', '')))
+            h['project_id'] = tag['project_id'] if tag else None
+            h['project_code'] = tag['project_code'] if tag else None
+
         return jsonify({'hosts': hosts})
     except Exception as e:
         return jsonify({'error': str(e)}), 400
@@ -55,6 +65,7 @@ def get_proxy_host(host_id):
 @api_bp.route('/npm/hosts/<int:host_id>', methods=['PUT'])
 @login_required
 def update_proxy_host(host_id):
+    assert_resource_writable('npm_host', str(host_id), current_user)
     data = request.get_json()
     if not data:
         return jsonify({'error': 'No data provided'}), 400
@@ -77,6 +88,7 @@ def update_proxy_host(host_id):
 @api_bp.route('/npm/hosts/<int:host_id>', methods=['DELETE'])
 @login_required
 def delete_proxy_host(host_id):
+    assert_resource_writable('npm_host', str(host_id), current_user)
     try:
         npm_service.delete_proxy_host(host_id)
         return jsonify({'deleted': True})
@@ -87,6 +99,7 @@ def delete_proxy_host(host_id):
 @api_bp.route('/npm/hosts/<int:host_id>/enable', methods=['POST'])
 @login_required
 def enable_proxy_host(host_id):
+    assert_resource_writable('npm_host', str(host_id), current_user)
     try:
         npm_service.enable_proxy_host(host_id)
         return jsonify({'enabled': True})
@@ -97,6 +110,7 @@ def enable_proxy_host(host_id):
 @api_bp.route('/npm/hosts/<int:host_id>/disable', methods=['POST'])
 @login_required
 def disable_proxy_host(host_id):
+    assert_resource_writable('npm_host', str(host_id), current_user)
     try:
         npm_service.disable_proxy_host(host_id)
         return jsonify({'disabled': True})

@@ -1,7 +1,8 @@
 from flask import request, jsonify
-from flask_login import login_required
+from flask_login import login_required, current_user
 from app.api import api_bp
 from app.services import docker_service
+from app.services.project_service import build_project_tag_map, assert_resource_writable
 
 
 # --- List Containers ---
@@ -12,6 +13,15 @@ def list_containers():
     try:
         show_all = request.args.get('all', 'true').lower() == 'true'
         containers = docker_service.list_containers(all=show_all)
+
+        # Enrich containers with project tag
+        container_ids = [c['id'] for c in containers]
+        tag_map = build_project_tag_map('container', container_ids)
+        for c in containers:
+            tag = tag_map.get(c['id'])
+            c['project_id'] = tag['project_id'] if tag else None
+            c['project_code'] = tag['project_code'] if tag else None
+
         return jsonify({'containers': containers})
     except Exception as e:
         return jsonify({'error': str(e)}), 400
@@ -34,6 +44,7 @@ def get_container(container_id):
 @api_bp.route('/containers/<container_id>/start', methods=['POST'])
 @login_required
 def start_container(container_id):
+    assert_resource_writable('container', container_id, current_user)
     try:
         result = docker_service.start_container(container_id)
         return jsonify({'result': result})
@@ -44,6 +55,7 @@ def start_container(container_id):
 @api_bp.route('/containers/<container_id>/stop', methods=['POST'])
 @login_required
 def stop_container(container_id):
+    assert_resource_writable('container', container_id, current_user)
     try:
         result = docker_service.stop_container(container_id)
         return jsonify({'result': result})
@@ -54,6 +66,7 @@ def stop_container(container_id):
 @api_bp.route('/containers/<container_id>/restart', methods=['POST'])
 @login_required
 def restart_container(container_id):
+    assert_resource_writable('container', container_id, current_user)
     try:
         result = docker_service.restart_container(container_id)
         return jsonify({'result': result})
@@ -64,6 +77,7 @@ def restart_container(container_id):
 @api_bp.route('/containers/<container_id>', methods=['DELETE'])
 @login_required
 def remove_container(container_id):
+    assert_resource_writable('container', container_id, current_user)
     force = request.args.get('force', 'false').lower() == 'true'
     try:
         result = docker_service.remove_container(container_id, force=force)

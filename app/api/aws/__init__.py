@@ -1,5 +1,5 @@
-from flask import request, jsonify
-from flask_login import login_required
+from flask import request, jsonify, abort
+from flask_login import login_required, current_user
 from app.api import api_bp
 from app.services import aws_service
 from app import db
@@ -7,6 +7,7 @@ from app.models.instance_tag import InstanceTag
 from app.models.instance_ssh_config import InstanceSSHConfig
 from app.services.credential_service import _get_fernet, get_account_labels
 from app.services import ssh_service
+from app.services.project_service import build_project_tag_map, assert_resource_writable
 
 
 def _instance_label(instance_id):
@@ -66,6 +67,13 @@ def aws_list_instances():
             for inst in instances:
                 inst['ssh_configured'] = False
 
+        # Enrich instances with project tag
+        tag_map = build_project_tag_map('ec2', instance_ids)
+        for inst in instances:
+            tag = tag_map.get(inst['id'])
+            inst['project_id'] = tag['project_id'] if tag else None
+            inst['project_code'] = tag['project_code'] if tag else None
+
         return jsonify({'instances': instances})
     except Exception as e:
         return jsonify({'error': str(e)}), 400
@@ -90,6 +98,8 @@ def aws_start_instances():
     region = data.get('region')
     if not ids:
         return jsonify({'error': 'No instance IDs provided'}), 400
+    for iid in ids:
+        assert_resource_writable('ec2', iid, current_user)
     try:
         results = []
         for lbl, grp in _group_by_label(ids).items():
@@ -107,6 +117,8 @@ def aws_stop_instances():
     region = data.get('region')
     if not ids:
         return jsonify({'error': 'No instance IDs provided'}), 400
+    for iid in ids:
+        assert_resource_writable('ec2', iid, current_user)
     try:
         results = []
         for lbl, grp in _group_by_label(ids).items():
@@ -124,6 +136,8 @@ def aws_reboot_instances():
     region = data.get('region')
     if not ids:
         return jsonify({'error': 'No instance IDs provided'}), 400
+    for iid in ids:
+        assert_resource_writable('ec2', iid, current_user)
     try:
         for lbl, grp in _group_by_label(ids).items():
             aws_service.reboot_instances(grp, region, label=lbl)
@@ -140,6 +154,8 @@ def aws_terminate_instances():
     region = data.get('region')
     if not ids:
         return jsonify({'error': 'No instance IDs provided'}), 400
+    for iid in ids:
+        assert_resource_writable('ec2', iid, current_user)
     try:
         results = []
         for lbl, grp in _group_by_label(ids).items():
