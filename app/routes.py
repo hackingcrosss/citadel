@@ -250,3 +250,9 @@ def register_routes(app):
     @admin_required
     def admin_license():
         return render_template('admin_license.html')
+
+    @app.route('/admin/projects')
+    @login_required
+    @admin_required
+    def admin_projects():
+        return render_template('admin_projects.html')
