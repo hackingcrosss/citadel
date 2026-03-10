@@ -15,12 +15,22 @@ class Domain(db.Model):
     mailgun_region = db.Column(db.String(5))  # us, eu
     provider = db.Column(db.String(50), nullable=False, default='cloudflare')
     credential_label = db.Column(db.String(100), nullable=False, default='default')
+    # Project checkout — NULL means available in the pool
+    checkout_project_id = db.Column(db.Integer, db.ForeignKey('projects.id'), nullable=True, index=True)
+    checked_out_at = db.Column(db.DateTime, nullable=True)
+    checked_out_by_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     last_synced_at = db.Column(db.DateTime)
 
     dns_records = db.relationship('DNSRecord', backref='domain', lazy='dynamic',
                                   cascade='all, delete-orphan')
+    checkout_project = db.relationship('Project', foreign_keys=[checkout_project_id])
+    checked_out_by = db.relationship('User', foreign_keys=[checked_out_by_id])
+
+    @property
+    def is_checked_out(self):
+        return self.checkout_project_id is not None
 
     def to_dict(self):
         return {
@@ -35,6 +45,12 @@ class Domain(db.Model):
             'provider': self.provider,
             'credential_label': self.credential_label,
             'record_count': self.dns_records.count(),
+            'checkout_project_id': self.checkout_project_id,
+            'checkout_project_code': self.checkout_project.code if self.checkout_project else None,
+            'checkout_project_name': self.checkout_project.name if self.checkout_project else None,
+            'checked_out_at': self.checked_out_at.isoformat() if self.checked_out_at else None,
+            'checked_out_by_id': self.checked_out_by_id,
+            'checked_out_by_email': self.checked_out_by.email if self.checked_out_by else None,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None,
             'last_synced_at': self.last_synced_at.isoformat() if self.last_synced_at else None,
