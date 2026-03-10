@@ -196,70 +196,79 @@
 
         /* ── Bootstrap overrides ─────────────────────────────────────────────── */
 
-        /* Cards */
+        /* Cards — all cards dark */
         .card {
+            background-color: var(--ir-surface);
+            border-color: var(--ir-border);
             border-radius: 6px;
+            color: var(--ir-text);
         }
-        .card.bg-dark, .bg-dark {
-            background-color: var(--ir-surface) !important;
+        .card-header {
+            background-color: rgba(255,255,255,0.025);
+            border-bottom-color: var(--ir-border);
+            color: var(--ir-text);
+            font-size: 0.88rem;
+            font-weight: 600;
         }
-        .border-secondary {
-            border-color: var(--ir-border) !important;
-        }
+        .card.bg-dark, .bg-dark { background-color: var(--ir-surface) !important; }
+        .border-secondary { border-color: var(--ir-border) !important; }
         .card-body { color: var(--ir-text); }
 
-        /* Tables */
-        .table { --bs-table-color: var(--ir-text); margin-bottom: 0; }
-        .table-dark {
-            --bs-table-bg:           transparent;
-            --bs-table-color:        var(--ir-text);
-            --bs-table-border-color: var(--ir-border);
-            --bs-table-hover-bg:     rgba(255,255,255,0.03);
-            --bs-table-hover-color:  var(--ir-text);
-            --bs-table-striped-bg:   rgba(255,255,255,0.02);
+        /* Tables — all tables are dark globally */
+        .table {
+            --bs-table-bg:            transparent;
+            --bs-table-color:         var(--ir-text);
+            --bs-table-border-color:  var(--ir-border);
+            --bs-table-hover-bg:      rgba(255,255,255,0.04);
+            --bs-table-hover-color:   var(--ir-text);
+            --bs-table-striped-bg:    rgba(255,255,255,0.02);
             --bs-table-striped-color: var(--ir-text);
+            --bs-table-active-bg:     rgba(255,255,255,0.05);
+            color: var(--ir-text);
+            margin-bottom: 0;
         }
-        .table-dark thead th {
+        .table thead th, .table thead td {
             color: var(--ir-text-muted);
-            font-size: 0.72rem;
-            font-weight: 600;
+            font-size: 0.7rem;
+            font-weight: 700;
             text-transform: uppercase;
-            letter-spacing: 0.06em;
-            border-bottom: 1px solid var(--ir-border-2);
+            letter-spacing: 0.07em;
+            border-bottom: 1px solid var(--ir-border-2) !important;
+            border-top: none;
             padding: 10px 14px;
-            background: rgba(255,255,255,0.02);
+            background: rgba(255,255,255,0.025);
+            white-space: nowrap;
         }
-        .table-dark td {
+        .table td {
             padding: 10px 14px;
             border-color: var(--ir-border);
             vertical-align: middle;
             color: var(--ir-text);
         }
+        .table tbody tr:hover td {
+            background: rgba(255,255,255,0.03) !important;
+            color: var(--ir-text) !important;
+        }
         /* Stopped/secondary rows */
-        .table-dark .table-secondary, .table-dark tr.table-secondary td {
-            --bs-table-bg: transparent;
-            --bs-table-color: var(--ir-text-muted);
+        .table .table-secondary td,
+        .table tr.table-secondary td,
+        .table-dark .table-secondary td {
             color: var(--ir-text-muted) !important;
+            background: transparent !important;
         }
-        /* Light table for non-dark cards */
-        .table-light thead th {
-            color: var(--ir-text-muted);
-            font-size: 0.72rem;
-            font-weight: 600;
-            text-transform: uppercase;
-            letter-spacing: 0.06em;
-            border-bottom: 1px solid var(--ir-border);
-            background: var(--ir-surface);
-            color: var(--ir-text-muted);
+        /* table-dark and table-light both resolve to the same dark theme */
+        .table-dark, .table-light {
+            --bs-table-bg:           transparent;
+            --bs-table-color:        var(--ir-text);
+            --bs-table-border-color: var(--ir-border);
         }
-        .table-light, .table-light td {
-            background: var(--ir-surface);
-            color: var(--ir-text);
-            border-color: var(--ir-border);
+        .table-dark thead th, .table-light thead th {
+            background: rgba(255,255,255,0.025);
         }
+        .table-sm td, .table-sm th { padding: 6px 10px; }
         .table-hover > tbody > tr:hover > * {
-            background: rgba(255,255,255,0.03);
-            color: var(--ir-text);
+            background-color: rgba(255,255,255,0.03) !important;
+            color: var(--ir-text) !important;
         }
 
         /* Form controls */
@@ -444,19 +453,21 @@
             font-weight: 600;
         }
 
-        /* ── Card custom (legacy) ────────────────────────────────────────────── */
+        /* ── Card custom (legacy alias) ──────────────────────────────────────── */
         .card-custom {
-            background: var(--ir-surface);
-            border: 1px solid var(--ir-border);
+            background: var(--ir-surface) !important;
+            border: 1px solid var(--ir-border) !important;
             border-radius: 6px;
+            color: var(--ir-text);
         }
         .card-custom .card-header {
-            background: var(--ir-surface-2);
-            border-bottom: 1px solid var(--ir-border);
+            background: rgba(255,255,255,0.025) !important;
+            border-bottom: 1px solid var(--ir-border) !important;
             font-weight: 600;
             padding: 12px 18px;
             color: var(--ir-text);
         }
+        .card-custom .card-body { background: transparent; color: var(--ir-text); }
 
         /* ── Status badges ───────────────────────────────────────────────────── */
         .badge-status {
