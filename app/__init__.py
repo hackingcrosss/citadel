@@ -42,4 +42,19 @@ def create_app(config_class=Config):
                 org_name='',
             )}
 
+    @app.context_processor
+    def inject_projects():
+        """Inject user_projects and active_project into every template."""
+        from flask_login import current_user
+        try:
+            if not current_user.is_authenticated:
+                return {'user_projects': [], 'active_project': None}
+            from app.services.project_service import get_projects_for_user, get_active_project
+            return {
+                'user_projects': get_projects_for_user(current_user),
+                'active_project': get_active_project(current_user),
+            }
+        except Exception:
+            return {'user_projects': [], 'active_project': None}
+
     return app

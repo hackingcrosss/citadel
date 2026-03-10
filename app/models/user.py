@@ -19,6 +19,14 @@ class User(UserMixin, db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     last_login = db.Column(db.DateTime)
 
+    # Back-reference to project memberships — avoids circular import by using string ref
+    project_memberships = db.relationship(
+        'ProjectMember',
+        foreign_keys='ProjectMember.user_id',
+        back_populates='user',
+        lazy='dynamic',
+    )
+
     @property
     def is_admin(self):
         return self.role == 'admin'

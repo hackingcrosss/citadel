@@ -2,4 +2,4 @@ from flask import Blueprint
 
 api_bp = Blueprint('api', __name__)
 
-from app.api import domains, containers, aws, credentials, npm, email, gophish, cobaltstrike, website_generator, task_log, users, license
+from app.api import domains, containers, aws, credentials, npm, email, gophish, cobaltstrike, website_generator, task_log, users, license, projects
