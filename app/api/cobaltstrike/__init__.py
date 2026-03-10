@@ -1,8 +1,9 @@
 from flask import request, jsonify
-from flask_login import login_required
+from flask_login import login_required, current_user
 from app.api import api_bp
 from app.services import cobaltstrike_service
 from app.utils.decorators import feature_required
+from app.services.project_service import build_project_tag_map, assert_resource_writable
 
 # Valid listener types — these are the exact URL slugs for POST /api/v1/listeners/{type}
 VALID_TYPES = {'http', 'https', 'dns', 'smb', 'tcp', 'foreignHttp', 'foreignHttps', 'externalC2', 'userDefinedC2'}
@@ -27,6 +28,15 @@ TYPE_REQUIRED = {
 def list_cs_listeners():
     try:
         listeners = cobaltstrike_service.list_listeners()
+
+        # Enrich listeners with project tag
+        names = [l.get('name', '') for l in listeners if l.get('name')]
+        tag_map = build_project_tag_map('cs_listener', names)
+        for listener in listeners:
+            tag = tag_map.get(listener.get('name', ''))
+            listener['project_id'] = tag['project_id'] if tag else None
+            listener['project_code'] = tag['project_code'] if tag else None
+
         return jsonify({'listeners': listeners})
     except Exception as e:
         return jsonify({'error': str(e)}), 400
@@ -62,6 +72,9 @@ def create_cs_listener():
         if not data.get(field):
             return jsonify({'error': f'Missing required field for {listener_type}: {field}'}), 400
 
+    # Write guard — creating a listener is a write action
+    assert_resource_writable('cs_listener', data.get('name', ''), current_user)
+
     try:
         result = cobaltstrike_service.create_listener(listener_type, data)
         return jsonify({'listener': result}), 201
@@ -73,6 +86,7 @@ def create_cs_listener():
 @login_required
 @feature_required('cobaltstrike')
 def delete_cs_listener(listener_name):
+    assert_resource_writable('cs_listener', listener_name, current_user)
     try:
         cobaltstrike_service.delete_listener(listener_name)
         return jsonify({'deleted': True})
