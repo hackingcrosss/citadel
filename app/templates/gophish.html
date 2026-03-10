@@ -9,7 +9,7 @@
         <button class="btn btn-sm btn-outline-secondary" onclick="loadProfiles()">
             <i class="bi bi-arrow-clockwise"></i> Refresh
         </button>
-        {% if current_user.role != 'viewer' %}
+        {% if current_user.role != 'viewer' and active_project_role != 'white_team' %}
         <button class="btn btn-sm btn-infrared" data-bs-toggle="modal" data-bs-target="#createModal">
             <i class="bi bi-plus-circle"></i> New Profile
         </button>
@@ -104,6 +104,8 @@
 {% block extra_js %}
 <script>
     const IS_VIEWER = {{ 'true' if current_user.role == 'viewer' else 'false' }};
+    const IS_WHITE_TEAM = {{ 'true' if active_project_role == 'white_team' else 'false' }};
+    const IS_READONLY = IS_VIEWER || IS_WHITE_TEAM;
     document.addEventListener('DOMContentLoaded', function() {
         loadProfiles();
     });
@@ -139,7 +141,7 @@
                     html += '<td>' + escapeHtml(p.username || '-') + '</td>';
                     html += '<td>' + (p.ignore_cert_errors ? '<span class="badge bg-warning text-dark">Yes</span>' : '<span class="badge bg-secondary">No</span>') + '</td>';
                     html += '<td>';
-                    if (!IS_VIEWER) {
+                    if (!IS_READONLY) {
                         html += '<button class="btn btn-sm btn-outline-danger" onclick="deleteProfile(' + p.id + ', \'' + escapeHtml(p.name).replace(/'/g, "\\'") + '\')" title="Delete">';
                         html += '<i class="bi bi-trash"></i>';
                         html += '</button>';

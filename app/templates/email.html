@@ -5,7 +5,7 @@
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-4">
     <h1 class="h3 mb-0">Email / Mailgun</h1>
-    {% if current_user.role != 'viewer' %}
+    {% if current_user.role != 'viewer' and active_project_role != 'white_team' %}
     <button class="btn btn-infrared" data-bs-toggle="modal" data-bs-target="#addDomainModal">
         <i class="bi bi-plus-circle"></i> Add Domain
     </button>
@@ -104,7 +104,7 @@
     <div class="card-custom mb-4">
         <div class="card-header d-flex justify-content-between align-items-center">
             <span><i class="bi bi-key"></i> SMTP Credentials</span>
-            {% if current_user.role != 'viewer' %}
+            {% if current_user.role != 'viewer' and active_project_role != 'white_team' %}
             <button class="btn btn-sm btn-infrared" data-bs-toggle="modal" data-bs-target="#addCredentialModal">
                 <i class="bi bi-plus-circle"></i> Add Credential
             </button>
@@ -193,6 +193,8 @@
 {% block extra_js %}
 <script>
     const IS_VIEWER = {{ 'true' if current_user.role == 'viewer' else 'false' }};
+    const IS_WHITE_TEAM = {{ 'true' if active_project_role == 'white_team' else 'false' }};
+    const IS_READONLY = IS_VIEWER || IS_WHITE_TEAM;
     let currentDomain = null;
     let currentDomainRegion = null;
 
@@ -238,7 +240,7 @@
                                 '<button class="btn btn-outline-info" title="DNS & Credentials" onclick="selectDomain(\'' + d.name + '\', \'' + region.toLowerCase() + '\')">' +
                                     '<i class="bi bi-shield-check"></i>' +
                                 '</button>' +
-                                (!IS_VIEWER ? '<button class="btn btn-outline-danger" title="Delete" onclick="deleteDomain(\'' + d.name + '\', \'' + region.toLowerCase() + '\')">' +
+                                (!IS_READONLY ? '<button class="btn btn-outline-danger" title="Delete" onclick="deleteDomain(\'' + d.name + '\', \'' + region.toLowerCase() + '\')">' +
                                     '<i class="bi bi-trash"></i>' +
                                 '</button>' : '') +
                             '</div>' +
@@ -411,7 +413,7 @@
                         '<td><code>' + c.login + '</code></td>' +
                         '<td>' + created + '</td>' +
                         '<td>' +
-                            (!IS_VIEWER ? '<button class="btn btn-sm btn-outline-danger" onclick="deleteSmtpCredential(\'' + c.login + '\')">' +
+                            (!IS_READONLY ? '<button class="btn btn-sm btn-outline-danger" onclick="deleteSmtpCredential(\'' + c.login + '\')">' +
                                 '<i class="bi bi-trash"></i>' +
                             '</button>' : '') +
                         '</td>' +

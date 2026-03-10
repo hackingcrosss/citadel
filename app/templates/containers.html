@@ -158,6 +158,8 @@
 {% block extra_js %}
 <script>
     var IS_VIEWER = {{ 'true' if current_user.role == 'viewer' else 'false' }};
+    var IS_WHITE_TEAM = {{ 'true' if active_project_role == 'white_team' else 'false' }};
+    var IS_READONLY = IS_VIEWER || IS_WHITE_TEAM;
     var IS_ADMIN = {{ 'true' if current_user.is_admin else 'false' }};
     var ACTIVE_PROJECT_ID = {{ active_project.id if active_project else 'null' }};
     var ACTIVE_PROJECT_CODE = {{ active_project.code | tojson if active_project else 'null' }};
@@ -216,9 +218,9 @@
         if (projId) {
             var canUntag = IS_ADMIN || projId === ACTIVE_PROJECT_ID;
             return '<span class="badge bg-danger me-1" style="font-size:0.7rem">' + escapeHtml(projCode || '') + '</span>' +
-                (canUntag && !IS_VIEWER ? '<i class="bi bi-x-circle text-muted" style="cursor:pointer;font-size:0.8rem" title="Untag" onclick="untagResource(' + projId + ',' + projResId + ')"></i>' : '');
+                (canUntag && !IS_READONLY ? '<i class="bi bi-x-circle text-muted" style="cursor:pointer;font-size:0.8rem" title="Untag" onclick="untagResource(' + projId + ',' + projResId + ')"></i>' : '');
         }
-        if (!IS_VIEWER && ACTIVE_PROJECT_ID !== null) {
+        if (!IS_READONLY && ACTIVE_PROJECT_ID !== null) {
             return '<i class="bi bi-tag text-muted" style="cursor:pointer;font-size:0.85rem" title="Tag to ' + escapeAttr(ACTIVE_PROJECT_CODE || 'active project') + '" onclick="tagResource(\'' + escapeAttr(rType) + '\',\'' + escapeAttr(extId) + '\')"></i>';
         }
         return '<span class="text-muted" style="font-size:0.75rem">—</span>';
@@ -317,7 +319,7 @@
             var imageName = escapeHtml(c.image);
 
             var actions = '';
-            if (!IS_VIEWER) {
+            if (!IS_READONLY) {
                 if (isRunning) {
                     actions =
                         '<button class="btn btn-outline-danger" title="Stop" onclick="containerAction(\'' + c.id + '\', \'stop\')">' +
@@ -340,7 +342,7 @@
                 '<button class="btn btn-outline-secondary" title="Details" onclick="showDetails(\'' + c.id + '\', \'' + escapeHtml(c.name) + '\')">' +
                     '<i class="bi bi-info-circle"></i>' +
                 '</button>';
-            if (!IS_VIEWER) {
+            if (!IS_READONLY) {
                 actions +=
                     '<button class="btn btn-outline-danger" title="Remove" onclick="removeContainer(\'' + c.id + '\', \'' + escapeHtml(c.name) + '\', ' + isRunning + ')">' +
                         '<i class="bi bi-trash"></i>' +
