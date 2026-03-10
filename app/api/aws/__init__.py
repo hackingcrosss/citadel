@@ -73,6 +73,7 @@ def aws_list_instances():
             tag = tag_map.get(inst['id'])
             inst['project_id'] = tag['project_id'] if tag else None
             inst['project_code'] = tag['project_code'] if tag else None
+            inst['project_resource_id'] = tag['project_resource_id'] if tag else None
 
         return jsonify({'instances': instances})
     except Exception as e:

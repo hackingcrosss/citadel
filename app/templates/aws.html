@@ -150,6 +150,7 @@
                             <th>Private IP</th>
                             <th>AZ</th>
                             <th>Tags</th>
+                            <th>Project</th>
                             <th>Actions</th>
                         </tr>
                     </thead>
@@ -353,6 +354,9 @@
 {% block extra_js %}
 <script>
     const IS_VIEWER = {{ 'true' if current_user.role == 'viewer' else 'false' }};
+    const IS_ADMIN = {{ 'true' if current_user.is_admin else 'false' }};
+    const ACTIVE_PROJECT_ID = {{ active_project.id if active_project else 'null' }};
+    const ACTIVE_PROJECT_CODE = {{ active_project.code | tojson if active_project else 'null' }};
     let allInstances = [];
     let allDistinctTags = [];
     let allServices = [];
@@ -377,6 +381,35 @@
 
     function getRegion() {
         return document.getElementById('regionSelect').value;
+    }
+
+    function projectBadge(rType, extId, projId, projCode, projResId) {
+        if (projId) {
+            const canUntag = IS_ADMIN || projId === ACTIVE_PROJECT_ID;
+            return `<span class="badge bg-danger me-1" style="font-size:0.7rem">${escapeHtml(projCode || '')}</span>` +
+                (canUntag && !IS_VIEWER ? `<i class="bi bi-x-circle text-muted" style="cursor:pointer;font-size:0.8rem" title="Untag" onclick="untagResource(${projId},${projResId})"></i>` : '');
+        }
+        if (!IS_VIEWER && ACTIVE_PROJECT_ID !== null) {
+            return `<i class="bi bi-tag text-muted" style="cursor:pointer;font-size:0.85rem" title="Tag to ${escapeAttr(ACTIVE_PROJECT_CODE || 'active project')}" onclick="tagResource('${escapeAttr(rType)}','${escapeAttr(extId)}')"></i>`;
+        }
+        return '<span class="text-muted" style="font-size:0.75rem">—</span>';
+    }
+
+    async function tagResource(rType, extId) {
+        const res = await fetch('/api/projects/' + ACTIVE_PROJECT_ID + '/resources', {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({resource_type: rType, external_id: extId}),
+        });
+        if (!res.ok) { const d = await res.json(); showToast(d.error || 'Tag failed', 'danger'); return; }
+        loadInstances();
+    }
+
+    async function untagResource(projId, resId) {
+        const confirmed = await showConfirm('Remove project tag from this instance?');
+        if (!confirmed) return;
+        const res = await fetch('/api/projects/' + projId + '/resources/' + resId, {method: 'DELETE'});
+        if (!res.ok) { const d = await res.json(); showToast(d.error || 'Untag failed', 'danger'); return; }
+        loadInstances();
     }
 
     // ─────────────────────────────────────────
@@ -505,6 +538,7 @@
                 <td>${privateIpHtml}</td>
                 <td><small>${azHtml}</small></td>
                 <td>${renderTags(inst)}</td>
+                <td>${projectBadge('ec2', inst.id, inst.project_id, inst.project_code, inst.project_resource_id)}</td>
                 <td>
                     <div class="btn-group btn-group-sm">
                         ${!IS_VIEWER ? `<button class="btn btn-sm ${sshBtnClass}" title="SSH Config" onclick="openSSHConfig('${idAttr}', '${nameAttr}')"><i class="bi bi-key"></i></button>` : ''}
