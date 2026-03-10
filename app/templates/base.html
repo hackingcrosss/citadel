@@ -253,6 +253,12 @@
                 <i class="bi bi-speedometer2"></i> Dashboard
             </a>
 
+            {% if current_user.is_authenticated and user_projects %}
+            <a class="nav-link {% if request.endpoint == 'projects' %}active{% endif %}" href="{{ url_for('projects') }}">
+                <i class="bi bi-folder2-open"></i> My Projects
+            </a>
+            {% endif %}
+
             <div class="nav-divider"></div>
 
             <!-- Infrastructure section -->
