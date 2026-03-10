@@ -251,6 +251,11 @@ def register_routes(app):
     def admin_license():
         return render_template('admin_license.html')
 
+    @app.route('/projects')
+    @login_required
+    def projects():
+        return render_template('projects.html')
+
     @app.route('/admin/projects')
     @login_required
     @admin_required

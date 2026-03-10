@@ -1,0 +1,187 @@
+{% extends "base.html" %}
+
+{% block title %}My Projects - InfraRed{% endblock %}
+
+{% block extra_css %}
+<style>
+    .role-badge-operator   { background: #d97706; color: #fff; }
+    .role-badge-white_team { background: #2563eb; color: #fff; }
+    .role-badge {
+        display: inline-block; padding: 0.2em 0.65em; font-size: 0.75rem;
+        font-weight: 600; border-radius: 4px; text-transform: uppercase; letter-spacing: 0.04em;
+    }
+    .status-active   { color: #22c55e; }
+    .status-archived { color: #6b7280; }
+    .project-card { transition: border-color 0.15s; }
+    .project-card.active-project { border-color: #dc2626 !important; }
+    .domain-chip {
+        display: inline-block; background: #1f2937; border: 1px solid #374151;
+        border-radius: 4px; padding: 0.15em 0.55em; font-size: 0.8rem; margin: 2px;
+    }
+    .resource-chip {
+        display: inline-block; background: #1f2937; border: 1px solid #374151;
+        border-radius: 4px; padding: 0.15em 0.55em; font-size: 0.78rem; margin: 2px;
+        color: #d1d5db;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h4 class="mb-0"><i class="bi bi-folder2-open me-2"></i>My Projects</h4>
+        <small class="text-muted">Projects you are assigned to</small>
+    </div>
+    {% if current_user.is_admin %}
+    <a href="{{ url_for('admin_projects') }}" class="btn btn-outline-danger btn-sm">
+        <i class="bi bi-gear me-1"></i> Manage Projects
+    </a>
+    {% endif %}
+</div>
+
+<div id="projects-container">
+    <div class="text-center text-muted py-5">
+        <div class="spinner-border spinner-border-sm me-2"></div> Loading projects…
+    </div>
+</div>
+{% endblock %}
+
+
+{% block extra_js %}
+<script>
+const ACTIVE_PROJECT_ID = {{ active_project.id if active_project else 'null' }};
+const IS_ADMIN = {{ 'true' if current_user.is_admin else 'false' }};
+const IS_VIEWER = {{ 'true' if current_user.role == 'viewer' else 'false' }};
+
+function escapeHtml(s) {
+    var d = document.createElement('div');
+    d.appendChild(document.createTextNode(String(s == null ? '' : s)));
+    return d.innerHTML;
+}
+
+// ── Load all projects ─────────────────────────────────────────────────────────
+async function loadProjects() {
+    const container = document.getElementById('projects-container');
+    try {
+        const res = await fetch('/api/projects');
+        const data = await res.json();
+        if (!res.ok) throw new Error((data && data.error) || 'Failed to load projects');
+        const projects = Array.isArray(data) ? data : (data.projects || []);
+        if (!projects.length) {
+            container.innerHTML = '<div class="text-center text-muted py-5"><i class="bi bi-folder2 d-block mb-2" style="font-size:2.5rem;opacity:0.3"></i>You are not assigned to any projects.</div>';
+            return;
+        }
+        // Load details for each project in parallel
+        const details = await Promise.all(projects.map(p => loadProjectDetail(p.id)));
+        renderProjects(details.filter(Boolean));
+    } catch(e) {
+        container.innerHTML = `<div class="text-danger py-3"><i class="bi bi-exclamation-triangle me-1"></i>${escapeHtml(e.message)}</div>`;
+    }
+}
+
+async function loadProjectDetail(projectId) {
+    try {
+        const [projRes, domRes] = await Promise.all([
+            fetch(`/api/projects/${projectId}`),
+            fetch(`/api/projects/${projectId}/domains`),
+        ]);
+        const proj = await projRes.json();
+        const domData = await domRes.json();
+        const domains = Array.isArray(domData) ? domData : (domData.domains || []);
+        proj.domains = domains;
+        return proj;
+    } catch(e) {
+        return null;
+    }
+}
+
+function renderProjects(projects) {
+    const container = document.getElementById('projects-container');
+    container.innerHTML = projects.map(p => {
+        const isActive = p.id === ACTIVE_PROJECT_ID;
+        const myMember = (p.members || []).find(m => m.user_id === _MY_USER_ID);
+        const myRole = myMember ? myMember.project_role : (IS_ADMIN ? 'operator' : null);
+        const isOperator = IS_ADMIN || myRole === 'operator';
+
+        const roleBadge = myRole
+            ? `<span class="role-badge role-badge-${myRole}">${myRole === 'white_team' ? 'White Team' : 'Operator'}</span>`
+            : '';
+
+        const statusDot = p.status === 'active'
+            ? '<i class="bi bi-circle-fill status-active me-1" style="font-size:0.5rem"></i>'
+            : '<i class="bi bi-circle-fill status-archived me-1" style="font-size:0.5rem"></i>';
+
+        // Domains section
+        const domainsHtml = p.domains && p.domains.length
+            ? p.domains.map(d => `<span class="domain-chip"><i class="bi bi-globe me-1"></i>${escapeHtml(d.name)}${isOperator ? ` <i class="bi bi-x text-danger" style="cursor:pointer" title="Release domain" onclick="releaseDomain(${p.id},${d.id},'${escapeHtml(d.name)}')"></i>` : ''}</span>`).join('')
+            : '<span class="text-muted small">No domains checked out</span>';
+
+        // Members summary
+        const memberCount = p.member_count ?? (p.members ? p.members.length : '?');
+
+        const activeBtnHtml = isActive
+            ? `<button class="btn btn-sm btn-outline-secondary" onclick="clearProject()"><i class="bi bi-x me-1"></i>Deactivate</button>`
+            : `<button class="btn btn-sm btn-danger" onclick="activateProject(${p.id})"><i class="bi bi-check2 me-1"></i>Set Active</button>`;
+
+        return `
+        <div class="card bg-dark border-secondary mb-3 project-card ${isActive ? 'active-project' : ''}" id="proj-card-${p.id}">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-start mb-2">
+                    <div>
+                        <span class="badge bg-danger me-2" style="font-size:0.8rem">${escapeHtml(p.code)}</span>
+                        <strong>${escapeHtml(p.name)}</strong>
+                        ${isActive ? '<span class="badge bg-success ms-1" style="font-size:0.65rem">ACTIVE</span>' : ''}
+                    </div>
+                    <div class="d-flex align-items-center gap-2">
+                        ${roleBadge}
+                        ${statusDot}<small class="text-muted">${p.status}</small>
+                        ${activeBtnHtml}
+                    </div>
+                </div>
+                ${p.description ? `<p class="text-muted small mb-2">${escapeHtml(p.description)}</p>` : ''}
+                <div class="row g-3 mt-1">
+                    <div class="col-md-8">
+                        <div class="text-muted small mb-1"><i class="bi bi-globe me-1"></i><strong>Checked-out Domains</strong></div>
+                        <div id="domains-${p.id}">${domainsHtml}</div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="text-muted small mb-1"><i class="bi bi-people me-1"></i><strong>Members</strong> <span class="badge bg-secondary" style="font-size:0.65rem">${memberCount}</span></div>
+                        <div>
+                            ${(p.members || []).map(m =>
+                                `<span class="resource-chip"><i class="bi bi-person me-1"></i>${escapeHtml(m.user_email || '')} <span class="text-muted" style="font-size:0.7rem">(${m.project_role === 'white_team' ? 'white team' : m.project_role})</span></span>`
+                            ).join('') || '<span class="text-muted small">—</span>'}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>`;
+    }).join('');
+}
+
+// ── Active project ────────────────────────────────────────────────────────────
+function activateProject(id) {
+    fetch('/api/projects/' + id + '/activate', {method: 'POST'})
+        .then(() => location.reload());
+}
+function clearProject() {
+    fetch('/api/projects/active', {method: 'DELETE'})
+        .then(() => location.reload());
+}
+
+// ── Release domain ────────────────────────────────────────────────────────────
+async function releaseDomain(projectId, domainId, domainName) {
+    const confirmed = await showConfirm(`Release <strong>${escapeHtml(domainName)}</strong> back to the pool?`);
+    if (!confirmed) return;
+    const res = await fetch(`/api/projects/${projectId}/domains/${domainId}/release`, {method: 'POST'});
+    const data = await res.json();
+    if (!res.ok) { showToast(data.error || 'Release failed', 'danger'); return; }
+    showToast('Domain released', 'success');
+    loadProjects();
+}
+
+// Inject current user ID from server for role detection
+var _MY_USER_ID = {{ current_user.id }};
+
+document.addEventListener('DOMContentLoaded', loadProjects);
+</script>
+{% endblock %}
