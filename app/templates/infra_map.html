@@ -4,11 +4,22 @@
 
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-4">
-    <h1 class="h3 mb-0"><i class="bi bi-diagram-3"></i> Infrastructure Map</h1>
+    <h1 class="h3 mb-0">
+        <i class="bi bi-diagram-3"></i> Infrastructure Map
+        {% if not current_user.is_admin %}
+            {% if active_project %}
+            <span class="badge bg-danger ms-2" style="font-size:0.6em;vertical-align:middle" title="Scoped to project">{{ active_project.code }}</span>
+            {% else %}
+            <span class="badge bg-secondary ms-2" style="font-size:0.6em;vertical-align:middle">No Project</span>
+            {% endif %}
+        {% endif %}
+    </h1>
     <div class="d-flex gap-2">
+        {% if current_user.is_admin %}
         <button class="btn btn-sm btn-outline-warning" onclick="openSyncModal()">
             <i class="bi bi-database-gear"></i> Sync DB
         </button>
+        {% endif %}
         <button class="btn btn-sm btn-outline-secondary" onclick="loadAll()">
             <i class="bi bi-arrow-clockwise"></i> Refresh
         </button>
@@ -186,6 +197,7 @@
 <div class="card-custom mb-4">
     <div class="card-header d-flex justify-content-between align-items-center">
         <span><i class="bi bi-arrow-right-circle text-muted me-1"></i> DNS Records Pointing to NPM Host Without a Proxy Entry</span>
+        {% if current_user.role != 'viewer' and active_project_role != 'white_team' %}
         <div class="d-flex gap-2">
             <button class="btn btn-sm btn-outline-secondary" onclick="selectAllDnsRecords()">
                 <i class="bi bi-check2-all"></i> Select All
@@ -196,6 +208,7 @@
                 (<span id="dns-selected-count">0</span>)
             </button>
         </div>
+        {% endif %}
     </div>
     <div class="card-body p-0">
         <div class="table-responsive">
@@ -256,6 +269,12 @@
 {% block extra_js %}
 <script src="https://unpkg.com/vis-network@9.1.9/standalone/umd/vis-network.min.js"></script>
 <script>
+    var IS_ADMIN          = {{ 'true' if current_user.is_admin else 'false' }};
+    var IS_VIEWER         = {{ 'true' if current_user.role == 'viewer' else 'false' }};
+    var IS_WHITE_TEAM     = {{ 'true' if active_project_role == 'white_team' else 'false' }};
+    var IS_READONLY       = IS_VIEWER || IS_WHITE_TEAM;
+    var ACTIVE_PROJECT_ID = {{ active_project.id if active_project else 'null' }};
+
     var allDomains         = [];
     var allDnsRecords      = {}; // domainId -> records[] (normalised: always .type field)
     var allInstances       = [];
@@ -294,6 +313,17 @@
 
     function loadAll() {
         setLoading();
+        if (IS_ADMIN) {
+            loadAll_Full();
+        } else if (ACTIVE_PROJECT_ID !== null) {
+            loadAll_Scoped(ACTIVE_PROJECT_ID);
+        } else {
+            showNoProject();
+        }
+    }
+
+    // Admin path — full view, all zones and all resources
+    function loadAll_Full() {
         Promise.all([
             fetch('/api/domains/zones').then(function(r) { return r.json(); }).catch(function() { return {zones: []}; }),
             fetch('/api/aws/instances').then(function(r) { return r.json(); }).catch(function() { return {instances: []}; }),
@@ -308,7 +338,6 @@
             allListeners  = results[4].listeners  || [];
 
             // Build allDomains from Cloudflare zones (primary source).
-            // CF zones already have their zone ID as `id` — no need for local DB tracking.
             allDomains = cfZones.map(function(z) {
                 return { id: z.id, name: z.name, cloudflare_zone_id: z.id };
             });
@@ -321,6 +350,51 @@
             buildLookupMaps();
             loadDnsRecords();
         });
+    }
+
+    // Operator path — scoped to the active project's checked-out domains
+    function loadAll_Scoped(projectId) {
+        Promise.all([
+            fetch('/api/domains?project_id=' + projectId).then(function(r) { return r.json(); }).catch(function() { return {domains: []}; }),
+            fetch('/api/aws/instances').then(function(r) { return r.json(); }).catch(function() { return {instances: []}; }),
+            fetch('/api/npm/hosts').then(function(r) { return r.json(); }).catch(function() { return {hosts: []}; }),
+            fetch('/api/containers').then(function(r) { return r.json(); }).catch(function() { return {containers: []}; }),
+            fetch('/api/cobaltstrike/listeners').then(function(r) { return r.json(); }).catch(function() { return {listeners: []}; })
+        ]).then(function(results) {
+            var localDomains = results[0].domains || [];
+            allInstances  = results[1].instances  || [];
+            allNpmHosts   = results[2].hosts      || [];
+            allContainers = results[3].containers || [];
+            allListeners  = results[4].listeners  || [];
+
+            // Use local domain records (id = DB PK, cloudflare_zone_id = CF zone).
+            // Skip any domain without a zone ID (manually tracked, no CF link).
+            allDomains = localDomains.filter(function(d) { return d.cloudflare_zone_id; });
+
+            document.getElementById('count-domains').textContent    = allDomains.length;
+            document.getElementById('count-ec2').textContent        = allInstances.length;
+            document.getElementById('count-npm').textContent        = allNpmHosts.length;
+            document.getElementById('count-containers').textContent = allContainers.length;
+
+            buildLookupMaps();
+            loadDnsRecords();
+        });
+    }
+
+    function showNoProject() {
+        document.getElementById('chain-tbody').innerHTML =
+            '<tr><td colspan="6" class="text-center text-muted py-5">' +
+            '<i class="bi bi-folder2 d-block mb-2" style="font-size:2.5rem;opacity:0.3"></i>' +
+            'No active project selected. <a href="/projects">Choose a project</a> to scope the infrastructure map.' +
+            '</td></tr>';
+        document.getElementById('orphan-ec2-tbody').innerHTML = '<tr><td colspan="6"></td></tr>';
+        document.getElementById('orphan-npm-tbody').innerHTML = '<tr><td colspan="4"></td></tr>';
+        document.getElementById('dns-no-npm-tbody').innerHTML = '<tr><td colspan="5"></td></tr>';
+        document.getElementById('count-domains').textContent = '—';
+        document.getElementById('count-records').textContent = '—';
+        document.getElementById('count-ec2').textContent = '—';
+        document.getElementById('count-npm').textContent = '—';
+        document.getElementById('count-containers').textContent = '—';
     }
 
     function setLoading() {
@@ -571,7 +645,12 @@
     }
 
     function renderOrphanEc2(usedInstanceIds) {
-        orphanEc2Instances = allInstances.filter(function(inst) { return !usedInstanceIds[inst.id]; });
+        var candidates = allInstances.filter(function(inst) { return !usedInstanceIds[inst.id]; });
+        // Non-admin: only show instances explicitly tagged to the active project
+        if (!IS_ADMIN && ACTIVE_PROJECT_ID !== null) {
+            candidates = candidates.filter(function(inst) { return inst.project_id === ACTIVE_PROJECT_ID; });
+        }
+        orphanEc2Instances = candidates;
         renderOrphanEc2Filtered();
     }
 
@@ -630,6 +709,10 @@
     function renderOrphanNpm(usedNpmIds) {
         var tbody   = document.getElementById('orphan-npm-tbody');
         var orphans = allNpmHosts.filter(function(npm) { return !usedNpmIds[npm.id]; });
+        // Non-admin: only show NPM hosts explicitly tagged to the active project
+        if (!IS_ADMIN && ACTIVE_PROJECT_ID !== null) {
+            orphans = orphans.filter(function(npm) { return npm.project_id === ACTIVE_PROJECT_ID; });
+        }
 
         if (orphans.length === 0) {
             tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted py-3">All NPM proxy hosts are linked to tracked DNS records</td></tr>';
@@ -724,9 +807,11 @@
             html += '<td><code class="small">' + escapeHtml(rec.content) + '</code></td>';
             html += '<td><span class="text-muted small">' + escapeHtml(item.domain.name) + '</span></td>';
             html += '<td class="text-end">'
-                  + '<button class="btn btn-sm btn-outline-danger" title="Delete DNS record"'
-                  + ' onclick="deleteDnsRecord(this,' + JSON.stringify(zoneId) + ',' + JSON.stringify(recId) + ',' + JSON.stringify(domainId) + ')">'
-                  + '<i class="bi bi-trash"></i></button>'
+                  + (!IS_READONLY
+                      ? '<button class="btn btn-sm btn-outline-danger" title="Delete DNS record"'
+                        + ' onclick="deleteDnsRecord(this,' + JSON.stringify(zoneId) + ',' + JSON.stringify(recId) + ',' + JSON.stringify(domainId) + ')">'
+                        + '<i class="bi bi-trash"></i></button>'
+                      : '')
                   + '</td>';
             html += '</tr>';
         });
@@ -737,10 +822,13 @@
     function updateDnsSelection() {
         var checks  = Array.from(document.querySelectorAll('.dns-rec-cb'));
         var checked = checks.filter(function(cb) { return cb.checked; });
-        document.getElementById('dns-selected-count').textContent = checked.length;
-        document.getElementById('btn-delete-selected-dns').disabled = checked.length === 0;
 
         // Sync header checkbox state
+        var countEl = document.getElementById('dns-selected-count');
+        if (countEl) countEl.textContent = checked.length;
+        var delBtn = document.getElementById('btn-delete-selected-dns');
+        if (delBtn) delBtn.disabled = checked.length === 0;
+
         var allCb = document.getElementById('dns-cb-all');
         if (allCb) {
             allCb.checked       = checks.length > 0 && checked.length === checks.length;
