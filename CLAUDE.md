@@ -29,15 +29,20 @@ infrared/
 │   │   └── __init__.py       # Configuration classes
 │   ├── models/
 │   │   ├── __init__.py
-│   │   ├── user.py           # User authentication model
-│   │   ├── credential.py     # Encrypted credential storage model
-│   │   ├── domain.py         # Domain and DNSRecord models
-│   │   └── instance_tag.py   # Local EC2 instance tagging model
+│   │   ├── user.py               # User authentication model
+│   │   ├── credential.py         # Encrypted credential storage model (with label for multi-account)
+│   │   ├── domain.py             # Domain and DNSRecord models
+│   │   ├── license.py            # License/plan tier model
+│   │   ├── instance_tag.py       # Local EC2 instance tagging model
+│   │   └── instance_ssh_config.py # EC2 SSH key config (encrypted private key per instance)
 │   ├── services/             # Business logic (DNS, Docker, AWS, etc.)
 │   ├── tasks/                # Celery async tasks
-│   │   ├── celery_app.py     # Celery instance with Flask context
-│   │   ├── dns_tasks.py      # Async DNS operations
-│   │   └── container_tasks.py # Async container operations
+│   │   ├── celery_app.py          # Celery instance with Flask context
+│   │   ├── dns_tasks.py           # Async DNS operations
+│   │   ├── container_tasks.py     # Async container operations
+│   │   └── website_generator_tasks.py # Async AI website generation (stoppable)
+│   ├── utils/
+│   │   └── decorators.py          # admin_required, feature_required decorators
 │   ├── api/                  # REST API endpoints
 │   │   ├── __init__.py
 │   │   ├── domains/
@@ -47,22 +52,29 @@ infrared/
 │   │   ├── email/
 │   │   ├── gophish/
 │   │   ├── cobaltstrike/
-│   │   └── credentials/
+│   │   ├── credentials/
+│   │   ├── users/
+│   │   ├── license/
+│   │   ├── task_log/
+│   │   └── website_generator/
 │   ├── templates/            # Jinja2 HTML templates
-│   │   ├── base.html         # Base template with sidebar
-│   │   ├── login.html        # Login page
-│   │   ├── change_password.html  # Password change form
-│   │   ├── dashboard.html    # Main dashboard
-│   │   ├── domains.html      # Domain management
-│   │   ├── containers.html   # Container management
-│   │   ├── email.html        # Mailgun email management
-│   │   ├── aws.html          # AWS EC2 management
-│   │   ├── npm.html          # Nginx Proxy Manager
-│   │   ├── operations.html   # Setup — cross-service orchestration (email, DNS, C2)
-│   │   ├── orchestration.html # C2 Deployments — active deployment management
-│   │   ├── gophish.html      # GoPhish sending profiles
-│   │   ├── cobaltstrike.html # Cobalt Strike listener management
-│   │   └── settings.html     # API credentials config
+│   │   ├── base.html              # Base template with sidebar
+│   │   ├── login.html             # Login page
+│   │   ├── change_password.html   # Password change form
+│   │   ├── dashboard.html         # Main dashboard
+│   │   ├── domains.html           # Domain management
+│   │   ├── containers.html        # Container management
+│   │   ├── email.html             # Mailgun email management
+│   │   ├── aws.html               # AWS EC2 management (multi-account, SSH config)
+│   │   ├── npm.html               # Nginx Proxy Manager
+│   │   ├── operations.html        # Setup — cross-service orchestration (email, DNS, C2)
+│   │   ├── orchestration.html     # C2 Deployments — active deployment management
+│   │   ├── gophish.html           # GoPhish sending profiles
+│   │   ├── cobaltstrike.html      # Cobalt Strike listener management
+│   │   ├── infra_map.html         # Infrastructure Map visualization
+│   │   ├── settings.html          # API credentials config (multi-account)
+│   │   ├── admin_users.html       # User management (admin)
+│   │   └── admin_license.html     # License/plan management (admin)
 │   └── static/               # CSS, JS, images
 ├── docker/
 │   ├── nginx/
@@ -160,12 +172,13 @@ class License(db.Model):
 ```python
 class Credential(db.Model):
     id: int (primary key)
-    provider: str (indexed)         # aws, cloudflare, mailgun, npm, docker, gophish, cobaltstrike, redwarden
+    provider: str (indexed)         # aws, cloudflare, mailgun, npm, docker, gophish, cobaltstrike, redwarden, openai
     key_name: str
+    label: str (default='default')  # account label for multi-account providers (aws, cloudflare)
     enrypted_value: Text
     created_at: datetime
     updated_at: datetime
-    # Unique constraint on (provider, key_name)
+    # Unique constraint on (provider, key_name, label)
 ```
 
 ### Domain Model
@@ -174,6 +187,7 @@ class Domain(db.Model):
     id: int (primary key)
     name: str (unique, indexed)
     cloudflare_zone_id: str (unique, indexed)
+    credential_label: str (default='default')  # which CF account label owns this zone
     registrar: str
     status: str                     # active, inactive, pending
     purpose: str                    # phishing, c2, redirect, staging
@@ -210,6 +224,21 @@ class InstanceTag(db.Model):
     tag: str (indexed)              # Local tag label
     created_at: datetime
     # Unique constraint on (instance_id, tag)
+```
+
+### InstanceSSHConfig Model
+```python
+class InstanceSSHConfig(db.Model):
+    id: int (primary key)
+    provider: str (default='aws')           # cloud provider
+    instance_id: str (indexed)              # EC2 instance ID
+    ssh_username: str (default='ec2-user')  # SSH login user
+    encrypted_private_key: Text             # Fernet-encrypted PEM key
+    use_public_ip: bool (default=True)      # connect via public or private IP
+    key_label: str                          # human-readable label
+    created_at: datetime
+    updated_at: datetime
+    # Unique constraint on (provider, instance_id)
 ```
 
 ## Environment Variables
@@ -311,23 +340,24 @@ docker compose exec web python init_db.py
 ## Implemented Services
 
 ### Backend Services (all complete)
-- `app/services/dns_service.py` - Cloudflare DNS management (zones, records, SSL)
+- `app/services/dns_service.py` - Cloudflare DNS management (zones, records, SSL); multi-account via `list_zones_all_accounts()` (ThreadPoolExecutor); `_zone_account_cache`
 - `app/services/docker_service.py` - Docker SDK (list, start/stop/restart/remove, logs, stats, remote host support, network IPs in listing)
-- `app/services/aws_service.py` - boto3 EC2 management (instances, security groups, key pairs, multi-region)
-- `app/services/email_service.py` - Mailgun integration (domains, SMTP credentials, multi-region)
+- `app/services/aws_service.py` - boto3 EC2 management (instances, security groups, key pairs, multi-region); multi-account via `list_instances_all_accounts(region)`; `_instance_account_cache`
+- `app/services/email_service.py` - Mailgun integration (domains, SMTP credentials, multi-region us/eu)
 - `app/services/npm_service.py` - Nginx Proxy Manager API (proxy hosts, certificates, redirections)
 - `app/services/gophish_service.py` - GoPhish API (sending profiles CRUD, connection verification)
 - `app/services/cobaltstrike_service.py` - Cobalt Strike REST API v1 (JWT auth with token caching, listener CRUD via type-specific endpoints, empty-body response handling)
-- `app/services/credential_service.py` - Fernet encryption/decryption for all stored credentials
+- `app/services/credential_service.py` - Fernet encryption/decryption; `label='default'` on all functions; `get_account_labels(provider)`, `delete_account(provider, label)` for multi-account
 - `app/services/website_generator_service.py` - AI website generation (Azure OpenAI), Docker container deploy, NPM proxy creation, Cloudflare DNS, deployed-site discovery and removal
 - `app/services/task_log_service.py` - Lightweight in-memory/Redis task tracking (log, list, clear, status enrichment)
 - `app/services/plan_service.py` - Plan/license tier definitions, `get_current_plan()` (cached on `g`), feature and limit checks; admins always get Enterprise
+- `app/services/ssh_service.py` - EC2 SSH-based service management using stored `InstanceSSHConfig` keys
 
 ### API Endpoints (all complete)
-- `/api/credentials` - Credential CRUD + test for all providers, single credential GET (aws, cloudflare, mailgun, npm, docker, gophish, cobaltstrike, redwarden)
+- `/api/credentials` - Credential CRUD + test for all providers (aws, cloudflare, mailgun, npm, docker, gophish, cobaltstrike, redwarden, openai); multi-account providers (aws, cloudflare) return `{configured, accounts}` and support `DELETE /credentials/<provider>/account/<label>`; test endpoint accepts `label`
 - `/api/domains` - Local domain tracking (CRUD, sync with Cloudflare) + Cloudflare zone/DNS record management
 - `/api/containers` - Docker container management (list, details, start/stop/restart/remove, logs, stats)
-- `/api/aws` - EC2 instance management (list with local tags, details, start/stop/reboot/terminate, security groups, key pairs, local instance tagging CRUD)
+- `/api/aws` - EC2 instance management (list with local tags + account_label, details, start/stop/reboot/terminate, security groups, key pairs, local instance tagging CRUD, SSH config CRUD, SSH-based service management)
 - `/api/npm` - Nginx Proxy Manager proxy hosts, certificates, redirections
 - `/api/email` - Mailgun domain and SMTP credential management
 - `/api/gophish` - GoPhish sending profile management (list, create, delete)
@@ -340,7 +370,7 @@ docker compose exec web python init_db.py
 ### Frontend (all complete)
 - Dashboard with live data from all services, auto-refresh every 30 seconds
 - Containers page with logs viewer, detail inspector, status/name filters, auto-refresh
-- AWS EC2 page with instance detail/security group modals, bulk actions, status/name/tag filters, local instance tagging (add/remove tags inline per instance, tags stored in local DB)
+- AWS EC2 page with instance detail/security group modals, bulk actions, status/name/tag filters, local instance tagging (add/remove tags inline per instance, tags stored in local DB), SSH config modal per instance (store encrypted private key, username, public/private IP toggle), instance badge shows account_label name (or "AWS" for default account)
 - Domains page with zone selector, DNS record editor, SSL settings
 - Email page with domain management, DNS verification, SMTP credentials
 - NPM page with proxy host management
@@ -348,7 +378,7 @@ docker compose exec web python init_db.py
 - C2 Deployments page (two tabs): C2 Deployments tab — cross-references CS listeners with NPM proxy hosts and Cloudflare DNS A records, inspect (JSON modal) and teardown (CS listener + NPM hosts + DNS records with confirmation and real-time log); Groomed Sites tab — deployed phishing/redirect websites from Website Generator (domain, category, container/folder), deletable
 - GoPhish page with sending profile table (view, create via modal, delete)
 - Cobalt Strike page with listener table and dynamic create modal (fields adapt per listener type: http, https, dns, smb, tcp, foreignHttp, foreignHttps, externalC2, userDefinedC2; with conditional guardRails, httpProxy, and UDC2 file upload sections; host fields auto-populate from configured CS Listener IP)
-- Settings page with credential management for all providers including Docker remote host, NPM public IP (with EC2 instance picker), GoPhish API credentials, Cobalt Strike teamserver credentials (including Listener IP — private IP of teamserver EC2, with EC2 private IP picker), and RedWarden IP (beacon reverse proxy)
+- Settings page with credential management for all providers including Docker remote host, NPM public IP (with EC2 instance picker), GoPhish API credentials, Cobalt Strike teamserver credentials (including Listener IP — private IP of teamserver EC2, with EC2 private IP picker), RedWarden IP (beacon reverse proxy), and Azure OpenAI credentials (for website generator); Cloudflare and AWS use multi-account table UI (+ Add Account form, Test, Delete per row)
 - Sidebar organized into collapsible sections: Management (Domains, Email, Containers, AWS, NPM, GoPhish, Cobalt Strike) and Red Team Ops (Setup, Deployments), with Dashboard and Settings as top-level items; sections auto-expand for active page
 - User Management page (`admin_users.html`) — user table with create modal, role badge, plan override, activate/deactivate, delete; enforces plan user limit with upgrade prompt
 - License page (`admin_license.html`) — tier selector, org name field, usage progress bars (users, domains), tier comparison table
@@ -360,6 +390,13 @@ docker compose exec web python init_db.py
 - `app/tasks/dns_tasks.py` - Async DNS record CRUD + zone sync to local DB
 - `app/tasks/container_tasks.py` - Async container start/stop/restart/remove
 - `app/tasks/website_generator_tasks.py` - Async AI website generation task (stoppable via revoke)
+
+### Database Migrations (for existing deployments)
+- `migrate_add_role.py` - Add `role` VARCHAR to users table (replaces `is_admin` bool); sets existing admins to `role='admin'`
+- `migrate_add_license.py` - Create `licenses` table
+- `migrate_add_plan_override.py` - Add `plan_override` column to users
+- `migrate_add_credential_label.py` - Add `label` col to credentials, `credential_label` col to domains
+- `migrate_add_provider.py` - Add `provider` and `credential_label` columns to domains
 
 ## Common Issues & Solutions
 
