@@ -70,7 +70,8 @@ def get_proxy_host(host_id):
 
 def create_proxy_host(domain_names, forward_host, forward_port,
                       forward_scheme='http', ssl_forced=False,
-                      block_exploits=True, allow_websocket_upgrade=False):
+                      block_exploits=True, allow_websocket_upgrade=False,
+                      advanced_config=''):
     payload = {
         'domain_names': domain_names if isinstance(domain_names, list) else [domain_names],
         'forward_host': forward_host,
@@ -81,7 +82,7 @@ def create_proxy_host(domain_names, forward_host, forward_port,
         'allow_websocket_upgrade': allow_websocket_upgrade,
         'access_list_id': '0',
         'meta': {'letsencrypt_agree': False, 'dns_challenge': False},
-        'advanced_config': '',
+        'advanced_config': advanced_config or '',
         'locations': [],
         'certificate_id': 0,
         'http2_support': False,
