@@ -297,6 +297,22 @@ def force_release_domain(domain_id):
 
 
 # ---------------------------------------------------------------------------
+# Domain Readiness Checklist
+# ---------------------------------------------------------------------------
+
+@api_bp.route('/projects/<int:project_id>/domains/<int:domain_id>/readiness', methods=['GET'])
+@login_required
+@project_member_required()
+def domain_readiness(project_id, domain_id):
+    domain = Domain.query.get_or_404(domain_id)
+    if domain.checkout_project_id != project_id:
+        return jsonify({'error': 'Domain is not checked out to this project'}), 404
+    from app.services.readiness_service import check_domain_readiness
+    result = check_domain_readiness(domain)
+    return jsonify(result)
+
+
+# ---------------------------------------------------------------------------
 # Project Resources (tagging non-domain infra)
 # ---------------------------------------------------------------------------
 
