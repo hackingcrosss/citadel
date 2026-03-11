@@ -1,4 +1,5 @@
 import logging
+from concurrent.futures import ThreadPoolExecutor, as_completed, TimeoutError as FuturesTimeoutError
 from flask import request, jsonify
 from flask_login import login_required
 from app.api import api_bp
@@ -13,10 +14,79 @@ _log = logging.getLogger(__name__)
 @login_required
 def cdn_list_distributions():
     try:
+        # Start with locally tracked records
         records = CdnDistribution.query.order_by(CdnDistribution.created_at.desc()).all()
-        return jsonify({'distributions': [r.to_dict() for r in records]})
+        tracked_by_ext_id = {r.external_id: r for r in records if r.external_id}
+        result = [r.to_dict() for r in records]
+
+        # Discover live distributions from each provider in parallel with a timeout
+        # so slow/unconfigured providers never block the response.
+        live_dists = []
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            futures = {
+                pool.submit(cdn_service.list_cf_all_accounts): 'cloudfront',
+                pool.submit(cdn_service.list_afd_all_accounts): 'azure_front_door',
+            }
+            try:
+                for future in as_completed(futures, timeout=15):
+                    try:
+                        live_dists.extend(future.result())
+                    except Exception as exc:
+                        _log.debug("CDN discovery skipped (%s): %s", futures[future], exc)
+            except FuturesTimeoutError:
+                _log.debug("CDN live discovery timed out — returning locally tracked records only")
+
+        for live in live_dists:
+            ext_id = live.get('external_id', '')
+            if ext_id and ext_id not in tracked_by_ext_id:
+                result.append({
+                    'id': None,
+                    'tracked': False,
+                    'provider': live.get('provider'),
+                    'account_label': live.get('account_label', 'default'),
+                    'external_id': ext_id,
+                    'domain': live.get('domain', ''),
+                    'origin_host': live.get('origin_host', ''),
+                    'origin_port': None,
+                    'status': live.get('status', 'unknown'),
+                    'comment': live.get('comment', ''),
+                    'created_at': None,
+                    'updated_at': None,
+                })
+
+        return jsonify({'distributions': result})
     except Exception as e:
         return jsonify({'error': str(e)}), 400
+
+
+@api_bp.route('/cdn/distributions/import', methods=['POST'])
+@login_required
+def cdn_import_distribution():
+    """Import an externally-created distribution into local tracking."""
+    data = request.get_json()
+    if not data:
+        return jsonify({'error': 'No data provided'}), 400
+
+    external_id = data.get('external_id', '').strip()
+    if not external_id:
+        return jsonify({'error': 'external_id is required'}), 400
+
+    if CdnDistribution.query.filter_by(external_id=external_id).first():
+        return jsonify({'error': 'Distribution already tracked'}), 409
+
+    dist = CdnDistribution(
+        provider=data.get('provider', ''),
+        account_label=data.get('account_label', 'default'),
+        external_id=external_id,
+        domain=data.get('domain', ''),
+        origin_host=data.get('origin_host', ''),
+        origin_port=data.get('origin_port') or 443,
+        status=data.get('status', 'deployed'),
+        comment=data.get('comment', ''),
+    )
+    db.session.add(dist)
+    db.session.commit()
+    return jsonify({'distribution': dist.to_dict()}), 201
 
 
 @api_bp.route('/cdn/distributions', methods=['POST'])
@@ -42,33 +112,29 @@ def cdn_create_distribution():
     if provider == 'azure_front_door' and not resource_group:
         return jsonify({'error': 'resource_group is required for Azure Front Door'}), 400
 
-    try:
-        if provider == 'cloudfront':
-            result = cdn_service.create_cloudfront_distribution(
-                origin_host, origin_port, comment, label=account_label
-            )
-        else:
-            result = cdn_service.create_afd_distribution(
-                resource_group, origin_host, origin_port, comment, label=account_label
-            )
+    # Pre-create a placeholder record so the frontend can track progress immediately
+    dist = CdnDistribution(
+        provider=provider,
+        account_label=account_label,
+        external_id=None,
+        domain='',
+        origin_host=origin_host,
+        origin_port=origin_port,
+        status='creating',
+        comment=comment,
+    )
+    db.session.add(dist)
+    db.session.commit()
 
-        dist = CdnDistribution(
-            provider=provider,
-            account_label=account_label,
-            external_id=result['external_id'],
-            domain=result['domain'],
-            origin_host=origin_host,
-            origin_port=origin_port,
-            status=result['status'],
-            comment=comment,
-        )
-        db.session.add(dist)
-        db.session.commit()
-        return jsonify({'distribution': dist.to_dict()}), 201
+    # Dispatch background task and store task_id in external_id for status polling
+    from app.tasks.cdn_tasks import create_cdn_distribution_task
+    task = create_cdn_distribution_task.delay(
+        dist.id, provider, origin_host, origin_port, comment, account_label, resource_group
+    )
+    dist.external_id = f'task:{task.id}'
+    db.session.commit()
 
-    except Exception as e:
-        db.session.rollback()
-        return jsonify({'error': str(e)}), 400
+    return jsonify({'distribution': dist.to_dict(), 'task_id': task.id}), 202
 
 
 @api_bp.route('/cdn/distributions/<int:dist_id>', methods=['GET'])
@@ -81,20 +147,54 @@ def cdn_get_distribution(dist_id):
 @api_bp.route('/cdn/distributions/<int:dist_id>/status', methods=['GET'])
 @login_required
 def cdn_get_distribution_status(dist_id):
-    """Poll live status from the cloud provider and update local DB."""
+    """Poll live status from the cloud provider (or Celery task) and update local DB."""
     dist = CdnDistribution.query.get_or_404(dist_id)
+
+    # Task is still running (or just dispatched)
+    if dist.status == 'creating':
+        ext = dist.external_id or ''
+        if ext.startswith('task:'):
+            from celery.result import AsyncResult
+            ar = AsyncResult(ext[5:])
+            if ar.state == 'SUCCESS':
+                # Task completed but DB update somehow missed — recover now
+                result = ar.result or {}
+                dist.external_id = result.get('external_id', ext)
+                dist.domain = result.get('domain', '')
+                dist.status = result.get('status', 'deploying')
+                db.session.commit()
+                return jsonify({'status': dist.status, 'id': dist_id})
+            if ar.state == 'FAILURE':
+                # Task failed but DB wasn't updated — recover error state
+                dist.status = 'error'
+                dist.external_id = f'error:{str(ar.result)[:400]}'
+                db.session.commit()
+                return jsonify({'status': 'error', 'id': dist_id, 'error': str(ar.result)})
+            return jsonify({'status': 'creating', 'id': dist_id, 'task_state': ar.state})
+        return jsonify({'status': 'creating', 'id': dist_id, 'task_state': 'UNKNOWN'})
+
+    # Task failed — error message stored in external_id
+    if dist.status == 'error':
+        ext = dist.external_id or ''
+        error_msg = ext[6:] if ext.startswith('error:') else 'Unknown error'
+        return jsonify({'status': 'error', 'id': dist_id, 'error': error_msg})
+
+    # Normal case — poll live status from cloud provider
     try:
         if dist.provider == 'cloudfront':
             live = cdn_service.get_cloudfront_distribution(dist.external_id, label=dist.account_label)
             new_status = live['status']
         else:
-            # AFD — check endpoint deployment status
+            # AFD — use provisioning_state (deployment_status is 'NotStarted' on new
+            # endpoints that have had no explicit redeploy, which would wrongly stay
+            # 'deploying' forever).
             parts = (dist.external_id or '').split('/')
             if len(parts) >= 3:
                 rg, profile, endpoint = parts[0], parts[1], parts[2]
                 client, _ = cdn_service._get_afd_client(label=dist.account_label)
                 ep = client.afd_endpoints.get(rg, profile, endpoint)
-                new_status = 'deployed' if str(ep.deployment_status or '').lower() == 'succeeded' else 'deploying'
+                prov = str(ep.provisioning_state or '').lower()
+                new_status = 'deployed' if prov == 'succeeded' else 'deploying'
             else:
                 new_status = dist.status
 
@@ -107,12 +207,65 @@ def cdn_get_distribution_status(dist_id):
         return jsonify({'error': str(e)}), 400
 
 
+@api_bp.route('/cdn/distributions/<int:dist_id>', methods=['PATCH'])
+@login_required
+def cdn_update_distribution(dist_id):
+    """Update origin_host, origin_port and/or comment on a tracked distribution."""
+    dist = CdnDistribution.query.get_or_404(dist_id)
+    if dist.status == 'creating':
+        return jsonify({'error': 'Cannot edit a distribution that is still being created'}), 409
+
+    data = request.get_json() or {}
+    origin_host = data.get('origin_host', '').strip() or dist.origin_host
+    origin_port = int(data.get('origin_port') or dist.origin_port or 443)
+    comment     = data.get('comment', dist.comment or '')
+
+    try:
+        if dist.provider == 'cloudfront':
+            cdn_service.update_cloudfront_origin(
+                dist.external_id, origin_host, origin_port, comment, label=dist.account_label
+            )
+            dist.status = 'deploying'   # CF re-deploys after any config change
+        else:
+            parts = (dist.external_id or '').split('/')
+            if len(parts) >= 2:
+                rg, profile = parts[0], parts[1]
+                cdn_service.update_afd_origin(
+                    rg, profile, origin_host, origin_port, label=dist.account_label
+                )
+
+        dist.origin_host = origin_host
+        dist.origin_port = origin_port
+        dist.comment     = comment
+        db.session.commit()
+        return jsonify({'distribution': dist.to_dict()})
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 400
+
+
 @api_bp.route('/cdn/distributions/<int:dist_id>', methods=['DELETE'])
 @login_required
 def cdn_delete_distribution(dist_id):
     """Teardown: disable (CloudFront only) → delete from provider → remove from DB."""
     dist = CdnDistribution.query.get_or_404(dist_id)
     try:
+        # If the distribution is still being created by a background task, revoke the
+        # task and just remove the DB record. The cloud resource may already have been
+        # partially created; warn the user via the frontend.
+        if dist.status == 'creating':
+            ext = dist.external_id or ''
+            if ext.startswith('task:'):
+                try:
+                    from celery.result import AsyncResult
+                    AsyncResult(ext[5:]).revoke(terminate=True)
+                except Exception as exc:
+                    _log.warning("Could not revoke CDN creation task: %s", exc)
+            db.session.delete(dist)
+            db.session.commit()
+            return jsonify({'deleted': True, 'id': dist_id, 'was_creating': True})
+
         if dist.provider == 'cloudfront':
             # Step 1: disable (required before delete)
             dist.status = 'disabling'
