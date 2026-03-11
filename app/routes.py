@@ -215,6 +215,12 @@ def register_routes(app):
     def azure_dns():
         return render_template('azure_dns.html')
 
+    @app.route('/cdn')
+    @login_required
+    @feature_required('cdn')
+    def cdn():
+        return render_template('cdn.html')
+
     @app.route('/infra-map')
     @login_required
     @feature_required('infra_map')
