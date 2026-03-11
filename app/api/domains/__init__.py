@@ -304,13 +304,14 @@ def list_zones():
         except Exception as e:
             return jsonify({'error': str(e)}), 400
 
-    # Operators / white_team: return only zones for domains checked out to their projects
-    project_ids = get_user_project_ids(current_user)
-    if not project_ids:
+    # Operators / white_team: return only zones for the active project
+    from app.services.project_service import get_active_project
+    active_project = get_active_project(current_user)
+    if active_project is None:
         return jsonify({'zones': [], 'page_info': {'total_count': 0}})
 
     checked_out = Domain.query.filter(
-        Domain.checkout_project_id.in_(project_ids),
+        Domain.checkout_project_id == active_project.id,
         Domain.cloudflare_zone_id.isnot(None),
     ).order_by(Domain.name).all()
 

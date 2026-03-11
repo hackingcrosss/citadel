@@ -2,7 +2,7 @@ from flask import request, jsonify
 from flask_login import login_required, current_user
 from app.api import api_bp
 from app.services import npm_service
-from app.services.project_service import build_project_tag_map, assert_resource_writable
+from app.services.project_service import build_project_tag_map, assert_resource_writable, get_active_project, get_project_domain_names
 
 
 # --- Proxy Hosts ---
@@ -21,6 +21,22 @@ def list_proxy_hosts():
             h['project_id'] = tag['project_id'] if tag else None
             h['project_code'] = tag['project_code'] if tag else None
             h['project_resource_id'] = tag['project_resource_id'] if tag else None
+
+        if not current_user.is_admin:
+            active_project = get_active_project(current_user)
+            if active_project is None:
+                hosts = []
+            else:
+                project_domains = get_project_domain_names(active_project.id)
+                filtered = []
+                for h in hosts:
+                    if h.get('project_id') == active_project.id:
+                        filtered.append(h)
+                    else:
+                        host_domains = h.get('domain_names') or []
+                        if any(dn == d or dn.endswith('.' + d) for dn in host_domains for d in project_domains):
+                            filtered.append(h)
+                hosts = filtered
 
         return jsonify({'hosts': hosts})
     except Exception as e:

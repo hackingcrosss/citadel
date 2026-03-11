@@ -70,6 +70,7 @@
                     <th style="width:100px">Status</th>
                     <th>Comment / Listener</th>
                     <th style="width:90px">Account</th>
+                    <th style="width:100px">Project</th>
                     <th style="width:130px">Created</th>
                     <th style="width:140px">Actions</th>
                 </tr>
@@ -244,6 +245,9 @@
     const IS_VIEWER = {{ 'true' if current_user.role == 'viewer' else 'false' }};
     const IS_WHITE_TEAM = {{ 'true' if active_project_role == 'white_team' else 'false' }};
     const IS_READONLY = IS_VIEWER || IS_WHITE_TEAM;
+    const IS_ADMIN = {{ 'true' if current_user.is_admin else 'false' }};
+    const ACTIVE_PROJECT_ID = {{ active_project.id if active_project else 'null' }};
+    const ACTIVE_PROJECT_CODE = {{ active_project.code | tojson if active_project else 'null' }};
 
     let allDists = [];
     let _statusPollers = {};   // id -> intervalId
@@ -279,7 +283,12 @@
                 allDists = data.distributions || [];
                 updateStats(allDists);
                 if (allDists.length === 0) {
-                    document.getElementById('distEmpty').classList.remove('d-none');
+                    const emptyEl = document.getElementById('distEmpty');
+                    emptyEl.classList.remove('d-none');
+                    const msg = (!IS_ADMIN && ACTIVE_PROJECT_ID === null)
+                        ? 'Select a project to view CDN distributions'
+                        : 'No CDN distributions yet';
+                    emptyEl.querySelector('.text-muted').textContent = msg;
                 } else {
                     renderDistributions(allDists);
                     document.getElementById('distTable').classList.remove('d-none');
@@ -389,6 +398,10 @@
                 ? `<i class="bi bi-clipboard ms-1 text-muted" style="cursor:pointer;font-size:0.75rem" title="Copy" onclick="navigator.clipboard.writeText('${escapeAttr(name)}')"></i>`
                 : '';
 
+            const projBadge = (d.tracked !== false && d.id)
+                ? projectBadge('cdn_dist', String(d.id), d.project_id, d.project_code, d.project_resource_id)
+                : '<span class="text-muted" style="font-size:0.75rem">—</span>';
+
             return `
             <tr ${rowId ? `id="${rowId}"` : ''}>
                 <td>${providerBadge(d.provider)}${untrackedBadge}</td>
@@ -398,6 +411,7 @@
                 <td ${d.id ? `id="dist-status-${d.id}"` : ''}>${statusBadge(d.status)}</td>
                 <td><span class="text-muted small">${escapeHtml(d.comment || '—')}</span></td>
                 <td><span class="badge bg-secondary" style="font-size:0.7rem">${escapeHtml(account)}</span></td>
+                <td>${projBadge}</td>
                 <td><small class="text-muted">${escapeHtml(created)}</small></td>
                 <td>${actions}</td>
             </tr>`;
@@ -408,6 +422,35 @@
         return String(str == null ? '' : str)
             .replace(/&/g, '&amp;').replace(/"/g, '&quot;')
             .replace(/'/g, '&#x27;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+
+    function projectBadge(rType, extId, projId, projCode, projResId) {
+        if (projId) {
+            const canUntag = IS_ADMIN || projId === ACTIVE_PROJECT_ID;
+            return `<span class="badge bg-danger me-1" style="font-size:0.7rem">${escapeHtml(projCode || '')}</span>` +
+                (canUntag && !IS_READONLY ? `<i class="bi bi-x-circle text-muted" style="cursor:pointer;font-size:0.8rem" title="Untag" onclick="untagResource(${projId},${projResId})"></i>` : '');
+        }
+        if (!IS_READONLY && ACTIVE_PROJECT_ID !== null) {
+            return `<i class="bi bi-tag text-muted" style="cursor:pointer;font-size:0.85rem" title="Tag to ${escapeAttr(ACTIVE_PROJECT_CODE || 'active project')}" onclick="tagResource('${escapeAttr(rType)}','${escapeAttr(extId)}')"></i>`;
+        }
+        return '<span class="text-muted" style="font-size:0.75rem">—</span>';
+    }
+
+    async function tagResource(rType, extId) {
+        const res = await fetch('/api/projects/' + ACTIVE_PROJECT_ID + '/resources', {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({resource_type: rType, external_id: extId}),
+        });
+        if (!res.ok) { const d = await res.json(); showToast(d.error || 'Tag failed', 'danger'); return; }
+        loadDistributions();
+    }
+
+    async function untagResource(projId, resId) {
+        const confirmed = await showConfirm('Remove project tag from this distribution?');
+        if (!confirmed) return;
+        const res = await fetch('/api/projects/' + projId + '/resources/' + resId, {method: 'DELETE'});
+        if (!res.ok) { const d = await res.json(); showToast(d.error || 'Untag failed', 'danger'); return; }
+        loadDistributions();
     }
 
     // ─────────────────────────────────────────

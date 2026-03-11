@@ -1,8 +1,9 @@
 from flask import request, jsonify
-from flask_login import login_required
+from flask_login import login_required, current_user
 from app.api import api_bp
 from app.services import gophish_service
 from app.utils.decorators import feature_required
+from app.services.project_service import build_project_tag_map, get_active_project, get_project_domain_names
 
 
 @api_bp.route('/gophish/profiles', methods=['GET'])
@@ -11,6 +12,32 @@ from app.utils.decorators import feature_required
 def list_gophish_profiles():
     try:
         profiles = gophish_service.list_sending_profiles()
+
+        profile_ids = [str(p['id']) for p in profiles if p.get('id') is not None]
+        tag_map = build_project_tag_map('gophish_sender', profile_ids)
+        for p in profiles:
+            tag = tag_map.get(str(p.get('id', '')))
+            p['project_id'] = tag['project_id'] if tag else None
+            p['project_code'] = tag['project_code'] if tag else None
+            p['project_resource_id'] = tag['project_resource_id'] if tag else None
+
+        if not current_user.is_admin:
+            active_project = get_active_project(current_user)
+            if active_project is None:
+                profiles = []
+            else:
+                project_domains = get_project_domain_names(active_project.id)
+                filtered = []
+                for p in profiles:
+                    if p.get('project_id') == active_project.id:
+                        filtered.append(p)
+                    else:
+                        from_addr = p.get('from_address', '')
+                        domain_part = from_addr.split('@')[-1].lower() if '@' in from_addr else ''
+                        if domain_part in project_domains:
+                            filtered.append(p)
+                profiles = filtered
+
         return jsonify({'profiles': profiles})
     except Exception as e:
         return jsonify({'error': str(e)}), 400

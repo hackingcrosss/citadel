@@ -446,6 +446,10 @@
                 populateServicesInstanceSelect();
                 if (allInstances.length === 0) {
                     empty.classList.remove('d-none');
+                    const msg = (!IS_ADMIN && ACTIVE_PROJECT_ID === null)
+                        ? 'Select a project to view instances'
+                        : 'No instances found in this region';
+                    empty.querySelector('.text-muted:last-child').textContent = msg;
                 } else {
                     table.classList.remove('d-none');
                     applyFilters();

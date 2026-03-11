@@ -3,7 +3,7 @@ from flask_login import login_required, current_user
 from app.api import api_bp
 from app.services import cobaltstrike_service
 from app.utils.decorators import feature_required
-from app.services.project_service import build_project_tag_map, assert_resource_writable
+from app.services.project_service import build_project_tag_map, assert_resource_writable, get_active_project, filter_by_active_project, tag_resource, get_project_domain_names
 
 # Valid listener types — these are the exact URL slugs for POST /api/v1/listeners/{type}
 VALID_TYPES = {'http', 'https', 'dns', 'smb', 'tcp', 'foreignHttp', 'foreignHttps', 'externalC2', 'userDefinedC2'}
@@ -37,6 +37,37 @@ def list_cs_listeners():
             listener['project_id'] = tag['project_id'] if tag else None
             listener['project_code'] = tag['project_code'] if tag else None
             listener['project_resource_id'] = tag['project_resource_id'] if tag else None
+
+        if not current_user.is_admin:
+            active_project = get_active_project(current_user)
+            if active_project is None:
+                listeners = []
+            else:
+                from app.models.cdn_distribution import CdnDistribution
+                from app.services.project_service import get_project_resource_external_ids
+                project_domains = get_project_domain_names(active_project.id)
+                # Collect CDN endpoint domains (*.cloudfront.net / *.azurefd.net) for
+                # CDN distributions associated with this project
+                cdn_dist_ids = get_project_resource_external_ids(active_project.id, 'cdn_dist')
+                project_cdn_domains = {
+                    cdn.domain for cdn in CdnDistribution.query.filter(
+                        CdnDistribution.domain.isnot(None),
+                        CdnDistribution.domain != '',
+                    ).all()
+                    if str(cdn.id) in cdn_dist_ids or cdn.origin_host in project_domains
+                }
+                all_project_hosts = project_domains | project_cdn_domains
+                filtered = []
+                for l in listeners:
+                    if l.get('project_id') == active_project.id:
+                        filtered.append(l)
+                    else:
+                        hosts = l.get('host', [])
+                        if isinstance(hosts, str):
+                            hosts = [hosts]
+                        if any(h in all_project_hosts for h in hosts):
+                            filtered.append(l)
+                listeners = filtered
 
         return jsonify({'listeners': listeners})
     except Exception as e:
@@ -78,6 +109,15 @@ def create_cs_listener():
 
     try:
         result = cobaltstrike_service.create_listener(listener_type, data)
+        # Auto-tag to active project if one is set
+        listener_name = result.get('name') or data.get('name', '')
+        if listener_name:
+            active_project = get_active_project(current_user)
+            if active_project:
+                try:
+                    tag_resource(active_project.id, 'cs_listener', listener_name, listener_name, current_user.id)
+                except Exception:
+                    pass  # tagging failure must never block the create response
         return jsonify({'listener': result}), 201
     except Exception as e:
         return jsonify({'error': str(e)}), 400

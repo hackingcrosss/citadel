@@ -306,7 +306,10 @@
         if (containers === undefined) containers = allContainers;
         var tbody = document.getElementById('container-table');
         if (containers.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted py-3">No containers found</td></tr>';
+            var emptyMsg = (!IS_ADMIN && ACTIVE_PROJECT_ID === null)
+                ? 'Select a project to view containers'
+                : 'No containers found';
+            tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted py-3">' + emptyMsg + '</td></tr>';
             return;
         }
 

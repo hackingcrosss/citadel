@@ -1,7 +1,8 @@
 from flask import request, jsonify
-from flask_login import login_required
+from flask_login import login_required, current_user
 from app.api import api_bp
 from app.services import email_service
+from app.services.project_service import build_project_tag_map, get_active_project, get_project_domain_names
 
 
 # --- Domains ---
@@ -12,6 +13,23 @@ def list_mailgun_domains():
     try:
         region = request.args.get('region')  # 'us', 'eu', or None for both
         domains = email_service.list_domains(region=region)
+
+        domain_names = [d['name'] for d in domains if d.get('name')]
+        tag_map = build_project_tag_map('mailgun_domain', domain_names)
+        for d in domains:
+            tag = tag_map.get(d.get('name', ''))
+            d['project_id'] = tag['project_id'] if tag else None
+            d['project_code'] = tag['project_code'] if tag else None
+            d['project_resource_id'] = tag['project_resource_id'] if tag else None
+
+        if not current_user.is_admin:
+            active_project = get_active_project(current_user)
+            if active_project is None:
+                domains = []
+            else:
+                project_domains = get_project_domain_names(active_project.id)
+                domains = [d for d in domains if d.get('name', '') in project_domains]
+
         return jsonify({'domains': domains})
     except Exception as e:
         return jsonify({'error': str(e)}), 400
