@@ -138,15 +138,29 @@ def list_vms(resource_group=None, label='default'):
         if resource_group
         else list(compute.virtual_machines.list_all())
     )
-    results = []
-    for vm in raw_vms:
+    if not raw_vms:
+        return []
+
+    # Fetch instanceView + resolve IPs for all VMs in parallel
+    def _enrich(vm):
         rg = _rg_from_azure_id(vm.id)
         try:
             vm_iv = compute.virtual_machines.get(rg, vm.name, expand='instanceView')
         except Exception:
             vm_iv = vm
         pub, priv = _resolve_ips(vm_iv, nc)
-        results.append(_format_vm(vm_iv, pub, priv))
+        return _format_vm(vm_iv, pub, priv)
+
+    results = []
+    with ThreadPoolExecutor(max_workers=min(len(raw_vms), 10)) as pool:
+        futures = {pool.submit(_enrich, vm): vm for vm in raw_vms}
+        for future in as_completed(futures):
+            try:
+                results.append(future.result(timeout=30))
+            except Exception as exc:
+                vm = futures[future]
+                _log.warning("Failed to enrich VM '%s': %s", vm.name, exc)
+                results.append(_format_vm(vm))
     return results
 
 
@@ -181,12 +195,15 @@ def list_vms_all_accounts():
 
     with ThreadPoolExecutor(max_workers=min(len(labels), 8)) as pool:
         futures = {pool.submit(_fetch_in_context, lbl): lbl for lbl in labels}
-        for future in as_completed(futures):
-            lbl = futures[future]
-            try:
-                all_vms.extend(future.result())
-            except Exception as exc:
-                _log.warning("Azure VM fetch failed for account '%s': %s", lbl, exc)
+        try:
+            for future in as_completed(futures, timeout=60):
+                lbl = futures[future]
+                try:
+                    all_vms.extend(future.result())
+                except Exception as exc:
+                    _log.warning("Azure VM fetch failed for account '%s': %s", lbl, exc)
+        except TimeoutError:
+            _log.warning("Azure VM fetch timed out waiting for all accounts")
 
     _vm_account_cache.update({v['id']: v['account_label'] for v in all_vms})
     return all_vms

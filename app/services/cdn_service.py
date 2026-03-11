@@ -1,4 +1,6 @@
 import logging
+import re
+import secrets
 import time
 from app.services.credential_service import get_credential, get_account_labels
 
@@ -141,6 +143,32 @@ def disable_cloudfront_distribution(dist_id, label='default'):
     return resp2['Distribution']['Status'], resp2['ETag']
 
 
+def update_cloudfront_origin(dist_id, origin_host, origin_port, comment, label='default'):
+    """Update the origin host/port on an existing CloudFront distribution."""
+    client = _get_cf_client(label)
+    resp = client.get_distribution_config(Id=dist_id)
+    etag = resp['ETag']
+    config = resp['DistributionConfig']
+
+    new_origin_id = f"infrared-{origin_host.replace('.', '-').replace(':', '-')}"
+    protocol = 'https-only' if origin_port == 443 else 'http-only'
+
+    origins = config.get('Origins', {}).get('Items', [])
+    if origins:
+        origins[0]['Id'] = new_origin_id
+        origins[0]['DomainName'] = origin_host
+        origins[0]['CustomOriginConfig']['HTTPSPort'] = origin_port
+        origins[0]['CustomOriginConfig']['OriginProtocolPolicy'] = protocol
+        config['Origins']['Items'] = origins
+        config['Origins']['Quantity'] = len(origins)
+
+    config['DefaultCacheBehavior']['TargetOriginId'] = new_origin_id
+    if comment is not None:
+        config['Comment'] = comment
+
+    client.update_distribution(Id=dist_id, DistributionConfig=config, IfMatch=etag)
+
+
 def delete_cloudfront_distribution(dist_id, etag, label='default'):
     """Delete a CloudFront distribution. Must be disabled and Deployed first."""
     client = _get_cf_client(label)
@@ -152,7 +180,11 @@ def delete_cloudfront_distribution(dist_id, etag, label='default'):
 # Azure Front Door helpers
 # ---------------------------------------------------------------------------
 
-_AFD_PROFILE_NAME = 'infrared-cdn'
+def _afd_profile_name():
+    """Generate a unique AFD profile name: infrared-cdn-<8 random hex chars>.
+    Each distribution gets its own profile so a failed creation never blocks the next one.
+    """
+    return f"infrared-cdn-{secrets.token_hex(4)}"
 
 
 def _get_afd_client(label='default'):
@@ -184,13 +216,25 @@ def list_afd_distributions(resource_group, label='default'):
         except Exception:
             continue
         for ep in endpoints:
-            results.append({
-                'external_id': f"{resource_group}/{profile_name}/{ep.name}",
-                'domain': ep.host_name or '',
-                'status': 'deployed' if str(ep.deployment_status or '').lower() == 'succeeded' else 'deploying',
-                'account_label': label,
-                'provider': 'azure_front_door',
-            })
+                # Resolve first origin host for display (best-effort)
+                origin_host = ''
+                try:
+                    ogs = list(client.afd_origin_groups.list_by_profile(resource_group, profile_name))
+                    if ogs:
+                        origins = list(client.afd_origins.list_by_origin_group(
+                            resource_group, profile_name, ogs[0].name))
+                        if origins:
+                            origin_host = origins[0].host_name or ''
+                except Exception:
+                    pass
+                results.append({
+                    'external_id': f"{resource_group}/{profile_name}/{ep.name}",
+                    'domain': ep.host_name or '',
+                    'status': 'deployed' if str(ep.deployment_status or '').lower() == 'succeeded' else 'deploying',
+                    'origin_host': origin_host,
+                    'account_label': label,
+                    'provider': 'azure_front_door',
+                })
     return results
 
 
@@ -212,41 +256,80 @@ def list_afd_all_accounts(resource_group=None):
     return results
 
 
+def _afd_wait_succeeded(poll_fn, resource_desc, timeout=300, interval=10):
+    """Poll poll_fn() until provisioning_state == Succeeded or timeout."""
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        try:
+            obj = poll_fn()
+            state = str(getattr(obj, 'provisioning_state', '') or '').lower()
+            _log.debug("%s provisioning_state=%s", resource_desc, state)
+            if state == 'succeeded':
+                return obj
+            if state == 'failed':
+                raise RuntimeError(f"{resource_desc} provisioning failed")
+        except RuntimeError:
+            raise
+        except Exception as exc:
+            _log.debug("%s poll error (retrying): %s", resource_desc, exc)
+        time.sleep(interval)
+    raise TimeoutError(f"{resource_desc} did not reach Succeeded within {timeout}s")
+
+
 def create_afd_distribution(resource_group, origin_host, origin_port, comment, label='default'):
     from azure.mgmt.cdn.models import (
         Profile, Sku,
         AFDEndpoint,
         AFDOriginGroup, LoadBalancingSettingsParameters, HealthProbeParameters,
         AFDOrigin,
-        Route, DeploymentStatus,
+        Route,
     )
-    client, _ = _get_afd_client(label)
-    safe_name = origin_host.replace('.', '-').replace(':', '-')
-    endpoint_name = f"ir-{safe_name[:40]}-{int(time.time()) % 10000}"
-    origin_group_name = f"og-{safe_name[:40]}"
-    origin_name = f"origin-{safe_name[:40]}"
-    route_name = 'default-route'
+    client, subscription_id = _get_afd_client(label)
 
-    # 1. Ensure profile exists
-    try:
-        client.profiles.get(resource_group, _AFD_PROFILE_NAME)
-    except Exception:
-        poller = client.profiles.begin_create(
-            resource_group, _AFD_PROFILE_NAME,
-            Profile(location='global', sku=Sku(name='Standard_AzureFrontDoor')),
-        )
-        poller.wait()
+    # Each distribution gets its own uniquely named profile so a failed/orphaned
+    # creation never blocks future ones.
+    profile_name = _afd_profile_name()
 
-    # 2. Create endpoint
-    ep_poller = client.afd_endpoints.begin_create(
-        resource_group, _AFD_PROFILE_NAME, endpoint_name,
-        AFDEndpoint(location='global'),
+    # AFD resource names: lowercase alphanumeric + hyphens only, max 63 chars.
+    # Endpoint names are globally unique across all Azure tenants — add a random
+    # suffix so two distributions pointing to the same origin never collide.
+    safe = re.sub(r'[^a-z0-9]', '-', origin_host.lower())[:20].strip('-')
+    rand = secrets.token_hex(4)
+    endpoint_name     = f"ep-{safe}-{rand}"[:63].strip('-')
+    origin_group_name = f"og-{safe}"[:63].strip('-')
+    origin_name       = f"origin-{safe}"[:63].strip('-')
+    route_name        = 'default-route'
+
+    # 1. Create profile and wait for Succeeded
+    _log.info("Creating AFD profile '%s'...", profile_name)
+    client.profiles.begin_create(
+        resource_group, profile_name,
+        Profile(location='global', sku=Sku(name='Standard_AzureFrontDoor')),
+    ).wait()
+    _afd_wait_succeeded(
+        lambda: client.profiles.get(resource_group, profile_name),
+        f"profile/{profile_name}",
     )
-    ep = ep_poller.result()
 
-    # 3. Create origin group
-    og_poller = client.afd_origin_groups.begin_create(
-        resource_group, _AFD_PROFILE_NAME, origin_group_name,
+    # 2. Create endpoint and wait for Succeeded
+    _log.info("Creating AFD endpoint '%s'...", endpoint_name)
+    client.afd_endpoints.begin_create(
+        resource_group, profile_name, endpoint_name,
+        AFDEndpoint(location='global', enabled_state='Enabled'),
+    ).wait()
+    ep = _afd_wait_succeeded(
+        lambda: client.afd_endpoints.get(resource_group, profile_name, endpoint_name),
+        f"endpoint/{endpoint_name}",
+    )
+
+    # 3. Create origin group and wait for Succeeded.
+    # Disable active health probing (NotSet) — the origin is a C2 server that may
+    # not expose a probe-friendly endpoint, and a failing HTTP probe to port 80
+    # would cause AFD to mark the origin unhealthy and return error pages to beacons.
+    # Passive failure detection from real traffic is sufficient for this use case.
+    _log.info("Creating AFD origin group '%s'...", origin_group_name)
+    client.afd_origin_groups.begin_create(
+        resource_group, profile_name, origin_group_name,
         AFDOriginGroup(
             load_balancing_settings=LoadBalancingSettingsParameters(
                 sample_size=4,
@@ -255,17 +338,21 @@ def create_afd_distribution(resource_group, origin_host, origin_port, comment, l
             ),
             health_probe_settings=HealthProbeParameters(
                 probe_path='/',
-                probe_protocol='Https',
+                probe_protocol='NotSet',
                 probe_interval_in_seconds=100,
             ),
         ),
+    ).wait()
+    _afd_wait_succeeded(
+        lambda: client.afd_origin_groups.get(resource_group, profile_name, origin_group_name),
+        f"origin-group/{origin_group_name}",
     )
-    og_poller.wait()
 
-    # 4. Create origin
-    origin_protocol = 'Https' if origin_port == 443 else 'Http'
-    o_poller = client.afd_origins.begin_create(
-        resource_group, _AFD_PROFILE_NAME, origin_group_name, origin_name,
+    # 4. Create origin and wait for Succeeded.
+    # Route creation fails with BadRequest if the origin group has no Succeeded origins.
+    _log.info("Creating AFD origin '%s' → %s:%s", origin_name, origin_host, origin_port)
+    client.afd_origins.begin_create(
+        resource_group, profile_name, origin_group_name, origin_name,
         AFDOrigin(
             host_name=origin_host,
             http_port=80,
@@ -274,29 +361,74 @@ def create_afd_distribution(resource_group, origin_host, origin_port, comment, l
             priority=1,
             weight=1000,
             enabled_state='Enabled',
+            # Allow self-signed / custom TLS certs on the C2 server
+            enforce_certificate_name_check=False,
         ),
+    ).wait()
+    _afd_wait_succeeded(
+        lambda: client.afd_origins.get(resource_group, profile_name, origin_group_name, origin_name),
+        f"origin/{origin_name}",
     )
-    o_poller.wait()
 
-    # 5. Create route
-    r_poller = client.routes.begin_create(
-        resource_group, _AFD_PROFILE_NAME, endpoint_name, route_name,
+    # 5. Create route.
+    # link_to_default_domain='Enabled' makes the *.azurefd.net hostname work without a
+    # custom domain — any external DNS (Cloudflare, Route 53, etc.) can CNAME to it.
+    origin_group_id = (
+        f"/subscriptions/{subscription_id}/resourceGroups/{resource_group}"
+        f"/providers/Microsoft.Cdn/profiles/{profile_name}"
+        f"/originGroups/{origin_group_name}"
+    )
+    forwarding_protocol = 'HttpsOnly' if origin_port == 443 else 'MatchRequest'
+    _log.info("Creating AFD route '%s'...", route_name)
+    client.routes.begin_create(
+        resource_group, profile_name, endpoint_name, route_name,
         Route(
-            origin_group={'id': f'/subscriptions/placeholder/resourceGroups/{resource_group}/providers/Microsoft.Cdn/profiles/{_AFD_PROFILE_NAME}/originGroups/{origin_group_name}'},
+            origin_group={'id': origin_group_id},
             supported_protocols=['Http', 'Https'],
             patterns_to_match=['/*'],
-            forwarding_protocol=f'{origin_protocol}Only',
-            https_redirect='Enabled',
+            forwarding_protocol=forwarding_protocol,
+            https_redirect='Disabled',
+            link_to_default_domain='Enabled',
             enabled_state='Enabled',
         ),
+    ).wait()
+    _afd_wait_succeeded(
+        lambda: client.routes.get(resource_group, profile_name, endpoint_name, route_name),
+        f"route/{route_name}",
     )
-    r_poller.wait()
 
     return {
-        'external_id': f"{resource_group}/{_AFD_PROFILE_NAME}/{endpoint_name}",
+        'external_id': f"{resource_group}/{profile_name}/{endpoint_name}",
         'domain': ep.host_name or '',
         'status': 'deploying',
     }
+
+
+def update_afd_origin(resource_group, profile_name, origin_host, origin_port, label='default'):
+    """Update the origin host/port on an existing AFD profile (first origin found)."""
+    from azure.mgmt.cdn.models import AFDOriginUpdateParameters
+    client, _ = _get_afd_client(label)
+
+    ogs = list(client.afd_origin_groups.list_by_profile(resource_group, profile_name))
+    if not ogs:
+        raise ValueError("No origin groups found in AFD profile")
+    og_name = ogs[0].name
+
+    origins = list(client.afd_origins.list_by_origin_group(resource_group, profile_name, og_name))
+    if not origins:
+        raise ValueError("No origins found in AFD origin group")
+    origin_name = origins[0].name
+
+    client.afd_origins.begin_update(
+        resource_group, profile_name, og_name, origin_name,
+        AFDOriginUpdateParameters(
+            host_name=origin_host,
+            http_port=80,
+            https_port=origin_port,
+            origin_host_header=origin_host,
+            enforce_certificate_name_check=False,
+        ),
+    ).wait()
 
 
 def delete_afd_distribution(resource_group, profile_name, endpoint_name, label='default'):
