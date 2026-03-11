@@ -1,0 +1,690 @@
+{% extends "base.html" %}
+
+{% block title %}Azure VMs - InfraRed{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1 class="h3 mb-0">Azure Virtual Machines</h1>
+    <div class="d-flex gap-2 align-items-center">
+        <button class="btn btn-sm btn-outline-secondary" onclick="loadVMs()">
+            <i class="bi bi-arrow-clockwise"></i> Refresh
+        </button>
+    </div>
+</div>
+
+<!-- Stats Row -->
+<div class="row mb-4">
+    <div class="col-md-3">
+        <div class="stat-card">
+            <div class="label">Total VMs</div>
+            <h3 id="statTotal">-</h3>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="stat-card">
+            <div class="label">Running</div>
+            <h3 id="statRunning" class="text-success">-</h3>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="stat-card">
+            <div class="label">Stopped</div>
+            <h3 id="statStopped" class="text-danger">-</h3>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="stat-card">
+            <div class="label">Other</div>
+            <h3 id="statOther" class="text-warning">-</h3>
+        </div>
+    </div>
+</div>
+
+<!-- Filters -->
+<div class="card-custom mb-3">
+    <div class="card-body py-2">
+        <div class="row g-2 align-items-center">
+            <div class="col-auto">
+                <label class="form-label mb-0 small fw-bold">Filter:</label>
+            </div>
+            <div class="col-md-2">
+                <select class="form-select form-select-sm" id="filter-status" onchange="applyFilters()">
+                    <option value="">All statuses</option>
+                    <option value="running">Running</option>
+                    <option value="stopped">Stopped</option>
+                    <option value="stopping">Stopping</option>
+                    <option value="pending">Pending</option>
+                    <option value="unknown">Unknown</option>
+                </select>
+            </div>
+            <div class="col-md-3">
+                <input type="text" class="form-control form-control-sm" id="filter-name" placeholder="Search by name or RG..." oninput="applyFilters()">
+            </div>
+            <div class="col-md-2">
+                <select class="form-select form-select-sm" id="filter-tag" onchange="applyFilters()">
+                    <option value="">All tags</option>
+                </select>
+            </div>
+            <div class="col-auto">
+                <small class="text-muted" id="filter-count"></small>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- VMs Table -->
+<div class="card-custom mb-4">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <span><i class="bi bi-microsoft"></i> Virtual Machines</span>
+        {% if current_user.role != 'viewer' and active_project_role != 'white_team' %}
+        <div>
+            <button class="btn btn-sm btn-outline-success" onclick="bulkAction('start')" id="btnBulkStart" disabled>
+                <i class="bi bi-play-fill"></i> Start
+            </button>
+            <button class="btn btn-sm btn-outline-warning" onclick="bulkAction('stop')" id="btnBulkStop" disabled>
+                <i class="bi bi-stop-fill"></i> Stop
+            </button>
+            <button class="btn btn-sm btn-outline-info" onclick="bulkAction('restart')" id="btnBulkRestart" disabled>
+                <i class="bi bi-arrow-repeat"></i> Restart
+            </button>
+        </div>
+        {% endif %}
+    </div>
+    <div class="card-body p-0">
+        <div id="vmsLoading" class="text-center py-4">
+            <div class="spinner-border text-secondary" role="status"></div>
+            <div class="text-muted mt-2">Loading virtual machines...</div>
+        </div>
+        <div id="vmsEmpty" class="text-center py-4 d-none">
+            <i class="bi bi-microsoft text-muted" style="font-size: 2rem;"></i>
+            <div class="text-muted mt-2">No virtual machines found</div>
+        </div>
+        <table class="table table-hover mb-0 d-none" id="vmsTable">
+            <thead class="table-light">
+                <tr>
+                    <th style="width: 30px;"><input type="checkbox" id="selectAll" onchange="toggleSelectAll()"></th>
+                    <th>Account</th>
+                    <th>Name</th>
+                    <th>Resource Group</th>
+                    <th>Location</th>
+                    <th>Size</th>
+                    <th>State</th>
+                    <th>Public IP</th>
+                    <th>Private IP</th>
+                    <th>Tags</th>
+                    <th>Project</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody id="vmsBody"></tbody>
+        </table>
+    </div>
+</div>
+
+<!-- VM Detail Modal -->
+<div class="modal fade" id="detailModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">VM Details</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="detailBody">
+                <div class="text-center py-3">
+                    <div class="spinner-border text-secondary" role="status"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- SSH Config Modal -->
+<div class="modal fade" id="sshConfigModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-key"></i> SSH Configuration</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="sshConfigVmId">
+                <input type="hidden" id="sshConfigRg">
+                <input type="hidden" id="sshConfigVmName">
+                <div class="mb-3">
+                    <label class="form-label fw-bold">VM</label>
+                    <div id="sshConfigVmDisplay" class="text-muted"></div>
+                </div>
+                <div class="mb-3">
+                    <label for="sshUsername" class="form-label fw-bold">SSH Username</label>
+                    <input type="text" class="form-control" id="sshUsername" value="azureuser" placeholder="azureuser">
+                </div>
+                <div class="mb-3">
+                    <label for="sshKeyLabel" class="form-label fw-bold">Key Label <small class="text-muted">(optional)</small></label>
+                    <input type="text" class="form-control" id="sshKeyLabel" placeholder="e.g. my-key">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-bold">Connect Using</label>
+                    <div>
+                        <div class="form-check form-check-inline">
+                            <input class="form-check-input" type="radio" name="sshIpPref" id="sshIpPublic" value="public" checked>
+                            <label class="form-check-label" for="sshIpPublic">Public IP</label>
+                        </div>
+                        <div class="form-check form-check-inline">
+                            <input class="form-check-input" type="radio" name="sshIpPref" id="sshIpPrivate" value="private">
+                            <label class="form-check-label" for="sshIpPrivate">Private IP</label>
+                        </div>
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <label for="sshPrivateKey" class="form-label fw-bold">Private Key (PEM)</label>
+                    <div id="sshKeyConfigured" class="d-none mb-2">
+                        <span class="badge bg-success"><i class="bi bi-check-circle"></i> Key configured</span>
+                        <button type="button" class="btn btn-sm btn-outline-secondary ms-2" onclick="document.getElementById('sshKeyConfigured').classList.add('d-none'); document.getElementById('sshPrivateKey').value = '';">Replace Key</button>
+                    </div>
+                    <div class="mb-2">
+                        <input type="file" class="form-control form-control-sm" id="sshKeyFile" accept=".pem,.key,.rsa,.txt" onchange="loadKeyFile(this)">
+                        <small class="text-muted">Upload a .pem / .key / .rsa file or paste below</small>
+                    </div>
+                    <textarea class="form-control font-monospace" id="sshPrivateKey" rows="8" placeholder="-----BEGIN RSA PRIVATE KEY-----&#10;...&#10;-----END RSA PRIVATE KEY-----" style="font-size: 0.8em;"></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-danger" id="sshDeleteBtn" onclick="deleteSSHConfig()" style="display:none;">
+                    <i class="bi bi-trash"></i> Delete
+                </button>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" onclick="saveSSHConfig()">
+                    <i class="bi bi-save"></i> Save
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Delete Confirm Modal -->
+<div class="modal fade" id="deleteModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-danger text-white">
+                <h5 class="modal-title"><i class="bi bi-exclamation-triangle"></i> Confirm Delete</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p>Are you sure you want to <strong>delete</strong> this VM? This action <strong>cannot be undone</strong>.</p>
+                <p class="mb-0"><strong id="deleteTarget"></strong></p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-danger" id="confirmDeleteBtn">Delete VM</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    const IS_VIEWER = {{ 'true' if current_user.role == 'viewer' else 'false' }};
+    const IS_WHITE_TEAM = {{ 'true' if active_project_role == 'white_team' else 'false' }};
+    const IS_READONLY = IS_VIEWER || IS_WHITE_TEAM;
+    const IS_ADMIN = {{ 'true' if current_user.is_admin else 'false' }};
+    const ACTIVE_PROJECT_ID = {{ active_project.id if active_project else 'null' }};
+    const ACTIVE_PROJECT_CODE = {{ active_project.code | tojson if active_project else 'null' }};
+
+    let allVMs = [];
+    let allDistinctTags = [];
+
+    document.addEventListener('DOMContentLoaded', loadVMs);
+
+    function escapeHtml(str) {
+        var div = document.createElement('div');
+        div.appendChild(document.createTextNode(str == null ? '' : String(str)));
+        return div.innerHTML;
+    }
+
+    function escapeAttr(str) {
+        return String(str == null ? '' : str)
+            .replace(/&/g, '&amp;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#x27;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;');
+    }
+
+    function projectBadge(rType, extId, projId, projCode, projResId) {
+        if (projId) {
+            const canUntag = IS_ADMIN || projId === ACTIVE_PROJECT_ID;
+            return `<span class="badge bg-danger me-1" style="font-size:0.7rem">${escapeHtml(projCode || '')}</span>` +
+                (canUntag && !IS_READONLY ? `<i class="bi bi-x-circle text-muted" style="cursor:pointer;font-size:0.8rem" title="Untag" onclick="untagResource(${projId},${projResId})"></i>` : '');
+        }
+        if (!IS_READONLY && ACTIVE_PROJECT_ID !== null) {
+            return `<i class="bi bi-tag text-muted" style="cursor:pointer;font-size:0.85rem" title="Tag to ${escapeAttr(ACTIVE_PROJECT_CODE || 'active project')}" onclick="tagResource('${escapeAttr(rType)}','${escapeAttr(extId)}')"></i>`;
+        }
+        return '<span class="text-muted" style="font-size:0.75rem">—</span>';
+    }
+
+    async function tagResource(rType, extId) {
+        const res = await fetch('/api/projects/' + ACTIVE_PROJECT_ID + '/resources', {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({resource_type: rType, external_id: extId}),
+        });
+        if (!res.ok) { const d = await res.json(); showToast(d.error || 'Tag failed', 'danger'); return; }
+        loadVMs();
+    }
+
+    async function untagResource(projId, resId) {
+        const confirmed = await showConfirm('Remove project tag from this VM?');
+        if (!confirmed) return;
+        const res = await fetch('/api/projects/' + projId + '/resources/' + resId, {method: 'DELETE'});
+        if (!res.ok) { const d = await res.json(); showToast(d.error || 'Untag failed', 'danger'); return; }
+        loadVMs();
+    }
+
+    // ─────────────────────────────────────────
+    // Load & render
+    // ─────────────────────────────────────────
+
+    function loadVMs() {
+        const loading = document.getElementById('vmsLoading');
+        const empty = document.getElementById('vmsEmpty');
+        const table = document.getElementById('vmsTable');
+
+        loading.classList.remove('d-none');
+        empty.classList.add('d-none');
+        table.classList.add('d-none');
+
+        fetch('/api/azure/vms')
+            .then(r => r.json())
+            .then(data => {
+                loading.classList.add('d-none');
+                if (data.error) {
+                    empty.classList.remove('d-none');
+                    empty.querySelector('.text-muted').textContent = data.error;
+                    updateStats([]);
+                    allVMs = [];
+                    return;
+                }
+                allVMs = data.vms || [];
+                updateStats(allVMs);
+                refreshTagFilter();
+                if (allVMs.length === 0) {
+                    empty.classList.remove('d-none');
+                } else {
+                    table.classList.remove('d-none');
+                    applyFilters();
+                }
+            })
+            .catch(err => {
+                loading.classList.add('d-none');
+                empty.classList.remove('d-none');
+                empty.querySelector('.text-muted').textContent = 'Error: ' + err;
+                updateStats([]);
+                allVMs = [];
+            });
+    }
+
+    function updateStats(vms) {
+        document.getElementById('statTotal').textContent = vms.length;
+        document.getElementById('statRunning').textContent = vms.filter(v => v.state === 'running').length;
+        document.getElementById('statStopped').textContent = vms.filter(v => v.state === 'stopped').length;
+        document.getElementById('statOther').textContent = vms.filter(v => !['running', 'stopped'].includes(v.state)).length;
+    }
+
+    function refreshTagFilter() {
+        var tagSet = {};
+        allVMs.forEach(function(vm) {
+            (vm.local_tags || []).forEach(function(t) { tagSet[t] = true; });
+        });
+        allDistinctTags = Object.keys(tagSet).sort();
+        var select = document.getElementById('filter-tag');
+        var current = select.value;
+        select.innerHTML = '<option value="">All tags</option>';
+        allDistinctTags.forEach(function(t) {
+            var opt = document.createElement('option');
+            opt.value = t; opt.textContent = t;
+            select.appendChild(opt);
+        });
+        if (current) select.value = current;
+    }
+
+    function applyFilters() {
+        const status = document.getElementById('filter-status').value;
+        const name = document.getElementById('filter-name').value.toLowerCase();
+        const tag = document.getElementById('filter-tag').value;
+
+        const filtered = allVMs.filter(vm => {
+            if (status && vm.state !== status) return false;
+            if (name) {
+                const match = (vm.vm_name || '').toLowerCase().includes(name) ||
+                              (vm.resource_group || '').toLowerCase().includes(name);
+                if (!match) return false;
+            }
+            if (tag && !(vm.local_tags || []).includes(tag)) return false;
+            return true;
+        });
+
+        renderVMs(filtered);
+        const countEl = document.getElementById('filter-count');
+        countEl.textContent = (status || name || tag) ? `Showing ${filtered.length} of ${allVMs.length}` : '';
+    }
+
+    function stateBadge(state) {
+        const map = {
+            'running':   'badge-running',
+            'stopped':   'badge-stopped',
+            'stopping':  'badge-pending',
+            'pending':   'badge-pending',
+            'unknown':   'badge-pending',
+        };
+        return `<span class="badge-status ${map[state] || 'badge-pending'}">${escapeHtml(state)}</span>`;
+    }
+
+    function renderVMs(vms) {
+        const tbody = document.getElementById('vmsBody');
+        tbody.innerHTML = vms.map(vm => {
+            const rg = escapeAttr(vm.resource_group);
+            const name = escapeAttr(vm.vm_name);
+            const vmId = escapeAttr(vm.id);
+            const accountLabel = vm.account_label || 'default';
+            const accountBadge = `<span class="badge bg-info text-dark" style="font-size:0.7rem" title="${escapeHtml(accountLabel)}">${escapeHtml(accountLabel !== 'default' ? accountLabel : 'Azure')}</span>`;
+            const sshBtnClass = vm.ssh_configured ? 'btn-outline-success' : 'btn-outline-secondary';
+            const pubIp = vm.public_ip ? `<code>${escapeHtml(vm.public_ip)}</code>` : '<span class="text-muted">—</span>';
+            const privIp = vm.private_ip ? `<code>${escapeHtml(vm.private_ip)}</code>` : '<span class="text-muted">—</span>';
+
+            return `
+            <tr>
+                <td><input type="checkbox" class="vm-check" data-rg="${rg}" data-name="${name}" value="${vmId}" onchange="updateBulkButtons()"></td>
+                <td>${accountBadge}</td>
+                <td><strong><span style="cursor:pointer" onclick="showDetail('${rg}','${name}')">${escapeHtml(vm.vm_name)}</span></strong></td>
+                <td><small class="text-muted">${escapeHtml(vm.resource_group)}</small></td>
+                <td><small>${escapeHtml(vm.location)}</small></td>
+                <td><small>${escapeHtml(vm.size)}</small></td>
+                <td>${stateBadge(vm.state)}</td>
+                <td>${pubIp}</td>
+                <td>${privIp}</td>
+                <td>${renderTags(vm)}</td>
+                <td>${projectBadge('azure', vm.id, vm.project_id, vm.project_code, vm.project_resource_id)}</td>
+                <td>
+                    <div class="btn-group btn-group-sm">
+                        ${!IS_READONLY ? `<button class="btn btn-sm ${sshBtnClass}" title="SSH Config" onclick="openSSHConfig('${rg}','${name}','${escapeAttr(vm.vm_name)}')"><i class="bi bi-key"></i></button>` : ''}
+                        ${!IS_READONLY && vm.state === 'stopped' ? `<button class="btn btn-outline-success btn-sm" title="Start" onclick="vmAction('start','${rg}','${name}')"><i class="bi bi-play-fill"></i></button>` : ''}
+                        ${!IS_READONLY && vm.state === 'running' ? `<button class="btn btn-outline-warning btn-sm" title="Stop" onclick="vmAction('stop','${rg}','${name}')"><i class="bi bi-stop-fill"></i></button>` : ''}
+                        ${!IS_READONLY && vm.state === 'running' ? `<button class="btn btn-outline-info btn-sm" title="Restart" onclick="vmAction('restart','${rg}','${name}')"><i class="bi bi-arrow-repeat"></i></button>` : ''}
+                        ${!IS_READONLY ? `<button class="btn btn-outline-danger btn-sm" title="Delete" onclick="confirmDelete('${rg}','${name}','${escapeAttr(vm.vm_name)}')"><i class="bi bi-trash"></i></button>` : ''}
+                    </div>
+                </td>
+            </tr>`;
+        }).join('');
+    }
+
+    // ─────────────────────────────────────────
+    // Tags
+    // ─────────────────────────────────────────
+
+    function renderTags(vm) {
+        var html = '';
+        (vm.local_tags || []).forEach(function(t) {
+            html += `<span class="badge bg-primary me-1 mb-1" style="font-size:0.75em;">${escapeHtml(t)}` +
+                (!IS_READONLY ? ` <i class="bi bi-x" style="cursor:pointer" onclick="removeTag('${escapeAttr(vm.resource_group)}','${escapeAttr(vm.vm_name)}','${escapeAttr(t)}')"></i>` : '') +
+                `</span>`;
+        });
+        if (!IS_READONLY) {
+            html += `<i class="bi bi-plus-circle text-muted" style="cursor:pointer;font-size:0.85em;" onclick="showAddTag('${escapeAttr(vm.resource_group)}','${escapeAttr(vm.vm_name)}',this)" title="Add tag"></i>`;
+        }
+        return html;
+    }
+
+    function showAddTag(rg, vmName, btnEl) {
+        var existing = document.getElementById('inline-tag-input');
+        if (existing) existing.remove();
+        var container = document.createElement('span');
+        container.id = 'inline-tag-input';
+        container.innerHTML = '<input type="text" class="form-control form-control-sm d-inline-block" style="width:100px;font-size:0.8em;padding:1px 4px;" placeholder="tag..." id="tag-input-field">';
+        btnEl.parentNode.insertBefore(container, btnEl);
+        var input = document.getElementById('tag-input-field');
+        input.focus();
+        input.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') { var v = input.value.trim(); if (v) addTag(rg, vmName, v); container.remove(); }
+            else if (e.key === 'Escape') { container.remove(); }
+        });
+        input.addEventListener('blur', function() {
+            var v = input.value.trim(); if (v) addTag(rg, vmName, v); container.remove();
+        });
+    }
+
+    function addTag(rg, vmName, tag) {
+        fetch(`/api/azure/vms/${encodeURIComponent(rg)}/${encodeURIComponent(vmName)}/tags`, {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({tag: tag}),
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.error) { alert('Error: ' + data.error); return; }
+            const vmId = rg + '/' + vmName;
+            var vm = allVMs.find(v => v.id === vmId);
+            if (vm) { if (!vm.local_tags) vm.local_tags = []; if (!vm.local_tags.includes(tag)) vm.local_tags.push(tag); }
+            refreshTagFilter(); applyFilters();
+        })
+        .catch(err => alert('Error: ' + err));
+    }
+
+    function removeTag(rg, vmName, tag) {
+        fetch(`/api/azure/vms/${encodeURIComponent(rg)}/${encodeURIComponent(vmName)}/tags/${encodeURIComponent(tag)}`, {method: 'DELETE'})
+        .then(r => r.json())
+        .then(data => {
+            if (data.error) { alert('Error: ' + data.error); return; }
+            const vmId = rg + '/' + vmName;
+            var vm = allVMs.find(v => v.id === vmId);
+            if (vm && vm.local_tags) vm.local_tags = vm.local_tags.filter(t => t !== tag);
+            refreshTagFilter(); applyFilters();
+        })
+        .catch(err => alert('Error: ' + err));
+    }
+
+    // ─────────────────────────────────────────
+    // Bulk + single actions
+    // ─────────────────────────────────────────
+
+    function toggleSelectAll() {
+        const checked = document.getElementById('selectAll').checked;
+        document.querySelectorAll('.vm-check').forEach(cb => cb.checked = checked);
+        updateBulkButtons();
+    }
+
+    function updateBulkButtons() {
+        const n = document.querySelectorAll('.vm-check:checked').length;
+        document.getElementById('btnBulkStart').disabled = n === 0;
+        document.getElementById('btnBulkStop').disabled = n === 0;
+        document.getElementById('btnBulkRestart').disabled = n === 0;
+    }
+
+    function getSelectedVMs() {
+        return Array.from(document.querySelectorAll('.vm-check:checked')).map(cb => ({
+            rg: cb.dataset.rg, name: cb.dataset.name,
+        }));
+    }
+
+    function bulkAction(action) {
+        const selected = getSelectedVMs();
+        if (selected.length === 0) return;
+        const label = action.charAt(0).toUpperCase() + action.slice(1);
+        showConfirm(
+            label + ' VMs',
+            label + ' <strong>' + selected.length + ' VM(s)</strong>?',
+            label,
+            async function() {
+                for (const vm of selected) {
+                    try {
+                        await fetch(`/api/azure/vms/${encodeURIComponent(vm.rg)}/${encodeURIComponent(vm.name)}/${action}`, {method: 'POST'});
+                    } catch(e) {
+                        showToast('Error: ' + e, 'danger');
+                    }
+                }
+                setTimeout(loadVMs, 2000);
+            }
+        );
+    }
+
+    function vmAction(action, rg, vmName) {
+        fetch(`/api/azure/vms/${encodeURIComponent(rg)}/${encodeURIComponent(vmName)}/${action}`, {method: 'POST'})
+        .then(r => r.json())
+        .then(data => {
+            if (data.error) { alert('Error: ' + data.error); return; }
+            setTimeout(loadVMs, 2000);
+        })
+        .catch(err => alert('Error: ' + err));
+    }
+
+    // ─────────────────────────────────────────
+    // Delete
+    // ─────────────────────────────────────────
+
+    let _deleteRg = null, _deleteVmName = null;
+
+    function confirmDelete(rg, vmName, displayName) {
+        _deleteRg = rg; _deleteVmName = vmName;
+        document.getElementById('deleteTarget').textContent = `${displayName} (${rg})`;
+        new bootstrap.Modal(document.getElementById('deleteModal')).show();
+    }
+
+    document.getElementById('confirmDeleteBtn').addEventListener('click', function() {
+        if (!_deleteRg) return;
+        fetch(`/api/azure/vms/${encodeURIComponent(_deleteRg)}/${encodeURIComponent(_deleteVmName)}/delete`, {method: 'POST'})
+        .then(r => r.json())
+        .then(data => {
+            bootstrap.Modal.getInstance(document.getElementById('deleteModal')).hide();
+            if (data.error) { alert('Error: ' + data.error); return; }
+            setTimeout(loadVMs, 3000);
+        })
+        .catch(err => alert('Error: ' + err));
+    });
+
+    // ─────────────────────────────────────────
+    // VM Detail
+    // ─────────────────────────────────────────
+
+    function showDetail(rg, vmName) {
+        const modal = new bootstrap.Modal(document.getElementById('detailModal'));
+        const body = document.getElementById('detailBody');
+        body.innerHTML = '<div class="text-center py-3"><div class="spinner-border text-secondary"></div></div>';
+        modal.show();
+
+        fetch(`/api/azure/vms/${encodeURIComponent(rg)}/${encodeURIComponent(vmName)}`)
+            .then(r => r.json())
+            .then(data => {
+                if (data.error) {
+                    body.innerHTML = `<div class="alert alert-danger">${escapeHtml(String(data.error))}</div>`;
+                    return;
+                }
+                const vm = data.vm;
+                const tagRows = Object.entries(vm.tags || {}).map(([k, v]) =>
+                    `<tr><td><code>${escapeHtml(k)}</code></td><td>${escapeHtml(String(v))}</td></tr>`
+                ).join('') || '<tr><td colspan="2" class="text-muted">No Azure tags</td></tr>';
+
+                body.innerHTML = `
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <table class="table table-sm">
+                                <tr><th style="width:40%">Name</th><td>${escapeHtml(vm.vm_name)}</td></tr>
+                                <tr><th>Resource Group</th><td>${escapeHtml(vm.resource_group)}</td></tr>
+                                <tr><th>Location</th><td>${escapeHtml(vm.location)}</td></tr>
+                                <tr><th>Size</th><td>${escapeHtml(vm.size)}</td></tr>
+                                <tr><th>OS Type</th><td>${escapeHtml(vm.os_type || '—')}</td></tr>
+                                <tr><th>State</th><td>${stateBadge(vm.state)}</td></tr>
+                            </table>
+                        </div>
+                        <div class="col-md-6">
+                            <table class="table table-sm">
+                                <tr><th style="width:40%">Public IP</th><td>${vm.public_ip ? `<code>${escapeHtml(vm.public_ip)}</code>` : '—'}</td></tr>
+                                <tr><th>Private IP</th><td>${vm.private_ip ? `<code>${escapeHtml(vm.private_ip)}</code>` : '—'}</td></tr>
+                            </table>
+                        </div>
+                        <div class="col-12">
+                            <h6 class="fw-bold">Azure Tags</h6>
+                            <table class="table table-sm"><thead><tr><th>Key</th><th>Value</th></tr></thead><tbody>${tagRows}</tbody></table>
+                        </div>
+                    </div>`;
+            })
+            .catch(err => {
+                body.innerHTML = `<div class="alert alert-danger">${escapeHtml(String(err))}</div>`;
+            });
+    }
+
+    // ─────────────────────────────────────────
+    // SSH Config
+    // ─────────────────────────────────────────
+
+    function loadKeyFile(input) {
+        if (!input.files || !input.files[0]) return;
+        const reader = new FileReader();
+        reader.onload = e => { document.getElementById('sshPrivateKey').value = e.target.result; };
+        reader.readAsText(input.files[0]);
+    }
+
+    function openSSHConfig(rg, vmName, displayName) {
+        document.getElementById('sshConfigRg').value = rg;
+        document.getElementById('sshConfigVmName').value = vmName;
+        document.getElementById('sshConfigVmDisplay').textContent = displayName + ' (' + rg + ')';
+        document.getElementById('sshUsername').value = 'azureuser';
+        document.getElementById('sshKeyLabel').value = '';
+        document.getElementById('sshPrivateKey').value = '';
+        document.getElementById('sshKeyFile').value = '';
+        document.getElementById('sshKeyConfigured').classList.add('d-none');
+        document.getElementById('sshDeleteBtn').style.display = 'none';
+        document.getElementById('sshIpPublic').checked = true;
+
+        fetch(`/api/azure/vms/${encodeURIComponent(rg)}/${encodeURIComponent(vmName)}/ssh`)
+            .then(r => r.json())
+            .then(data => {
+                const cfg = data.ssh_config;
+                if (cfg) {
+                    document.getElementById('sshUsername').value = cfg.ssh_username || 'azureuser';
+                    document.getElementById('sshKeyLabel').value = cfg.key_label || '';
+                    if (cfg.use_public_ip === false) {
+                        document.getElementById('sshIpPrivate').checked = true;
+                    }
+                    document.getElementById('sshKeyConfigured').classList.remove('d-none');
+                    document.getElementById('sshDeleteBtn').style.display = '';
+                }
+            })
+            .catch(() => {});
+
+        new bootstrap.Modal(document.getElementById('sshConfigModal')).show();
+    }
+
+    function saveSSHConfig() {
+        const rg = document.getElementById('sshConfigRg').value;
+        const vmName = document.getElementById('sshConfigVmName').value;
+        const payload = {
+            ssh_username: document.getElementById('sshUsername').value.trim(),
+            private_key: document.getElementById('sshPrivateKey').value.trim(),
+            use_public_ip: document.getElementById('sshIpPublic').checked,
+            key_label: document.getElementById('sshKeyLabel').value.trim(),
+        };
+        fetch(`/api/azure/vms/${encodeURIComponent(rg)}/${encodeURIComponent(vmName)}/ssh`, {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(payload),
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.error) { alert('Error: ' + data.error); return; }
+            bootstrap.Modal.getInstance(document.getElementById('sshConfigModal')).hide();
+            loadVMs();
+        })
+        .catch(err => alert('Error: ' + err));
+    }
+
+    function deleteSSHConfig() {
+        const rg = document.getElementById('sshConfigRg').value;
+        const vmName = document.getElementById('sshConfigVmName').value;
+        fetch(`/api/azure/vms/${encodeURIComponent(rg)}/${encodeURIComponent(vmName)}/ssh`, {method: 'DELETE'})
+        .then(r => r.json())
+        .then(data => {
+            if (data.error) { alert('Error: ' + data.error); return; }
+            bootstrap.Modal.getInstance(document.getElementById('sshConfigModal')).hide();
+            loadVMs();
+        })
+        .catch(err => alert('Error: ' + err));
+    }
+</script>
+{% endblock %}
