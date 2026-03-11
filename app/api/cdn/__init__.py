@@ -207,6 +207,32 @@ def cdn_get_distribution_status(dist_id):
         return jsonify({'error': str(e)}), 400
 
 
+@api_bp.route('/cdn/distributions/<int:dist_id>/probe', methods=['GET'])
+@login_required
+def cdn_get_probe_settings(dist_id):
+    """Return current health probe settings for an AFD distribution."""
+    dist = CdnDistribution.query.get_or_404(dist_id)
+    if dist.provider != 'azure_front_door':
+        return jsonify({'error': 'Not an Azure Front Door distribution'}), 400
+    parts = (dist.external_id or '').split('/')
+    if len(parts) < 2:
+        return jsonify({'probe_protocol': 'NotSet', 'probe_path': '/', 'probe_interval': 100})
+    rg, profile = parts[0], parts[1]
+    try:
+        client, _ = cdn_service._get_afd_client(label=dist.account_label)
+        ogs = list(client.afd_origin_groups.list_by_profile(rg, profile))
+        if not ogs:
+            return jsonify({'probe_protocol': 'NotSet', 'probe_path': '/', 'probe_interval': 100})
+        hp = ogs[0].health_probe_settings
+        return jsonify({
+            'probe_protocol': str(hp.probe_protocol or 'NotSet') if hp else 'NotSet',
+            'probe_path':     (hp.probe_path or '/') if hp else '/',
+            'probe_interval': (hp.probe_interval_in_seconds or 100) if hp else 100,
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 400
+
+
 @api_bp.route('/cdn/distributions/<int:dist_id>', methods=['PATCH'])
 @login_required
 def cdn_update_distribution(dist_id):
@@ -216,9 +242,12 @@ def cdn_update_distribution(dist_id):
         return jsonify({'error': 'Cannot edit a distribution that is still being created'}), 409
 
     data = request.get_json() or {}
-    origin_host = data.get('origin_host', '').strip() or dist.origin_host
-    origin_port = int(data.get('origin_port') or dist.origin_port or 443)
-    comment     = data.get('comment', dist.comment or '')
+    origin_host    = data.get('origin_host', '').strip() or dist.origin_host
+    origin_port    = int(data.get('origin_port') or dist.origin_port or 443)
+    comment        = data.get('comment', dist.comment or '')
+    probe_protocol = data.get('probe_protocol', '').strip()   # AFD only
+    probe_path     = data.get('probe_path', '/').strip() or '/'
+    probe_interval = int(data.get('probe_interval') or 100)
 
     try:
         if dist.provider == 'cloudfront':
@@ -233,6 +262,11 @@ def cdn_update_distribution(dist_id):
                 cdn_service.update_afd_origin(
                     rg, profile, origin_host, origin_port, label=dist.account_label
                 )
+                if probe_protocol:
+                    cdn_service.update_afd_health_probe(
+                        rg, profile, probe_protocol, probe_path, probe_interval,
+                        label=dist.account_label
+                    )
 
         dist.origin_host = origin_host
         dist.origin_port = origin_port

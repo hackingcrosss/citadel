@@ -350,13 +350,18 @@ def create_afd_distribution(resource_group, origin_host, origin_port, comment, l
 
     # 4. Create origin and wait for Succeeded.
     # Route creation fails with BadRequest if the origin group has no Succeeded origins.
+    # Port routing: AFD connects to origin via http_port for HttpOnly forwarding and
+    # https_port for HttpsOnly. Set the correct port on the right side so AFD actually
+    # reaches the origin on the intended port.
+    _origin_http_port  = origin_port if origin_port != 443 else 80
+    _origin_https_port = origin_port if origin_port == 443 else 443
     _log.info("Creating AFD origin '%s' → %s:%s", origin_name, origin_host, origin_port)
     client.afd_origins.begin_create(
         resource_group, profile_name, origin_group_name, origin_name,
         AFDOrigin(
             host_name=origin_host,
-            http_port=80,
-            https_port=origin_port,
+            http_port=_origin_http_port,
+            https_port=_origin_https_port,
             origin_host_header=origin_host,
             priority=1,
             weight=1000,
@@ -378,7 +383,11 @@ def create_afd_distribution(resource_group, origin_host, origin_port, comment, l
         f"/providers/Microsoft.Cdn/profiles/{profile_name}"
         f"/originGroups/{origin_group_name}"
     )
-    forwarding_protocol = 'HttpsOnly' if origin_port == 443 else 'MatchRequest'
+    # HttpsOnly: AFD connects to origin via TLS (port 443).
+    # HttpOnly:  AFD connects via plain HTTP on http_port — correct for non-TLS origins.
+    # MatchRequest would mirror the incoming protocol, so HTTPS browser requests would
+    # reach a plain-HTTP origin over TLS which fails with "page not found".
+    forwarding_protocol = 'HttpsOnly' if origin_port == 443 else 'HttpOnly'
     _log.info("Creating AFD route '%s'...", route_name)
     client.routes.begin_create(
         resource_group, profile_name, endpoint_name, route_name,
@@ -404,8 +413,60 @@ def create_afd_distribution(resource_group, origin_host, origin_port, comment, l
     }
 
 
+def update_afd_health_probe(resource_group, profile_name, probe_protocol, probe_path, probe_interval, label='default'):
+    """Update health probe settings on the first origin group of an AFD profile.
+
+    We fetch the current origin group and re-send load_balancing_settings alongside
+    health_probe_settings because some AFD API versions require both to be present
+    in an update or they silently revert / reject the partial payload.
+    """
+    from azure.mgmt.cdn.models import (
+        AFDOriginGroupUpdateParameters,
+        HealthProbeParameters,
+        LoadBalancingSettingsParameters,
+    )
+    client, _ = _get_afd_client(label)
+
+    ogs = list(client.afd_origin_groups.list_by_profile(resource_group, profile_name))
+    if not ogs:
+        raise ValueError("No origin groups found in AFD profile")
+    og = ogs[0]
+    og_name = og.name
+
+    # Preserve existing load balancing settings or fall back to safe defaults
+    existing_lb = og.load_balancing_settings
+    if existing_lb:
+        lb = LoadBalancingSettingsParameters(
+            sample_size=existing_lb.sample_size or 4,
+            successful_samples_required=existing_lb.successful_samples_required or 3,
+            additional_latency_in_milliseconds=existing_lb.additional_latency_in_milliseconds or 50,
+        )
+    else:
+        lb = LoadBalancingSettingsParameters(
+            sample_size=4,
+            successful_samples_required=3,
+            additional_latency_in_milliseconds=50,
+        )
+
+    client.afd_origin_groups.begin_update(
+        resource_group, profile_name, og_name,
+        AFDOriginGroupUpdateParameters(
+            load_balancing_settings=lb,
+            health_probe_settings=HealthProbeParameters(
+                probe_path=probe_path or '/',
+                probe_protocol=probe_protocol,   # 'NotSet' | 'Http' | 'Https'
+                probe_interval_in_seconds=int(probe_interval or 100),
+            ),
+        ),
+    ).wait()
+
+
 def update_afd_origin(resource_group, profile_name, origin_host, origin_port, label='default'):
-    """Update the origin host/port on an existing AFD profile (first origin found)."""
+    """Update the origin host/port on an existing AFD profile (first origin found).
+
+    Also updates the route's forwarding_protocol to match the new port so AFD
+    connects via the right protocol (HttpsOnly for 443, HttpOnly for everything else).
+    """
     from azure.mgmt.cdn.models import AFDOriginUpdateParameters
     client, _ = _get_afd_client(label)
 
@@ -419,16 +480,36 @@ def update_afd_origin(resource_group, profile_name, origin_host, origin_port, la
         raise ValueError("No origins found in AFD origin group")
     origin_name = origins[0].name
 
+    http_port  = origin_port if origin_port != 443 else 80
+    https_port = origin_port if origin_port == 443 else 443
     client.afd_origins.begin_update(
         resource_group, profile_name, og_name, origin_name,
         AFDOriginUpdateParameters(
             host_name=origin_host,
-            http_port=80,
-            https_port=origin_port,
+            http_port=http_port,
+            https_port=https_port,
             origin_host_header=origin_host,
             enforce_certificate_name_check=False,
         ),
     ).wait()
+
+    # Update route forwarding_protocol to match new port
+    forwarding_protocol = 'HttpsOnly' if origin_port == 443 else 'HttpOnly'
+    try:
+        from azure.mgmt.cdn.models import RouteUpdateParameters
+        endpoints = list(client.afd_endpoints.list_by_profile(resource_group, profile_name))
+        for ep in endpoints:
+            try:
+                routes = list(client.routes.list_by_endpoint(resource_group, profile_name, ep.name))
+                for route in routes:
+                    client.routes.begin_update(
+                        resource_group, profile_name, ep.name, route.name,
+                        RouteUpdateParameters(forwarding_protocol=forwarding_protocol),
+                    ).wait()
+            except Exception as exc:
+                _log.warning("Could not update route forwarding_protocol: %s", exc)
+    except ImportError:
+        _log.warning("RouteUpdateParameters not available in SDK — skipping route protocol update")
 
 
 def delete_afd_distribution(resource_group, profile_name, endpoint_name, label='default'):

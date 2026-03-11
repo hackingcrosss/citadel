@@ -183,7 +183,33 @@
                     <label class="form-label fw-bold">Comment <small class="text-muted">(optional)</small></label>
                     <input type="text" class="form-control" id="e-comment" placeholder="e.g. CS Listener name">
                 </div>
-                <div class="alert alert-info py-2 small" id="e-cf-notice" style="display:none">
+                <!-- AFD-only: health probe settings -->
+                <div id="e-probe-section" style="display:none">
+                    <hr class="my-3">
+                    <p class="fw-bold mb-2 small text-uppercase text-muted">Health Probe Settings</p>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Probe Protocol</label>
+                        <select class="form-select" id="e-probe-protocol" onchange="onProbeProtocolChange()">
+                            <option value="NotSet">Disabled</option>
+                            <option value="Http">HTTP</option>
+                            <option value="Https">HTTPS</option>
+                        </select>
+                        <small class="text-muted">Use <strong>Disabled</strong> for C2 servers that don't expose a probe endpoint</small>
+                    </div>
+                    <div id="e-probe-details">
+                        <div class="row g-2">
+                            <div class="col-8">
+                                <label class="form-label fw-bold">Probe Path</label>
+                                <input type="text" class="form-control" id="e-probe-path" placeholder="/">
+                            </div>
+                            <div class="col-4">
+                                <label class="form-label fw-bold">Interval (s)</label>
+                                <input type="number" class="form-control" id="e-probe-interval" min="5" max="255">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="alert alert-info py-2 small mt-3" id="e-cf-notice" style="display:none">
                     <i class="bi bi-info-circle"></i> CloudFront will redeploy after saving — this takes <strong>5–15 minutes</strong>.
                 </div>
             </div>
@@ -459,6 +485,11 @@
     // Edit modal
     // ─────────────────────────────────────────
 
+    function onProbeProtocolChange() {
+        const proto = document.getElementById('e-probe-protocol').value;
+        document.getElementById('e-probe-details').style.display = proto === 'NotSet' ? 'none' : '';
+    }
+
     function openEditModal(id) {
         const dist = allDists.find(d => d.id === id);
         if (!dist) return;
@@ -467,6 +498,30 @@
         document.getElementById('e-origin-port').value = dist.origin_port || 443;
         document.getElementById('e-comment').value = dist.comment || '';
         document.getElementById('e-cf-notice').style.display = dist.provider === 'cloudfront' ? '' : 'none';
+
+        const probeSection = document.getElementById('e-probe-section');
+        if (dist.provider === 'azure_front_door') {
+            probeSection.style.display = '';
+            // Show loading state
+            document.getElementById('e-probe-protocol').value = 'NotSet';
+            document.getElementById('e-probe-path').value = '/';
+            document.getElementById('e-probe-interval').value = 100;
+            onProbeProtocolChange();
+            // Fetch current settings
+            fetch(`/api/cdn/distributions/${id}/probe`)
+                .then(r => r.json())
+                .then(data => {
+                    if (data.error) return;
+                    document.getElementById('e-probe-protocol').value = data.probe_protocol || 'NotSet';
+                    document.getElementById('e-probe-path').value = data.probe_path || '/';
+                    document.getElementById('e-probe-interval').value = data.probe_interval || 100;
+                    onProbeProtocolChange();
+                })
+                .catch(() => {});
+        } else {
+            probeSection.style.display = 'none';
+        }
+
         new bootstrap.Modal(document.getElementById('editModal')).show();
     }
 
@@ -478,6 +533,15 @@
 
         if (!origin_host) { showToast('Origin host is required', 'warning'); return; }
 
+        const payload = {origin_host, origin_port, comment};
+
+        const probeSection = document.getElementById('e-probe-section');
+        if (probeSection.style.display !== 'none') {
+            payload.probe_protocol = document.getElementById('e-probe-protocol').value;
+            payload.probe_path     = document.getElementById('e-probe-path').value.trim() || '/';
+            payload.probe_interval = parseInt(document.getElementById('e-probe-interval').value, 10) || 100;
+        }
+
         const btn = document.getElementById('editSaveBtn');
         btn.disabled = true;
         btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Saving…';
@@ -485,7 +549,7 @@
         fetch(`/api/cdn/distributions/${id}`, {
             method: 'PATCH',
             headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({origin_host, origin_port, comment}),
+            body: JSON.stringify(payload),
         })
         .then(r => r.json())
         .then(data => {
