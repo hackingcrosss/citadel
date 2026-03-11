@@ -275,6 +275,39 @@
 
                     <!-- GuardRails section (rendered by JS) -->
                     <div id="c2-guardrails-fields"></div>
+
+                    <!-- CDN Redirector (optional) -->
+                    <div class="border-top pt-3 mt-2">
+                        <div class="form-check form-switch mb-1">
+                            <input class="form-check-input" type="checkbox" id="c2-cdn-enabled" onchange="onCdnToggle()">
+                            <label class="form-check-label fw-bold" for="c2-cdn-enabled">Use CDN Redirector</label>
+                        </div>
+                        <small class="text-muted d-block mb-2">Route beacon traffic through CloudFront or Azure Front Door before RedWarden. DNS CNAME → CDN domain instead of A → RedWarden.</small>
+                        <div id="c2-cdn-fields" class="d-none">
+                            <div class="row g-2">
+                                <div class="col-md-5">
+                                    <label class="form-label form-label-sm">CDN Provider</label>
+                                    <select class="form-select form-select-sm" id="c2-cdn-provider" onchange="onCdnProviderChange()">
+                                        <option value="cloudfront">AWS CloudFront</option>
+                                        <option value="azure_front_door">Azure Front Door</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label form-label-sm">Account</label>
+                                    <select class="form-select form-select-sm" id="c2-cdn-account">
+                                        <option value="default">default</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-3" id="c2-cdn-rg-col" style="display:none">
+                                    <label class="form-label form-label-sm">Resource Group</label>
+                                    <select class="form-select form-select-sm" id="c2-cdn-rg">
+                                        <option value="">Loading…</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <small class="text-muted mt-1 d-block">Flow: Beacon → DNS CNAME → CDN → RedWarden → NPM → CS Listener</small>
+                        </div>
+                    </div>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
@@ -1398,9 +1431,103 @@
         if (c2ModalEl) {
             c2ModalEl.addEventListener('show.bs.modal', function() {
                 onC2TypeChange();
+                document.getElementById('c2-cdn-enabled').checked = false;
+                document.getElementById('c2-cdn-fields').classList.add('d-none');
             });
         }
     });
+
+    // ─────────────────────────────────────────
+    // CDN Redirector helpers (C2 Setup modal)
+    // ─────────────────────────────────────────
+
+    function onCdnToggle() {
+        var enabled = document.getElementById('c2-cdn-enabled').checked;
+        document.getElementById('c2-cdn-fields').classList.toggle('d-none', !enabled);
+        if (enabled) loadCdnAccounts();
+    }
+
+    function onCdnProviderChange() {
+        var isAfd = document.getElementById('c2-cdn-provider').value === 'azure_front_door';
+        document.getElementById('c2-cdn-rg-col').style.display = isAfd ? '' : 'none';
+        loadCdnAccounts();
+    }
+
+    function loadCdnAccounts() {
+        var provider = document.getElementById('c2-cdn-provider').value;
+        var credProvider = provider === 'cloudfront' ? 'aws' : 'azure';
+        var sel = document.getElementById('c2-cdn-account');
+        sel.innerHTML = '<option value="">Loading…</option>';
+        fetch('/api/credentials/' + credProvider)
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                var accounts = (data[credProvider] || {}).accounts || [];
+                sel.innerHTML = '';
+                if (accounts.length === 0) {
+                    sel.innerHTML = '<option value="default">default</option>';
+                } else {
+                    accounts.forEach(function(a) {
+                        var opt = document.createElement('option');
+                        opt.value = a.label;
+                        opt.textContent = a.label;
+                        sel.appendChild(opt);
+                    });
+                }
+                if (provider === 'azure_front_door' && sel.value) {
+                    loadCdnResourceGroups(sel.value);
+                }
+            })
+            .catch(function() { sel.innerHTML = '<option value="default">default</option>'; });
+    }
+
+    function loadCdnResourceGroups(label) {
+        var sel = document.getElementById('c2-cdn-rg');
+        sel.innerHTML = '<option value="">Loading…</option>';
+        fetch('/api/azure/resource-groups?label=' + encodeURIComponent(label))
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                var rgs = data.resource_groups || [];
+                sel.innerHTML = '';
+                if (rgs.length === 0) {
+                    sel.innerHTML = '<option value="">No resource groups found</option>';
+                } else {
+                    rgs.forEach(function(rg) {
+                        var opt = document.createElement('option');
+                        opt.value = rg; opt.textContent = rg;
+                        sel.appendChild(opt);
+                    });
+                }
+            })
+            .catch(function() { sel.innerHTML = '<option value="">Error loading resource groups</option>'; });
+    }
+
+    function waitForCdnDomain(distId) {
+        return new Promise(function(resolve, reject) {
+            var attempts = 0;
+            var maxAttempts = 24; // 24 × 15s = 6 minutes
+            function poll() {
+                attempts++;
+                fetch('/api/cdn/distributions/' + distId)
+                    .then(function(r) { return r.json(); })
+                    .then(function(d) {
+                        var dist = d.distribution || {};
+                        if (dist.status === 'error') {
+                            var ext = dist.external_id || '';
+                            reject('CDN provisioning failed: ' + (ext.startsWith('error:') ? ext.slice(6) : 'unknown error'));
+                            return;
+                        }
+                        if (dist.domain) { resolve(dist.domain); return; }
+                        if (attempts >= maxAttempts) {
+                            reject('CDN domain not available after ' + (attempts * 15) + 's — check CDN page for status');
+                            return;
+                        }
+                        setTimeout(poll, 15000);
+                    })
+                    .catch(function(err) { reject(String(err)); });
+            }
+            poll();
+        });
+    }
 
     function setupC2() {
         if (!selectedZoneId) { alert('Select a zone first'); return; }
@@ -1409,6 +1536,17 @@
 
         var type = document.getElementById('c2-type').value;
         if (!type) { alert('Select a listener type'); return; }
+
+        // CDN settings
+        var cdnEnabled = document.getElementById('c2-cdn-enabled').checked;
+        var cdnProvider = cdnEnabled ? document.getElementById('c2-cdn-provider').value : '';
+        var cdnAccount = cdnEnabled ? (document.getElementById('c2-cdn-account').value || 'default') : 'default';
+        var cdnRg = (cdnEnabled && cdnProvider === 'azure_front_door') ? document.getElementById('c2-cdn-rg').value : '';
+        if (cdnEnabled && cdnProvider === 'azure_front_door' && !cdnRg) {
+            alert('Select a Resource Group for Azure Front Door CDN'); return;
+        }
+        var cdnDistId = null;
+        var cdnDomain = null;
 
         var rawCallbacks = document.getElementById('c2-callbacks').value.trim();
         if (!rawCallbacks) { alert('Enter at least one callback host'); return; }
@@ -1588,9 +1726,69 @@
             .then(function(ok) {
                 if (!ok) return Promise.reject('stop');
 
-                // Step 4: Create Cloudflare A records for each callback host
-                logWarn(LOG, 'Creating Cloudflare A records for ' + callbackHosts.length + ' callback host(s) &rarr; ' + redwardenIp + '...');
+                // Step 4 (optional): Create CDN distribution pointing to RedWarden
+                if (!cdnEnabled) return true;
 
+                var cdnPort = (type === 'http') ? 80 : 443;
+                logWarn(LOG, 'Creating CDN distribution → RedWarden ' + redwardenIp + ':' + cdnPort + '...');
+                return fetch('/api/cdn/distributions', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        provider: cdnProvider,
+                        account_label: cdnAccount,
+                        resource_group: cdnRg,
+                        origin_host: redwardenIp,
+                        origin_port: cdnPort,
+                        comment: listenerName
+                    })
+                })
+                .then(function(r) { return r.json(); })
+                .then(function(data) {
+                    if (data.error) {
+                        logErr(LOG, 'Failed to create CDN distribution: ' + data.error);
+                        return Promise.reject('stop');
+                    }
+                    cdnDistId = data.distribution.id;
+                    var cdnLabelStr = cdnProvider === 'azure_front_door' ? 'Azure Front Door (2–4 min)' : 'CloudFront (5–15 min)';
+                    logOk(LOG, 'CDN distribution queued (id: ' + cdnDistId + ') — polling for domain (' + cdnLabelStr + ')...');
+                    return waitForCdnDomain(cdnDistId);
+                })
+                .then(function(domain) {
+                    cdnDomain = domain;
+                    logOk(LOG, 'CDN domain ready: <strong>' + domain + '</strong>');
+                    return true;
+                });
+            })
+            .then(function(ok) {
+                if (!ok) return Promise.reject('stop');
+
+                // Step 5: DNS records — CNAME → CDN domain if CDN enabled, else A → RedWarden
+                if (cdnDomain) {
+                    logWarn(LOG, 'Creating Cloudflare CNAME records for ' + callbackHosts.length + ' host(s) &rarr; ' + cdnDomain + '...');
+                    var dnsPromises = callbackHosts.map(function(host) {
+                        return fetch('/api/domains/zones/' + selectedZoneId + '/records', {
+                            method: 'POST',
+                            headers: {'Content-Type': 'application/json'},
+                            body: JSON.stringify({type: 'CNAME', name: host, content: cdnDomain, ttl: 1, proxied: false})
+                        })
+                        .then(function(r) { return r.json(); })
+                        .then(function(dnsData) {
+                            if (dnsData.error) {
+                                if (dnsData.error.toLowerCase().indexOf('already exists') !== -1) {
+                                    logWarn(LOG, 'CNAME already exists for ' + host + ' — skipped');
+                                } else {
+                                    logErr(LOG, 'Failed to create CNAME for ' + host + ': ' + dnsData.error);
+                                }
+                            } else {
+                                logOk(LOG, 'CNAME created: ' + host + ' &rarr; ' + cdnDomain);
+                            }
+                        });
+                    });
+                    return Promise.all(dnsPromises);
+                }
+
+                logWarn(LOG, 'Creating Cloudflare A records for ' + callbackHosts.length + ' callback host(s) &rarr; ' + redwardenIp + '...');
                 var dnsPromises = callbackHosts.map(function(host) {
                     return fetch('/api/domains/zones/' + selectedZoneId + '/records', {
                         method: 'POST',
@@ -1616,12 +1814,14 @@
                         }
                     });
                 });
-
                 return Promise.all(dnsPromises);
             })
             .then(function() {
                 setButtonLoading('btn-c2-setup', false);
-                logInfo(LOG, '<strong>C2 setup complete!</strong> Flow: Beacon &rarr; Cloudflare &rarr; RedWarden (' + redwardenIp + ') &rarr; NPM &rarr; CS Listener (' + listenerName + ')');
+                var flowStr = cdnDomain
+                    ? 'Beacon &rarr; DNS CNAME &rarr; CDN (' + cdnDomain + ') &rarr; RedWarden (' + redwardenIp + ') &rarr; NPM &rarr; CS Listener (' + listenerName + ')'
+                    : 'Beacon &rarr; Cloudflare &rarr; RedWarden (' + redwardenIp + ') &rarr; NPM &rarr; CS Listener (' + listenerName + ')';
+                logInfo(LOG, '<strong>C2 setup complete!</strong> Flow: ' + flowStr);
             })
             .catch(function(err) {
                 setButtonLoading('btn-c2-setup', false);

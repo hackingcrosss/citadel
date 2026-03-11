@@ -40,6 +40,7 @@
                         <th>Bind Port</th>
                         <th>Callback Hosts</th>
                         <th>NPM Proxy</th>
+                        <th>CDN</th>
                         <th>DNS Records</th>
                         <th>Actions</th>
                     </tr>
@@ -167,6 +168,7 @@
     var allZones = [];
     var allListeners = [];
     var allNpmHosts = [];
+    var allCdnDists = [];
     var deployments = [];
     var groomedSites = [];
     var pendingTeardown = null;
@@ -179,6 +181,19 @@
     function loadAll() {
         loadDeployments();
         loadGroomedSites();
+    }
+
+    function loadCdnDists() {
+        return fetch('/api/cdn/distributions')
+            .then(function(r) { return r.json(); })
+            .then(function(data) { allCdnDists = (data.distributions || []).filter(function(d) { return d.tracked !== false; }); })
+            .catch(function() { allCdnDists = []; });
+    }
+
+    function findCdnForListener(listenerName) {
+        return allCdnDists.find(function(d) {
+            return d.comment && d.comment === listenerName;
+        }) || null;
     }
 
     // --- Tab switching ---
@@ -243,12 +258,13 @@
 
     function loadDeployments() {
         var tbody = document.getElementById('deployments-table');
-        tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted py-4"><span class="spinner-border spinner-border-sm"></span> Loading...</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="9" class="text-center text-muted py-4"><span class="spinner-border spinner-border-sm"></span> Loading...</td></tr>';
 
         Promise.all([
             fetch('/api/cobaltstrike/listeners').then(function(r) { return r.json(); }).catch(function() { return {listeners: []}; }),
             fetch('/api/npm/hosts').then(function(r) { return r.json(); }).catch(function() { return {hosts: []}; }),
-            fetch('/api/domains/zones').then(function(r) { return r.json(); }).catch(function() { return {zones: []}; })
+            fetch('/api/domains/zones').then(function(r) { return r.json(); }).catch(function() { return {zones: []}; }),
+            loadCdnDists()
         ]).then(function(results) {
             allListeners = results[0].listeners || [];
             allNpmHosts = results[1].hosts || [];
@@ -279,6 +295,7 @@
                     bindPort: bindPort,
                     hosts: lHosts,
                     npmHosts: matchedNpm,
+                    cdnDist: findCdnForListener(l.name || ''),
                     matchedDns: [],
                     dnsLoaded: false
                 });
@@ -367,7 +384,7 @@
         var tbody = document.getElementById('deployments-table');
 
         if (deployments.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted py-4">No listeners found</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="9" class="text-center text-muted py-4">No listeners found</td></tr>';
             return;
         }
 
@@ -407,6 +424,17 @@
             html += '<td>' + escapeHtml(String(dep.bindPort)) + '</td>';
             html += '<td><small>' + escapeHtml(String(lHosts)) + '</small></td>';
             html += '<td>' + npmInfo + '</td>';
+
+            var cdnInfo = '—';
+            if (dep.cdnDist) {
+                var cd = dep.cdnDist;
+                var cdnLabel = cd.provider === 'cloudfront' ? 'CloudFront' : 'Front Door';
+                var cdnBadgeClass = cd.provider === 'cloudfront' ? 'bg-warning text-dark' : 'bg-info text-dark';
+                var cdnDomainStr = cd.domain ? ('<code style="font-size:0.78em">' + escapeHtml(cd.domain) + '</code>') : ('<em class="text-muted small">' + escapeHtml(cd.status) + '</em>');
+                cdnInfo = '<span class="badge ' + cdnBadgeClass + '" style="font-size:0.7rem">' + cdnLabel + '</span> ' + cdnDomainStr;
+            }
+            html += '<td>' + cdnInfo + '</td>';
+
             html += '<td>' + dnsInfo + '</td>';
             html += '<td class="text-nowrap">';
             html += '<button class="btn btn-sm btn-outline-info me-1" onclick="inspectDeployment(' + idx + ')" title="Inspect">';
@@ -453,8 +481,17 @@
             var target = (n.forward_scheme || 'http') + '://' + (n.forward_host || '?') + ':' + (n.forward_port || 80);
             items += '<li>NPM Proxy Host: <strong>' + escapeHtml(target) + '</strong> (' + (n.domain_names || []).join(', ') + ')</li>';
         });
+        if (dep.cdnDist) {
+            var cdnLabel = dep.cdnDist.provider === 'cloudfront' ? 'CloudFront' : 'Azure Front Door';
+            var cdnDomainStr = dep.cdnDist.domain || '(provisioning)';
+            items += '<li>CDN Distribution: <strong>' + escapeHtml(cdnDomainStr) + '</strong> (' + cdnLabel + ')';
+            if (dep.cdnDist.provider === 'cloudfront') {
+                items += ' <span class="text-warning small">— CF disable takes 5–10 min</span>';
+            }
+            items += '</li>';
+        }
         dep.matchedDns.forEach(function(r) {
-            items += '<li>DNS A Record: <strong>' + escapeHtml(r.name) + '</strong> &rarr; ' + escapeHtml(r.content) + '</li>';
+            items += '<li>DNS Record: <strong>' + escapeHtml(r.name) + '</strong> &rarr; ' + escapeHtml(r.content) + '</li>';
         });
         list.innerHTML = items;
         new bootstrap.Modal(document.getElementById('teardownModal')).show();
@@ -503,6 +540,27 @@
                 });
 
                 return Promise.all(npmPromises);
+            })
+            .then(function() {
+                if (!dep.cdnDist) return;
+                var cdnLabel = dep.cdnDist.provider === 'cloudfront' ? 'CloudFront' : 'Azure Front Door';
+                var cdnDomainStr = dep.cdnDist.domain || '(provisioning)';
+                logWarn(LOG, 'Deleting CDN distribution: <strong>' + escapeHtml(cdnDomainStr) + '</strong> (' + cdnLabel + ')...');
+                if (dep.cdnDist.provider === 'cloudfront') {
+                    logInfo(LOG, 'CloudFront disable may take 5–10 min. If deletion fails, retry from the CDN page.');
+                }
+                return fetch('/api/cdn/distributions/' + dep.cdnDist.id, {method: 'DELETE'})
+                    .then(function(r) { return r.json(); })
+                    .then(function(data) {
+                        if (data.error && data.retry) {
+                            logWarn(LOG, 'CDN still disabling — check the CDN page to complete deletion once deployed.');
+                        } else if (data.error) {
+                            logErr(LOG, 'CDN delete failed: ' + escapeHtml(data.error));
+                        } else {
+                            logOk(LOG, 'CDN distribution deleted');
+                        }
+                    })
+                    .catch(function(err) { logErr(LOG, 'CDN delete error: ' + err); });
             })
             .then(function() {
                 if (dep.matchedDns.length === 0) {
