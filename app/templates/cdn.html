@@ -95,14 +95,16 @@
                     </select>
                 </div>
                 <div class="mb-3">
-                    <label class="form-label fw-bold">Account Label</label>
-                    <input type="text" class="form-control" id="c-account" value="default" placeholder="default">
-                    <small class="text-muted">AWS account label for CloudFront; Azure account label for AFD</small>
+                    <label class="form-label fw-bold">Account</label>
+                    <select class="form-select" id="c-account" onchange="onAccountChange()">
+                        <option value="">Loading…</option>
+                    </select>
                 </div>
                 <div class="mb-3" id="c-rg-group" style="display:none">
                     <label class="form-label fw-bold">Resource Group <span class="text-danger">*</span></label>
-                    <input type="text" class="form-control" id="c-rg" placeholder="my-resource-group">
-                    <small class="text-muted">Azure resource group where the AFD profile will be created</small>
+                    <select class="form-select" id="c-rg">
+                        <option value="">Select account first…</option>
+                    </select>
                 </div>
                 <div class="mb-3">
                     <label class="form-label fw-bold">Origin Host</label>
@@ -312,8 +314,6 @@
 
     function openCreateModal() {
         document.getElementById('c-provider').value = 'cloudfront';
-        document.getElementById('c-account').value = 'default';
-        document.getElementById('c-rg').value = '';
         document.getElementById('c-origin-host').value = '';
         document.getElementById('c-origin-port').value = '443';
         document.getElementById('c-comment').value = '';
@@ -325,18 +325,81 @@
         const isAfd = document.getElementById('c-provider').value === 'azure_front_door';
         document.getElementById('c-rg-group').style.display = isAfd ? '' : 'none';
         document.getElementById('cf-deploy-notice').style.display = isAfd ? 'none' : '';
+        loadAccountLabels();
+    }
+
+    function loadAccountLabels() {
+        const provider = document.getElementById('c-provider').value;
+        const credProvider = provider === 'cloudfront' ? 'aws' : 'azure';
+        const sel = document.getElementById('c-account');
+        sel.innerHTML = '<option value="">Loading…</option>';
+
+        fetch(`/api/credentials/${credProvider}`)
+            .then(r => r.json())
+            .then(data => {
+                const accounts = (data[credProvider] || {}).accounts || [];
+                sel.innerHTML = '';
+                if (accounts.length === 0) {
+                    sel.innerHTML = `<option value="default">default</option>`;
+                } else {
+                    accounts.forEach(a => {
+                        const opt = document.createElement('option');
+                        opt.value = a.label;
+                        opt.textContent = a.label;
+                        sel.appendChild(opt);
+                    });
+                }
+                onAccountChange();
+            })
+            .catch(() => {
+                sel.innerHTML = '<option value="default">default</option>';
+            });
+    }
+
+    function onAccountChange() {
+        const provider = document.getElementById('c-provider').value;
+        if (provider !== 'azure_front_door') return;
+        const label = document.getElementById('c-account').value;
+        if (!label) return;
+        loadResourceGroups(label);
+    }
+
+    function loadResourceGroups(label) {
+        const sel = document.getElementById('c-rg');
+        sel.innerHTML = '<option value="">Loading…</option>';
+
+        fetch(`/api/azure/resource-groups?label=${encodeURIComponent(label)}`)
+            .then(r => r.json())
+            .then(data => {
+                sel.innerHTML = '';
+                const rgs = data.resource_groups || [];
+                if (rgs.length === 0) {
+                    sel.innerHTML = '<option value="">No resource groups found</option>';
+                } else {
+                    rgs.forEach(rg => {
+                        const opt = document.createElement('option');
+                        opt.value = rg;
+                        opt.textContent = rg;
+                        sel.appendChild(opt);
+                    });
+                }
+            })
+            .catch(() => {
+                sel.innerHTML = '<option value="">Error loading resource groups</option>';
+            });
     }
 
     function createDistribution() {
         const provider = document.getElementById('c-provider').value;
-        const account_label = document.getElementById('c-account').value.trim() || 'default';
-        const resource_group = document.getElementById('c-rg').value.trim();
+        const account_label = document.getElementById('c-account').value || 'default';
+        const resource_group = document.getElementById('c-rg').value;
         const origin_host = document.getElementById('c-origin-host').value.trim();
         const origin_port = parseInt(document.getElementById('c-origin-port').value, 10) || 443;
         const comment = document.getElementById('c-comment').value.trim();
 
+        if (!account_label) { showToast('Select an account', 'warning'); return; }
         if (!origin_host) { showToast('Origin host is required', 'warning'); return; }
-        if (provider === 'azure_front_door' && !resource_group) { showToast('Resource group is required for Azure Front Door', 'warning'); return; }
+        if (provider === 'azure_front_door' && !resource_group) { showToast('Select a resource group', 'warning'); return; }
 
         const btn = document.getElementById('createBtn');
         btn.disabled = true;
