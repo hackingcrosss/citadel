@@ -114,6 +114,11 @@
                         <label class="form-check-label">WebSocket</label>
                     </div>
                 </div>
+                <div class="mb-0">
+                    <label class="form-label">Advanced Nginx Config <small class="text-muted">(optional)</small></label>
+                    <textarea class="form-control font-monospace" id="new-host-advanced" rows="4" placeholder="# Custom nginx directives injected into the location block&#10;# e.g. proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;"></textarea>
+                    <small class="text-muted">Raw nginx directives added inside the location block</small>
+                </div>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
@@ -167,6 +172,11 @@
                         <input type="checkbox" class="form-check-input" id="edit-host-ws">
                         <label class="form-check-label">WebSocket</label>
                     </div>
+                </div>
+                <div class="mb-0">
+                    <label class="form-label">Advanced Nginx Config <small class="text-muted">(optional)</small></label>
+                    <textarea class="form-control font-monospace" id="edit-host-advanced" rows="4" placeholder="# Custom nginx directives"></textarea>
+                    <small class="text-muted">Raw nginx directives added inside the location block</small>
                 </div>
             </div>
             <div class="modal-footer">
@@ -365,6 +375,7 @@
             ssl_forced: document.getElementById('new-host-ssl').checked,
             block_exploits: document.getElementById('new-host-exploits').checked,
             allow_websocket_upgrade: document.getElementById('new-host-ws').checked,
+            advanced_config: document.getElementById('new-host-advanced').value,
         };
 
         fetch('/api/npm/hosts', {
@@ -378,6 +389,7 @@
             bootstrap.Modal.getInstance(document.getElementById('addHostModal')).hide();
             document.getElementById('new-host-domains').value = '';
             document.getElementById('new-host-forward').value = '';
+            document.getElementById('new-host-advanced').value = '';
             loadHosts();
         })
         .catch(err => alert('Error: ' + err));
@@ -397,6 +409,7 @@
                 document.getElementById('edit-host-ssl').checked = h.ssl_forced || false;
                 document.getElementById('edit-host-exploits').checked = h.block_exploits !== false;
                 document.getElementById('edit-host-ws').checked = h.allow_websocket_upgrade || false;
+                document.getElementById('edit-host-advanced').value = h.advanced_config || '';
                 new bootstrap.Modal(document.getElementById('editHostModal')).show();
             })
             .catch(err => alert('Error: ' + err));
@@ -417,6 +430,7 @@
             ssl_forced: document.getElementById('edit-host-ssl').checked,
             block_exploits: document.getElementById('edit-host-exploits').checked,
             allow_websocket_upgrade: document.getElementById('edit-host-ws').checked,
+            advanced_config: document.getElementById('edit-host-advanced').value,
         };
 
         fetch('/api/npm/hosts/' + hostId, {

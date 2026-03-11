@@ -47,6 +47,7 @@ def create_proxy_host():
             ssl_forced=data.get('ssl_forced', False),
             block_exploits=data.get('block_exploits', True),
             allow_websocket_upgrade=data.get('allow_websocket_upgrade', False),
+            advanced_config=data.get('advanced_config', ''),
         )
         return jsonify({'host': host}), 201
     except Exception as e:
