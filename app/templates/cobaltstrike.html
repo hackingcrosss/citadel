@@ -345,7 +345,10 @@
                 var tbody = document.getElementById('listeners-table');
 
                 if (listeners.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="11" class="text-center text-muted py-4">No listeners found</td></tr>';
+                    var emptyMsg = (!IS_ADMIN && ACTIVE_PROJECT_ID === null)
+                        ? 'Select a project to view listeners'
+                        : 'No listeners found';
+                    tbody.innerHTML = '<tr><td colspan="11" class="text-center text-muted py-4">' + emptyMsg + '</td></tr>';
                     return;
                 }
 

@@ -36,11 +36,12 @@
                         <th>State</th>
                         <th>Type</th>
                         <th>Created</th>
+                        <th style="width:100px">Project</th>
                         <th>Actions</th>
                     </tr>
                 </thead>
                 <tbody id="domains-tbody">
-                    <tr><td colspan="7" class="text-center text-muted py-4">Loading domains...</td></tr>
+                    <tr><td colspan="8" class="text-center text-muted py-4">Loading domains...</td></tr>
                 </tbody>
             </table>
         </div>
@@ -195,6 +196,51 @@
     const IS_VIEWER = {{ 'true' if current_user.role == 'viewer' else 'false' }};
     const IS_WHITE_TEAM = {{ 'true' if active_project_role == 'white_team' else 'false' }};
     const IS_READONLY = IS_VIEWER || IS_WHITE_TEAM;
+    const IS_ADMIN = {{ 'true' if current_user.is_admin else 'false' }};
+    const ACTIVE_PROJECT_ID = {{ active_project.id if active_project else 'null' }};
+    const ACTIVE_PROJECT_CODE = {{ active_project.code | tojson if active_project else 'null' }};
+
+    function escapeHtml(str) {
+        var div = document.createElement('div');
+        div.appendChild(document.createTextNode(str == null ? '' : String(str)));
+        return div.innerHTML;
+    }
+
+    function escapeAttr(str) {
+        return String(str == null ? '' : str)
+            .replace(/&/g, '&amp;').replace(/"/g, '&quot;')
+            .replace(/'/g, '&#x27;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+
+    function projectBadge(rType, extId, projId, projCode, projResId) {
+        if (projId) {
+            const canUntag = IS_ADMIN || projId === ACTIVE_PROJECT_ID;
+            return '<span class="badge bg-danger me-1" style="font-size:0.7rem">' + escapeHtml(projCode || '') + '</span>' +
+                (canUntag && !IS_READONLY ? '<i class="bi bi-x-circle text-muted" style="cursor:pointer;font-size:0.8rem" title="Untag" onclick="untagResource(' + projId + ',' + projResId + ')"></i>' : '');
+        }
+        if (!IS_READONLY && ACTIVE_PROJECT_ID !== null) {
+            return '<i class="bi bi-tag text-muted" style="cursor:pointer;font-size:0.85rem" title="Tag to ' + escapeAttr(ACTIVE_PROJECT_CODE || 'active project') + '" onclick="tagMailgunDomain(\'' + escapeAttr(rType) + '\',\'' + escapeAttr(extId) + '\')"></i>';
+        }
+        return '<span class="text-muted" style="font-size:0.75rem">—</span>';
+    }
+
+    async function tagMailgunDomain(rType, extId) {
+        const res = await fetch('/api/projects/' + ACTIVE_PROJECT_ID + '/resources', {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({resource_type: rType, external_id: extId}),
+        });
+        if (!res.ok) { const d = await res.json(); showToast(d.error || 'Tag failed', 'danger'); return; }
+        loadDomains();
+    }
+
+    async function untagResource(projId, resId) {
+        const confirmed = await showConfirm('Remove project tag from this domain?');
+        if (!confirmed) return;
+        const res = await fetch('/api/projects/' + projId + '/resources/' + resId, {method: 'DELETE'});
+        if (!res.ok) { const d = await res.json(); showToast(d.error || 'Untag failed', 'danger'); return; }
+        loadDomains();
+    }
+
     let currentDomain = null;
     let currentDomainRegion = null;
 
@@ -210,7 +256,7 @@
             .then(data => {
                 if (data.error) {
                     document.getElementById('domains-tbody').innerHTML =
-                        '<tr><td colspan="7" class="text-danger text-center py-4">' + data.error + '</td></tr>';
+                        '<tr><td colspan="8" class="text-danger text-center py-4">' + data.error + '</td></tr>';
                     return;
                 }
 
@@ -218,8 +264,11 @@
                 document.getElementById('domain-count').textContent = domains.length + ' domains';
 
                 if (domains.length === 0) {
+                    const emptyMsg = (!IS_ADMIN && ACTIVE_PROJECT_ID === null)
+                        ? 'Select a project to view domains'
+                        : 'No domains configured. Add one to get started.';
                     document.getElementById('domains-tbody').innerHTML =
-                        '<tr><td colspan="7" class="text-center text-muted py-4">No domains configured. Add one to get started.</td></tr>';
+                        '<tr><td colspan="8" class="text-center text-muted py-4">' + emptyMsg + '</td></tr>';
                     return;
                 }
 
@@ -235,6 +284,7 @@
                         '<td><span class="badge-status ' + stateClass + '">' + (d.state || 'unknown') + '</span></td>' +
                         '<td>' + (d.type || 'custom') + '</td>' +
                         '<td>' + created + '</td>' +
+                        '<td>' + projectBadge('mailgun_domain', d.name, d.project_id, d.project_code, d.project_resource_id) + '</td>' +
                         '<td>' +
                             '<div class="btn-group btn-group-sm">' +
                                 '<button class="btn btn-outline-info" title="DNS & Credentials" onclick="selectDomain(\'' + d.name + '\', \'' + region.toLowerCase() + '\')">' +
@@ -250,7 +300,7 @@
             })
             .catch(err => {
                 document.getElementById('domains-tbody').innerHTML =
-                    '<tr><td colspan="7" class="text-danger text-center py-4">Failed to load - check Mailgun credentials in Settings</td></tr>';
+                    '<tr><td colspan="8" class="text-danger text-center py-4">Failed to load - check Mailgun credentials in Settings</td></tr>';
             });
     }
 

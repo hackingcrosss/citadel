@@ -182,6 +182,36 @@ def build_project_tag_map(resource_type, external_ids):
     }
 
 
+def filter_by_active_project(user, items, active_project):
+    """Scope a list of enriched resource dicts to the active project.
+
+    - Admins see everything regardless of active project.
+    - Non-admins with an active project see only items whose project_id matches.
+    - Non-admins with no active project see nothing (empty list).
+    """
+    if user.is_admin:
+        return items
+    if active_project is None:
+        return []
+    return [i for i in items if i.get('project_id') == active_project.id]
+
+
+def get_project_domain_names(project_id):
+    """Return the set of domain names checked out to a project."""
+    from app.models.domain import Domain
+    rows = Domain.query.filter_by(checkout_project_id=project_id).with_entities(Domain.name).all()
+    return {row[0] for row in rows}
+
+
+def get_project_resource_external_ids(project_id, resource_type):
+    """Return the set of external_ids for a project's tagged resources of a given type."""
+    rows = ProjectResource.query.filter_by(
+        project_id=project_id,
+        resource_type=resource_type,
+    ).with_entities(ProjectResource.external_id).all()
+    return {row[0] for row in rows}
+
+
 def assert_resource_writable(resource_type, external_id, user):
     """Abort 403 if the user cannot perform write actions on this external resource.
 

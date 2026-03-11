@@ -1694,34 +1694,51 @@
             .then(function(bindPort) {
                 if (bindPort === undefined) return Promise.reject('stop');
 
-                // Step 3: Create NPM proxy host (using CS Listener IP from settings)
+                // Step 3: Create NPM proxy host — first fetch access lists to find Cloudflare ACL
                 logOk(LOG, 'CS Listener IP: <strong>' + csListenerIp + '</strong>');
                 var scheme = schemeMap[type];
-                logWarn(LOG, 'Creating NPM proxy: <strong>' + callbackHosts.join(', ') + '</strong> &rarr; ' + scheme + '://' + csListenerIp + ':' + bindPort + '...');
 
-                return fetch('/api/npm/hosts', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({
-                        domain_names: callbackHosts,
-                        forward_host: csListenerIp,
-                        forward_port: bindPort,
-                        forward_scheme: scheme
+                return fetch('/api/npm/access-lists')
+                    .then(function(r) { return r.json(); })
+                    .then(function(aclData) {
+                        var cfAcl = (aclData.access_lists || []).find(function(a) {
+                            return a.name && a.name.toLowerCase().indexOf('cloudflare') !== -1;
+                        });
+                        if (cfAcl) {
+                            logOk(LOG, 'Found Cloudflare ACL: <strong>' + cfAcl.name + '</strong> (id: ' + cfAcl.id + ')');
+                        } else {
+                            logWarn(LOG, 'No Cloudflare ACL found in NPM — proxy will be unrestricted');
+                        }
+
+                        logWarn(LOG, 'Creating NPM proxy: <strong>' + callbackHosts.join(', ') + '</strong> &rarr; ' + scheme + '://' + csListenerIp + ':' + bindPort + '...');
+
+                        var npmPayload = {
+                            domain_names: callbackHosts,
+                            forward_host: csListenerIp,
+                            forward_port: bindPort,
+                            forward_scheme: scheme,
+                        };
+                        if (cfAcl) npmPayload.access_list_id = cfAcl.id;
+
+                        return fetch('/api/npm/hosts', {
+                            method: 'POST',
+                            headers: {'Content-Type': 'application/json'},
+                            body: JSON.stringify(npmPayload)
+                        });
                     })
-                })
-                .then(function(r) { return r.json(); })
-                .then(function(npmData) {
-                    if (npmData.error) {
-                        logErr(LOG, 'Failed to create NPM proxy: ' + npmData.error);
-                        setButtonLoading('btn-c2-setup', false);
-                        return Promise.reject('stop');
-                    }
-                    logOk(LOG, 'NPM proxy host created');
-                    if (npmData.host && npmData.host.id) {
-                        logInfo(LOG, 'NPM Host ID: ' + npmData.host.id);
-                    }
-                    return true;
-                });
+                    .then(function(r) { return r.json(); })
+                    .then(function(npmData) {
+                        if (npmData.error) {
+                            logErr(LOG, 'Failed to create NPM proxy: ' + npmData.error);
+                            setButtonLoading('btn-c2-setup', false);
+                            return Promise.reject('stop');
+                        }
+                        logOk(LOG, 'NPM proxy host created');
+                        if (npmData.host && npmData.host.id) {
+                            logInfo(LOG, 'NPM Host ID: ' + npmData.host.id);
+                        }
+                        return true;
+                    });
             })
             .then(function(ok) {
                 if (!ok) return Promise.reject('stop');
@@ -1730,7 +1747,8 @@
                 if (!cdnEnabled) return true;
 
                 var cdnPort = (type === 'http') ? 80 : 443;
-                logWarn(LOG, 'Creating CDN distribution → RedWarden ' + redwardenIp + ':' + cdnPort + '...');
+                var cdnOrigin = callbackHosts[0]; // domain name so CDN sends correct Host header to NPM
+                logWarn(LOG, 'Creating CDN distribution → ' + cdnOrigin + ':' + cdnPort + '...');
                 return fetch('/api/cdn/distributions', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
@@ -1738,7 +1756,7 @@
                         provider: cdnProvider,
                         account_label: cdnAccount,
                         resource_group: cdnRg,
-                        origin_host: redwardenIp,
+                        origin_host: cdnOrigin,
                         origin_port: cdnPort,
                         comment: listenerName
                     })

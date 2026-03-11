@@ -1,23 +1,36 @@
 import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed, TimeoutError as FuturesTimeoutError
 from flask import request, jsonify
-from flask_login import login_required
+from flask_login import login_required, current_user
 from app.api import api_bp
 from app.services import cdn_service
 from app.models.cdn_distribution import CdnDistribution
 from app import db
+from app.utils.decorators import feature_required
+from app.services.project_service import build_project_tag_map, get_active_project, get_project_resource_external_ids, get_project_domain_names
 
 _log = logging.getLogger(__name__)
 
 
 @api_bp.route('/cdn/distributions', methods=['GET'])
 @login_required
+@feature_required('cdn')
 def cdn_list_distributions():
     try:
         # Start with locally tracked records
         records = CdnDistribution.query.order_by(CdnDistribution.created_at.desc()).all()
         tracked_by_ext_id = {r.external_id: r for r in records if r.external_id}
-        result = [r.to_dict() for r in records]
+
+        # Enrich with project tags
+        tag_map = build_project_tag_map('cdn_dist', [str(r.id) for r in records])
+        result = []
+        for r in records:
+            d = r.to_dict()
+            tag = tag_map.get(str(r.id))
+            d['project_id'] = tag['project_id'] if tag else None
+            d['project_code'] = tag['project_code'] if tag else None
+            d['project_resource_id'] = tag['project_resource_id'] if tag else None
+            result.append(d)
 
         # Discover live distributions from each provider in parallel with a timeout
         # so slow/unconfigured providers never block the response.
@@ -54,6 +67,24 @@ def cdn_list_distributions():
                     'updated_at': None,
                 })
 
+        if not current_user.is_admin:
+            active_project = get_active_project(current_user)
+            if active_project is None:
+                result = []
+            else:
+                cdn_dist_ids = get_project_resource_external_ids(active_project.id, 'cdn_dist')
+                cs_listener_names = get_project_resource_external_ids(active_project.id, 'cs_listener')
+                project_domains = get_project_domain_names(active_project.id)
+                filtered = []
+                for d in result:
+                    if str(d.get('id') or '') in cdn_dist_ids:
+                        filtered.append(d)
+                    elif d.get('comment') and d['comment'] in cs_listener_names:
+                        filtered.append(d)
+                    elif d.get('origin_host') and d['origin_host'] in project_domains:
+                        filtered.append(d)
+                result = filtered
+
         return jsonify({'distributions': result})
     except Exception as e:
         return jsonify({'error': str(e)}), 400
@@ -61,6 +92,7 @@ def cdn_list_distributions():
 
 @api_bp.route('/cdn/distributions/import', methods=['POST'])
 @login_required
+@feature_required('cdn')
 def cdn_import_distribution():
     """Import an externally-created distribution into local tracking."""
     data = request.get_json()
@@ -91,6 +123,7 @@ def cdn_import_distribution():
 
 @api_bp.route('/cdn/distributions', methods=['POST'])
 @login_required
+@feature_required('cdn')
 def cdn_create_distribution():
     data = request.get_json()
     if not data:
@@ -139,6 +172,7 @@ def cdn_create_distribution():
 
 @api_bp.route('/cdn/distributions/<int:dist_id>', methods=['GET'])
 @login_required
+@feature_required('cdn')
 def cdn_get_distribution(dist_id):
     dist = CdnDistribution.query.get_or_404(dist_id)
     return jsonify({'distribution': dist.to_dict()})
@@ -146,6 +180,7 @@ def cdn_get_distribution(dist_id):
 
 @api_bp.route('/cdn/distributions/<int:dist_id>/status', methods=['GET'])
 @login_required
+@feature_required('cdn')
 def cdn_get_distribution_status(dist_id):
     """Poll live status from the cloud provider (or Celery task) and update local DB."""
     dist = CdnDistribution.query.get_or_404(dist_id)
@@ -209,6 +244,7 @@ def cdn_get_distribution_status(dist_id):
 
 @api_bp.route('/cdn/distributions/<int:dist_id>/probe', methods=['GET'])
 @login_required
+@feature_required('cdn')
 def cdn_get_probe_settings(dist_id):
     """Return current health probe settings for an AFD distribution."""
     dist = CdnDistribution.query.get_or_404(dist_id)
@@ -235,6 +271,7 @@ def cdn_get_probe_settings(dist_id):
 
 @api_bp.route('/cdn/distributions/<int:dist_id>', methods=['PATCH'])
 @login_required
+@feature_required('cdn')
 def cdn_update_distribution(dist_id):
     """Update origin_host, origin_port and/or comment on a tracked distribution."""
     dist = CdnDistribution.query.get_or_404(dist_id)
@@ -281,6 +318,7 @@ def cdn_update_distribution(dist_id):
 
 @api_bp.route('/cdn/distributions/<int:dist_id>', methods=['DELETE'])
 @login_required
+@feature_required('cdn')
 def cdn_delete_distribution(dist_id):
     """Teardown: disable (CloudFront only) → delete from provider → remove from DB."""
     dist = CdnDistribution.query.get_or_404(dist_id)

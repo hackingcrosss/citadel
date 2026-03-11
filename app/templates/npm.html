@@ -280,8 +280,11 @@
                 document.getElementById('host-count').textContent = hosts.length + ' hosts';
 
                 if (hosts.length === 0) {
+                    const emptyMsg = (!IS_ADMIN && ACTIVE_PROJECT_ID === null)
+                        ? 'Select a project to view proxy hosts'
+                        : 'No proxy hosts configured';
                     document.getElementById('hosts-tbody').innerHTML =
-                        '<tr><td colspan="8" class="text-center text-muted py-4">No proxy hosts configured</td></tr>';
+                        '<tr><td colspan="8" class="text-center text-muted py-4">' + emptyMsg + '</td></tr>';
                     return;
                 }
 
