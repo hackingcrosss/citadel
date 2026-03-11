@@ -7,7 +7,7 @@ from app.services import credential_service
 _log = logging.getLogger(__name__)
 
 
-_MULTI_ACCOUNT_PROVIDERS = {'cloudflare', 'aws'}
+_MULTI_ACCOUNT_PROVIDERS = {'cloudflare', 'aws', 'azure'}
 
 
 @api_bp.route('/credentials/<provider>', methods=['GET'])
@@ -75,6 +75,18 @@ def delete_aws_account(label):
     return jsonify({'error': 'Account not found'}), 404
 
 
+@api_bp.route('/credentials/azure/account/<label>', methods=['DELETE'])
+@login_required
+def delete_azure_account(label):
+    labels = credential_service.get_account_labels('azure')
+    if len(labels) <= 1:
+        return jsonify({'error': 'Cannot delete the last Azure account'}), 400
+    deleted = credential_service.delete_account('azure', label)
+    if deleted:
+        return jsonify({'deleted': True, 'label': label})
+    return jsonify({'error': 'Account not found'}), 404
+
+
 @api_bp.route('/credentials/<provider>/test', methods=['POST'])
 @login_required
 def test_credentials(provider):
@@ -83,6 +95,7 @@ def test_credentials(provider):
         'mailgun': _test_mailgun,
         'npm': _test_npm,
         'aws': _test_aws,
+        'azure': _test_azure,
         'docker': _test_docker,
         'gophish': _test_gophish,
         'cobaltstrike': _test_cobaltstrike,
@@ -173,3 +186,23 @@ def _test_openai():
         max_tokens=5,
     )
     return {'status': 'ok', 'model': deployment, 'reply': response.choices[0].message.content.strip()}
+
+
+def _test_azure(label='default'):
+    from azure.identity import ClientSecretCredential
+    from azure.mgmt.resource import ResourceManagementClient
+    from app.services.credential_service import get_credential
+
+    tenant_id = get_credential('azure', 'tenant_id', label=label)
+    client_id = get_credential('azure', 'client_id', label=label)
+    client_secret = get_credential('azure', 'client_secret', label=label)
+    subscription_id = get_credential('azure', 'subscription_id', label=label)
+
+    if not all([tenant_id, client_id, client_secret, subscription_id]):
+        raise ValueError(f"Azure credentials not fully configured for account '{label}'. "
+                         "Set tenant_id, client_id, client_secret, and subscription_id in Settings.")
+
+    cred = ClientSecretCredential(tenant_id=tenant_id, client_id=client_id, client_secret=client_secret)
+    rm_client = ResourceManagementClient(cred, subscription_id)
+    groups = list(rm_client.resource_groups.list())
+    return {'subscription_id': subscription_id, 'resource_group_count': len(groups)}

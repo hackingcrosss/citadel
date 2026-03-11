@@ -1,0 +1,403 @@
+{% extends "base.html" %}
+
+{% block title %}Azure DNS - InfraRed{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1 class="h3 mb-0">Azure DNS</h1>
+    {% if current_user.role != 'viewer' and active_project_role != 'white_team' %}
+    <button class="btn btn-infrared" onclick="openAddRecord()">
+        <i class="bi bi-plus-circle"></i> Add Record
+    </button>
+    {% endif %}
+</div>
+
+<!-- Zone Selector -->
+<div class="card-custom mb-3">
+    <div class="card-body">
+        <div class="row g-3 align-items-end">
+            <div class="col-md-5">
+                <label class="form-label mb-1">
+                    Azure DNS Zone
+                    <span id="zones-loading-indicator" class="ms-1">
+                        <span class="spinner-border spinner-border-sm text-muted" style="width:.8rem;height:.8rem"></span>
+                        <small class="text-muted">fetching…</small>
+                    </span>
+                </label>
+                <select class="form-select" id="zone-select" onchange="onZoneChange()">
+                    <option value="">Select a zone...</option>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label mb-1">Filter by Type</label>
+                <select class="form-select" id="type-filter" onchange="loadRecords()">
+                    <option value="">All Types</option>
+                    <option value="A">A</option>
+                    <option value="AAAA">AAAA</option>
+                    <option value="CNAME">CNAME</option>
+                    <option value="MX">MX</option>
+                    <option value="TXT">TXT</option>
+                    <option value="NS">NS</option>
+                    <option value="SOA">SOA</option>
+                    <option value="SRV">SRV</option>
+                </select>
+            </div>
+            <div class="col-md-3">
+                <span id="zone-status" class="text-muted small"></span>
+            </div>
+            <div class="col-md-2 text-end">
+                <button class="btn btn-outline-secondary w-100" onclick="refreshZones()">
+                    <i class="bi bi-arrow-clockwise"></i> Refresh
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Zone Info Bar -->
+<div class="card-custom mb-3 d-none" id="zone-info-card">
+    <div class="card-body py-2">
+        <div class="row text-center">
+            <div class="col-md-3">
+                <small class="text-muted d-block">Zone</small>
+                <span id="zinfo-name" class="fw-bold"></span>
+            </div>
+            <div class="col-md-2">
+                <small class="text-muted d-block">Records</small>
+                <span id="zinfo-records" class="fw-bold"></span>
+            </div>
+            <div class="col-md-2">
+                <small class="text-muted d-block">Account</small>
+                <span id="zinfo-account" class="fw-bold"></span>
+            </div>
+            <div class="col-md-5">
+                <small class="text-muted d-block">Name Servers</small>
+                <span id="zinfo-ns" class="fw-bold small text-muted"></span>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- DNS Records Table -->
+<div class="card-custom">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <div class="d-flex align-items-center gap-3">
+            <span><i class="bi bi-cloud-check"></i> DNS Records</span>
+            <span class="badge bg-secondary" id="record-count">—</span>
+        </div>
+    </div>
+    <div class="card-body p-0">
+        <div id="records-loading" class="text-center py-4 d-none">
+            <div class="spinner-border text-secondary" role="status"></div>
+            <div class="text-muted mt-2">Loading records…</div>
+        </div>
+        <div id="records-empty" class="text-center py-5">
+            <i class="bi bi-cloud-check text-muted" style="font-size:2.2rem;opacity:.4;"></i>
+            <div class="text-muted mt-2">Select a zone to view DNS records</div>
+        </div>
+        <table class="table table-hover mb-0 d-none" id="records-table">
+            <thead class="table-light">
+                <tr>
+                    <th style="width:80px">Type</th>
+                    <th>Name</th>
+                    <th>Content</th>
+                    <th style="width:80px">TTL</th>
+                    <th style="width:100px">Actions</th>
+                </tr>
+            </thead>
+            <tbody id="records-body"></tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Add Record Modal -->
+<div class="modal fade" id="addRecordModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-plus-circle"></i> Add DNS Record</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label fw-bold">Type</label>
+                    <select class="form-select" id="add-type">
+                        <option value="A">A</option>
+                        <option value="AAAA">AAAA</option>
+                        <option value="CNAME">CNAME</option>
+                        <option value="MX">MX</option>
+                        <option value="TXT">TXT</option>
+                        <option value="NS">NS</option>
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-bold">Name</label>
+                    <input type="text" class="form-control" id="add-name" placeholder="@ or subdomain">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-bold">Content</label>
+                    <input type="text" class="form-control" id="add-content" placeholder="Value">
+                    <small class="text-muted">For MX: <code>priority exchange</code> e.g. <code>10 mail.example.com</code></small>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-bold">TTL (seconds)</label>
+                    <input type="number" class="form-control" id="add-ttl" value="3600" min="60">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-infrared" onclick="addRecord()">
+                    <i class="bi bi-plus-circle"></i> Add Record
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Delete Confirm Modal -->
+<div class="modal fade" id="deleteRecordModal" tabindex="-1">
+    <div class="modal-dialog modal-sm">
+        <div class="modal-content">
+            <div class="modal-header bg-danger text-white">
+                <h5 class="modal-title">Delete Record</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p>Delete the <strong><span id="del-type"></span></strong> record set for <code id="del-name"></code>?</p>
+                <p class="text-muted small mb-0">All values in this record set will be removed.</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-danger btn-sm" id="confirmDeleteRecordBtn">Delete</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    const IS_VIEWER = {{ 'true' if current_user.role == 'viewer' else 'false' }};
+    const IS_WHITE_TEAM = {{ 'true' if active_project_role == 'white_team' else 'false' }};
+    const IS_READONLY = IS_VIEWER || IS_WHITE_TEAM;
+
+    let allZones = [];
+    let currentZone = null;   // {name, resource_group, account_label, ...}
+    let _delType = null, _delName = null;
+
+    document.addEventListener('DOMContentLoaded', loadZones);
+
+    function escapeHtml(str) {
+        var div = document.createElement('div');
+        div.appendChild(document.createTextNode(str == null ? '' : String(str)));
+        return div.innerHTML;
+    }
+
+    // ─────────────────────────────────────────
+    // Zones
+    // ─────────────────────────────────────────
+
+    function loadZones() {
+        document.getElementById('zones-loading-indicator').classList.remove('d-none');
+        fetch('/api/azure-dns/zones')
+            .then(r => r.json())
+            .then(data => {
+                document.getElementById('zones-loading-indicator').classList.add('d-none');
+                if (data.error) {
+                    showToast(data.error, 'danger');
+                    return;
+                }
+                allZones = data.zones || [];
+                const sel = document.getElementById('zone-select');
+                sel.innerHTML = '<option value="">Select a zone…</option>';
+                allZones.forEach(z => {
+                    const opt = document.createElement('option');
+                    opt.value = z.id;   // rg/zoneName
+                    const acct = z.account_label !== 'default' ? ` [${z.account_label}]` : '';
+                    opt.textContent = `${z.name} (${z.resource_group})${acct}`;
+                    sel.appendChild(opt);
+                });
+                if (allZones.length === 1) {
+                    sel.value = allZones[0].id;
+                    onZoneChange();
+                }
+            })
+            .catch(err => {
+                document.getElementById('zones-loading-indicator').classList.add('d-none');
+                showToast('Error loading zones: ' + err, 'danger');
+            });
+    }
+
+    function refreshZones() {
+        currentZone = null;
+        document.getElementById('zone-info-card').classList.add('d-none');
+        document.getElementById('records-table').classList.add('d-none');
+        document.getElementById('records-empty').classList.remove('d-none');
+        document.getElementById('record-count').textContent = '—';
+        loadZones();
+    }
+
+    function onZoneChange() {
+        const val = document.getElementById('zone-select').value;
+        if (!val) {
+            currentZone = null;
+            document.getElementById('zone-info-card').classList.add('d-none');
+            document.getElementById('records-table').classList.add('d-none');
+            document.getElementById('records-empty').classList.remove('d-none');
+            document.getElementById('records-empty').querySelector('.text-muted').textContent = 'Select a zone to view DNS records';
+            document.getElementById('record-count').textContent = '—';
+            return;
+        }
+        currentZone = allZones.find(z => z.id === val) || null;
+        if (currentZone) {
+            document.getElementById('zinfo-name').textContent = currentZone.name;
+            document.getElementById('zinfo-records').textContent = currentZone.record_count;
+            document.getElementById('zinfo-account').textContent = currentZone.account_label !== 'default' ? currentZone.account_label : 'Azure';
+            document.getElementById('zinfo-ns').textContent = (currentZone.name_servers || []).join(', ');
+            document.getElementById('zone-info-card').classList.remove('d-none');
+        }
+        loadRecords();
+    }
+
+    // ─────────────────────────────────────────
+    // Records
+    // ─────────────────────────────────────────
+
+    function loadRecords() {
+        if (!currentZone) return;
+        const rg = encodeURIComponent(currentZone.resource_group);
+        const zone = encodeURIComponent(currentZone.name);
+        const typeFilter = document.getElementById('type-filter').value;
+        let url = `/api/azure-dns/zones/${rg}/${zone}/records`;
+        if (typeFilter) url += `?type=${encodeURIComponent(typeFilter)}`;
+
+        document.getElementById('records-loading').classList.remove('d-none');
+        document.getElementById('records-table').classList.add('d-none');
+        document.getElementById('records-empty').classList.add('d-none');
+
+        fetch(url)
+            .then(r => r.json())
+            .then(data => {
+                document.getElementById('records-loading').classList.add('d-none');
+                if (data.error) {
+                    document.getElementById('records-empty').classList.remove('d-none');
+                    document.getElementById('records-empty').querySelector('.text-muted').textContent = data.error;
+                    return;
+                }
+                const records = data.records || [];
+                document.getElementById('record-count').textContent = records.length + ' record' + (records.length !== 1 ? 's' : '');
+                if (records.length === 0) {
+                    document.getElementById('records-empty').classList.remove('d-none');
+                    document.getElementById('records-empty').querySelector('.text-muted').textContent = 'No records found';
+                } else {
+                    renderRecords(records);
+                    document.getElementById('records-table').classList.remove('d-none');
+                }
+            })
+            .catch(err => {
+                document.getElementById('records-loading').classList.add('d-none');
+                document.getElementById('records-empty').classList.remove('d-none');
+                document.getElementById('records-empty').querySelector('.text-muted').textContent = 'Error: ' + err;
+            });
+    }
+
+    function typeBadge(type) {
+        const colours = {A:'bg-success',AAAA:'bg-info',CNAME:'bg-warning text-dark',MX:'bg-primary',TXT:'bg-secondary',NS:'bg-dark',SOA:'bg-danger',SRV:'bg-primary',CAA:'bg-warning text-dark'};
+        const cls = colours[type] || 'bg-secondary';
+        return `<span class="badge ${cls}" style="font-size:0.75rem;min-width:50px;text-align:center">${escapeHtml(type)}</span>`;
+    }
+
+    function renderRecords(records) {
+        const tbody = document.getElementById('records-body');
+        // Group by type+name (Azure record set) so Delete acts on the record set
+        const seen = {};
+        tbody.innerHTML = records.map(r => {
+            const key = r.type + '::' + r.name;
+            const isFirst = !seen[key];
+            seen[key] = true;
+            const delBtn = (!IS_READONLY && isFirst)
+                ? `<button class="btn btn-sm btn-outline-danger" title="Delete record set" onclick="confirmDeleteRecord('${escapeAttr(r.type)}','${escapeAttr(r.name)}')"><i class="bi bi-trash"></i></button>`
+                : '';
+            return `
+            <tr>
+                <td>${typeBadge(r.type)}</td>
+                <td><code>${escapeHtml(r.name)}</code></td>
+                <td><span class="text-muted font-mono" style="font-size:0.85em;word-break:break-all">${escapeHtml(r.content)}</span></td>
+                <td><small class="text-muted">${escapeHtml(String(r.ttl))}</small></td>
+                <td>${delBtn}</td>
+            </tr>`;
+        }).join('');
+    }
+
+    function escapeAttr(str) {
+        return String(str == null ? '' : str)
+            .replace(/&/g, '&amp;').replace(/"/g, '&quot;')
+            .replace(/'/g, '&#x27;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+
+    // ─────────────────────────────────────────
+    // Add Record
+    // ─────────────────────────────────────────
+
+    function openAddRecord() {
+        if (!currentZone) { showToast('Select a zone first', 'warning'); return; }
+        document.getElementById('add-name').value = '';
+        document.getElementById('add-content').value = '';
+        document.getElementById('add-ttl').value = '3600';
+        document.getElementById('add-type').value = 'A';
+        new bootstrap.Modal(document.getElementById('addRecordModal')).show();
+    }
+
+    function addRecord() {
+        if (!currentZone) return;
+        const type = document.getElementById('add-type').value;
+        const name = document.getElementById('add-name').value.trim();
+        const content = document.getElementById('add-content').value.trim();
+        const ttl = parseInt(document.getElementById('add-ttl').value, 10) || 3600;
+
+        if (!name || !content) { showToast('Name and content are required', 'warning'); return; }
+
+        const rg = encodeURIComponent(currentZone.resource_group);
+        const zone = encodeURIComponent(currentZone.name);
+
+        fetch(`/api/azure-dns/zones/${rg}/${zone}/records`, {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({type, name, content, ttl}),
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.error) { showToast(data.error, 'danger'); return; }
+            bootstrap.Modal.getInstance(document.getElementById('addRecordModal')).hide();
+            loadRecords();
+        })
+        .catch(err => showToast('Error: ' + err, 'danger'));
+    }
+
+    // ─────────────────────────────────────────
+    // Delete Record
+    // ─────────────────────────────────────────
+
+    function confirmDeleteRecord(type, name) {
+        _delType = type; _delName = name;
+        document.getElementById('del-type').textContent = type;
+        document.getElementById('del-name').textContent = name;
+        new bootstrap.Modal(document.getElementById('deleteRecordModal')).show();
+    }
+
+    document.getElementById('confirmDeleteRecordBtn').addEventListener('click', function() {
+        if (!currentZone || !_delType) return;
+        const rg = encodeURIComponent(currentZone.resource_group);
+        const zone = encodeURIComponent(currentZone.name);
+        const type = encodeURIComponent(_delType);
+        const name = encodeURIComponent(_delName);
+        fetch(`/api/azure-dns/zones/${rg}/${zone}/records/${type}/${name}`, {method: 'DELETE'})
+        .then(r => r.json())
+        .then(data => {
+            bootstrap.Modal.getInstance(document.getElementById('deleteRecordModal')).hide();
+            if (data.error) { showToast(data.error, 'danger'); return; }
+            loadRecords();
+        })
+        .catch(err => showToast('Error: ' + err, 'danger'));
+    });
+</script>
+{% endblock %}

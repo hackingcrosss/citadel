@@ -205,6 +205,16 @@ def register_routes(app):
     def aws():
         return render_template('aws.html')
 
+    @app.route('/azure')
+    @login_required
+    def azure():
+        return render_template('azure.html')
+
+    @app.route('/azure-dns')
+    @login_required
+    def azure_dns():
+        return render_template('azure_dns.html')
+
     @app.route('/infra-map')
     @login_required
     @feature_required('infra_map')

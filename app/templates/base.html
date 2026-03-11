@@ -579,7 +579,7 @@
         <div class="brand">
             <h4><i class="bi bi-bullseye"></i> InfraRed</h4>
         </div>
-        {% set infra_pages = ['containers','aws','npm','domains'] %}
+        {% set infra_pages = ['containers','aws','azure','azure_dns','npm','domains'] %}
         {% set phishing_pages = ['email','gophish'] %}
         {% set c2_pages = ['cobaltstrike'] %}
         {% set ops_pages = ['operations','orchestration_mgmt','infra_map'] %}
@@ -609,7 +609,13 @@
                     <i class="bi bi-box-seam"></i> Containers
                 </a>
                 <a class="nav-link {% if request.endpoint == 'aws' %}active{% endif %}" href="{{ url_for('aws') }}">
-                    <i class="bi bi-cloud"></i> Instances
+                    <i class="bi bi-cloud"></i> AWS Instances
+                </a>
+                <a class="nav-link {% if request.endpoint == 'azure' %}active{% endif %}" href="{{ url_for('azure') }}">
+                    <i class="bi bi-microsoft"></i> Azure VMs
+                </a>
+                <a class="nav-link {% if request.endpoint == 'azure_dns' %}active{% endif %}" href="{{ url_for('azure_dns') }}">
+                    <i class="bi bi-cloud-check"></i> Azure DNS
                 </a>
                 <a class="nav-link {% if request.endpoint == 'npm' %}active{% endif %}" href="{{ url_for('npm') }}">
                     <i class="bi bi-hdd-network"></i> Reverse Proxy
