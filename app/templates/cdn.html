@@ -1,0 +1,419 @@
+{% extends "base.html" %}
+
+{% block title %}CDN - InfraRed{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h1 class="h3 mb-0">CDN Distributions</h1>
+        <small class="text-muted">CloudFront &amp; Azure Front Door redirectors</small>
+    </div>
+    {% if current_user.role != 'viewer' and active_project_role != 'white_team' %}
+    <button class="btn btn-infrared" onclick="openCreateModal()">
+        <i class="bi bi-plus-circle"></i> New Distribution
+    </button>
+    {% endif %}
+</div>
+
+<!-- Stats Row -->
+<div class="row mb-4">
+    <div class="col-md-3">
+        <div class="stat-card">
+            <div class="label">Total</div>
+            <h3 id="statTotal">-</h3>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="stat-card">
+            <div class="label">Deployed</div>
+            <h3 id="statDeployed" class="text-success">-</h3>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="stat-card">
+            <div class="label">Deploying</div>
+            <h3 id="statDeploying" class="text-warning">-</h3>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="stat-card">
+            <div class="label">CloudFront / AFD</div>
+            <h3 id="statProviders" class="text-muted" style="font-size:1.2rem;">- / -</h3>
+        </div>
+    </div>
+</div>
+
+<!-- Distributions Table -->
+<div class="card-custom">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <span><i class="bi bi-globe2"></i> Distributions</span>
+        <button class="btn btn-sm btn-outline-secondary" onclick="loadDistributions()">
+            <i class="bi bi-arrow-clockwise"></i> Refresh
+        </button>
+    </div>
+    <div class="card-body p-0">
+        <div id="distLoading" class="text-center py-4">
+            <div class="spinner-border text-secondary" role="status"></div>
+            <div class="text-muted mt-2">Loading distributions…</div>
+        </div>
+        <div id="distEmpty" class="text-center py-5 d-none">
+            <i class="bi bi-globe2 text-muted" style="font-size:2.2rem;opacity:.4;"></i>
+            <div class="text-muted mt-2">No CDN distributions yet</div>
+        </div>
+        <table class="table table-hover mb-0 d-none" id="distTable">
+            <thead class="table-light">
+                <tr>
+                    <th style="width:110px">Provider</th>
+                    <th>CDN Domain</th>
+                    <th>Origin</th>
+                    <th style="width:100px">Status</th>
+                    <th>Comment / Listener</th>
+                    <th style="width:90px">Account</th>
+                    <th style="width:130px">Created</th>
+                    <th style="width:80px">Actions</th>
+                </tr>
+            </thead>
+            <tbody id="distBody"></tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Create Distribution Modal -->
+<div class="modal fade" id="createModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-plus-circle"></i> New CDN Distribution</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label fw-bold">Provider</label>
+                    <select class="form-select" id="c-provider" onchange="onProviderChange()">
+                        <option value="cloudfront">AWS CloudFront</option>
+                        <option value="azure_front_door">Azure Front Door</option>
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-bold">Account Label</label>
+                    <input type="text" class="form-control" id="c-account" value="default" placeholder="default">
+                    <small class="text-muted">AWS account label for CloudFront; Azure account label for AFD</small>
+                </div>
+                <div class="mb-3" id="c-rg-group" style="display:none">
+                    <label class="form-label fw-bold">Resource Group <span class="text-danger">*</span></label>
+                    <input type="text" class="form-control" id="c-rg" placeholder="my-resource-group">
+                    <small class="text-muted">Azure resource group where the AFD profile will be created</small>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-bold">Origin Host</label>
+                    <input type="text" class="form-control" id="c-origin-host" placeholder="1.2.3.4 or redwarden.example.com">
+                    <small class="text-muted">IP or hostname of the server CDN will forward traffic to</small>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-bold">Origin Port</label>
+                    <input type="number" class="form-control" id="c-origin-port" value="443" min="1" max="65535">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-bold">Comment <small class="text-muted">(optional)</small></label>
+                    <input type="text" class="form-control" id="c-comment" placeholder="e.g. CS Listener name">
+                    <small class="text-muted">Used to link this distribution to a Cobalt Strike listener</small>
+                </div>
+                <div id="cf-deploy-notice" class="alert alert-info py-2 small">
+                    <i class="bi bi-info-circle"></i> CloudFront distributions take <strong>5–15 minutes</strong> to deploy globally. Status will update automatically.
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-infrared" id="createBtn" onclick="createDistribution()">
+                    <i class="bi bi-plus-circle"></i> Create
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Delete Confirm Modal -->
+<div class="modal fade" id="deleteModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-danger text-white">
+                <h5 class="modal-title"><i class="bi bi-exclamation-triangle"></i> Delete Distribution</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p>Delete CDN distribution <code id="del-domain"></code>?</p>
+                <div id="del-cf-warning" class="alert alert-warning py-2 small d-none">
+                    <i class="bi bi-clock"></i> CloudFront distributions must be <strong>disabled</strong> before deletion. This takes <strong>5–10 minutes</strong>. If deletion fails, try again after waiting.
+                </div>
+                <p class="text-muted small mb-0">Origin: <span id="del-origin"></span></p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-danger btn-sm" id="confirmDeleteBtn">Delete</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    const IS_VIEWER = {{ 'true' if current_user.role == 'viewer' else 'false' }};
+    const IS_WHITE_TEAM = {{ 'true' if active_project_role == 'white_team' else 'false' }};
+    const IS_READONLY = IS_VIEWER || IS_WHITE_TEAM;
+
+    let allDists = [];
+    let _statusPollers = {};   // id -> intervalId
+    let _deleteId = null;
+
+    document.addEventListener('DOMContentLoaded', loadDistributions);
+
+    function escapeHtml(str) {
+        var d = document.createElement('div');
+        d.appendChild(document.createTextNode(str == null ? '' : String(str)));
+        return d.innerHTML;
+    }
+
+    // ─────────────────────────────────────────
+    // Load & render
+    // ─────────────────────────────────────────
+
+    function loadDistributions() {
+        document.getElementById('distLoading').classList.remove('d-none');
+        document.getElementById('distTable').classList.add('d-none');
+        document.getElementById('distEmpty').classList.add('d-none');
+
+        fetch('/api/cdn/distributions')
+            .then(r => r.json())
+            .then(data => {
+                document.getElementById('distLoading').classList.add('d-none');
+                if (data.error) {
+                    document.getElementById('distEmpty').classList.remove('d-none');
+                    document.getElementById('distEmpty').querySelector('.text-muted').textContent = data.error;
+                    return;
+                }
+                allDists = data.distributions || [];
+                updateStats(allDists);
+                if (allDists.length === 0) {
+                    document.getElementById('distEmpty').classList.remove('d-none');
+                } else {
+                    renderDistributions(allDists);
+                    document.getElementById('distTable').classList.remove('d-none');
+                }
+                // Start status polling for deploying/disabling distributions
+                allDists.forEach(d => {
+                    if (d.status === 'deploying' || d.status === 'disabling') {
+                        startStatusPoll(d.id);
+                    }
+                });
+            })
+            .catch(err => {
+                document.getElementById('distLoading').classList.add('d-none');
+                document.getElementById('distEmpty').classList.remove('d-none');
+                document.getElementById('distEmpty').querySelector('.text-muted').textContent = 'Error: ' + err;
+            });
+    }
+
+    function updateStats(dists) {
+        document.getElementById('statTotal').textContent = dists.length;
+        document.getElementById('statDeployed').textContent = dists.filter(d => d.status === 'deployed').length;
+        document.getElementById('statDeploying').textContent = dists.filter(d => d.status === 'deploying' || d.status === 'disabling').length;
+        const cf = dists.filter(d => d.provider === 'cloudfront').length;
+        const afd = dists.filter(d => d.provider === 'azure_front_door').length;
+        document.getElementById('statProviders').textContent = cf + ' / ' + afd;
+    }
+
+    function providerBadge(provider) {
+        if (provider === 'cloudfront') {
+            return '<span class="badge bg-warning text-dark" style="font-size:0.72rem">CloudFront</span>';
+        }
+        return '<span class="badge bg-info text-dark" style="font-size:0.72rem">Front Door</span>';
+    }
+
+    function statusBadge(status) {
+        const map = {
+            'deployed':  ['badge-running', 'Deployed'],
+            'deploying': ['badge-pending', 'Deploying'],
+            'disabling': ['badge-pending', 'Disabling'],
+            'disabled':  ['badge-stopped', 'Disabled'],
+            'error':     ['badge-stopped', 'Error'],
+        };
+        const [cls, label] = map[status] || ['badge-pending', status];
+        const spinner = (status === 'deploying' || status === 'disabling')
+            ? ' <span class="spinner-border spinner-border-sm ms-1" style="width:.6rem;height:.6rem"></span>'
+            : '';
+        return `<span class="badge-status ${cls}">${label}${spinner}</span>`;
+    }
+
+    function renderDistributions(dists) {
+        const tbody = document.getElementById('distBody');
+        tbody.innerHTML = dists.map(d => {
+            const domain = d.domain || '—';
+            const copyBtn = d.domain
+                ? `<i class="bi bi-clipboard ms-1 text-muted" style="cursor:pointer;font-size:0.8rem" title="Copy" onclick="navigator.clipboard.writeText('${d.domain}')"></i>`
+                : '';
+            const origin = `${d.origin_host}:${d.origin_port}`;
+            const account = d.account_label !== 'default' ? d.account_label : (d.provider === 'cloudfront' ? 'AWS' : 'Azure');
+            const created = d.created_at ? new Date(d.created_at).toLocaleDateString() : '—';
+            const deleteBtn = !IS_READONLY
+                ? `<button class="btn btn-sm btn-outline-danger" title="Delete" onclick="confirmDelete(${d.id},'${d.domain}','${origin}','${d.provider}')"><i class="bi bi-trash"></i></button>`
+                : '';
+            return `
+            <tr id="dist-row-${d.id}">
+                <td>${providerBadge(d.provider)}</td>
+                <td><code style="font-size:0.82em">${escapeHtml(domain)}</code>${copyBtn}</td>
+                <td><code style="font-size:0.82em">${escapeHtml(origin)}</code></td>
+                <td id="dist-status-${d.id}">${statusBadge(d.status)}</td>
+                <td><span class="text-muted small">${escapeHtml(d.comment || '—')}</span></td>
+                <td><span class="badge bg-secondary" style="font-size:0.7rem">${escapeHtml(account)}</span></td>
+                <td><small class="text-muted">${escapeHtml(created)}</small></td>
+                <td>${deleteBtn}</td>
+            </tr>`;
+        }).join('');
+    }
+
+    // ─────────────────────────────────────────
+    // Status polling for deploying distributions
+    // ─────────────────────────────────────────
+
+    function startStatusPoll(id) {
+        if (_statusPollers[id]) return;
+        _statusPollers[id] = setInterval(() => pollStatus(id), 30000);
+    }
+
+    function stopStatusPoll(id) {
+        if (_statusPollers[id]) {
+            clearInterval(_statusPollers[id]);
+            delete _statusPollers[id];
+        }
+    }
+
+    function pollStatus(id) {
+        fetch(`/api/cdn/distributions/${id}/status`)
+            .then(r => r.json())
+            .then(data => {
+                if (data.error) return;
+                const el = document.getElementById('dist-status-' + id);
+                if (el) el.innerHTML = statusBadge(data.status);
+                // Update stats
+                const dist = allDists.find(d => d.id === id);
+                if (dist) dist.status = data.status;
+                updateStats(allDists);
+                if (data.status === 'deployed' || data.status === 'error') {
+                    stopStatusPoll(id);
+                }
+            })
+            .catch(() => {});
+    }
+
+    // ─────────────────────────────────────────
+    // Create
+    // ─────────────────────────────────────────
+
+    function openCreateModal() {
+        document.getElementById('c-provider').value = 'cloudfront';
+        document.getElementById('c-account').value = 'default';
+        document.getElementById('c-rg').value = '';
+        document.getElementById('c-origin-host').value = '';
+        document.getElementById('c-origin-port').value = '443';
+        document.getElementById('c-comment').value = '';
+        onProviderChange();
+        new bootstrap.Modal(document.getElementById('createModal')).show();
+    }
+
+    function onProviderChange() {
+        const isAfd = document.getElementById('c-provider').value === 'azure_front_door';
+        document.getElementById('c-rg-group').style.display = isAfd ? '' : 'none';
+        document.getElementById('cf-deploy-notice').style.display = isAfd ? 'none' : '';
+    }
+
+    function createDistribution() {
+        const provider = document.getElementById('c-provider').value;
+        const account_label = document.getElementById('c-account').value.trim() || 'default';
+        const resource_group = document.getElementById('c-rg').value.trim();
+        const origin_host = document.getElementById('c-origin-host').value.trim();
+        const origin_port = parseInt(document.getElementById('c-origin-port').value, 10) || 443;
+        const comment = document.getElementById('c-comment').value.trim();
+
+        if (!origin_host) { showToast('Origin host is required', 'warning'); return; }
+        if (provider === 'azure_front_door' && !resource_group) { showToast('Resource group is required for Azure Front Door', 'warning'); return; }
+
+        const btn = document.getElementById('createBtn');
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Creating…';
+
+        fetch('/api/cdn/distributions', {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({provider, account_label, resource_group, origin_host, origin_port, comment}),
+        })
+        .then(r => r.json())
+        .then(data => {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="bi bi-plus-circle"></i> Create';
+            if (data.error) { showToast(data.error, 'danger'); return; }
+            bootstrap.Modal.getInstance(document.getElementById('createModal')).hide();
+            showToast('Distribution created — ' + (data.distribution.status === 'deploying' ? 'deploying…' : 'deployed'), 'success');
+            loadDistributions();
+        })
+        .catch(err => {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="bi bi-plus-circle"></i> Create';
+            showToast('Error: ' + err, 'danger');
+        });
+    }
+
+    // ─────────────────────────────────────────
+    // Delete
+    // ─────────────────────────────────────────
+
+    function confirmDelete(id, domain, origin, provider) {
+        _deleteId = id;
+        document.getElementById('del-domain').textContent = domain;
+        document.getElementById('del-origin').textContent = origin;
+        const cfWarn = document.getElementById('del-cf-warning');
+        if (provider === 'cloudfront') {
+            cfWarn.classList.remove('d-none');
+        } else {
+            cfWarn.classList.add('d-none');
+        }
+        new bootstrap.Modal(document.getElementById('deleteModal')).show();
+    }
+
+    document.getElementById('confirmDeleteBtn').addEventListener('click', function() {
+        if (_deleteId === null) return;
+        const btn = this;
+        btn.disabled = true;
+        btn.textContent = 'Deleting…';
+
+        fetch(`/api/cdn/distributions/${_deleteId}`, {method: 'DELETE'})
+        .then(r => r.json())
+        .then(data => {
+            btn.disabled = false;
+            btn.textContent = 'Delete';
+            bootstrap.Modal.getInstance(document.getElementById('deleteModal')).hide();
+            if (data.error && data.retry) {
+                showToast(data.error, 'warning');
+                // Update local status to 'disabling' and restart poll
+                const dist = allDists.find(d => d.id === _deleteId);
+                if (dist) {
+                    dist.status = 'disabling';
+                    const el = document.getElementById('dist-status-' + _deleteId);
+                    if (el) el.innerHTML = statusBadge('disabling');
+                    startStatusPoll(_deleteId);
+                }
+            } else if (data.error) {
+                showToast(data.error, 'danger');
+            } else {
+                showToast('Distribution deleted', 'success');
+                stopStatusPoll(_deleteId);
+                loadDistributions();
+            }
+        })
+        .catch(err => {
+            btn.disabled = false;
+            btn.textContent = 'Delete';
+            showToast('Error: ' + err, 'danger');
+        });
+    });
+</script>
+{% endblock %}
