@@ -278,3 +278,17 @@ def register_routes(app):
     @admin_required
     def admin_projects():
         return render_template('admin_projects.html')
+
+    @app.route('/admin/companies')
+    @login_required
+    @admin_required
+    def admin_companies():
+        return render_template('admin_companies.html')
+
+    @app.route('/company')
+    @login_required
+    @feature_required('companies')
+    def company_detail():
+        if current_user.is_admin:
+            return redirect(url_for('admin_companies'))
+        return render_template('company.html')

@@ -64,4 +64,20 @@ def create_app(config_class=Config):
         except Exception:
             return {'user_projects': [], 'active_project': None, 'active_project_role': None}
 
+    @app.context_processor
+    def inject_company():
+        """Inject active_company (derived from active project) into every template."""
+        from flask_login import current_user
+        try:
+            if not current_user.is_authenticated or current_user.is_admin:
+                return {'active_company': None}
+            from app.services.project_service import get_active_project
+            active = get_active_project(current_user)
+            if active and active.company_id:
+                from app.models.company import Company
+                return {'active_company': Company.query.get(active.company_id)}
+            return {'active_company': None}
+        except Exception:
+            return {'active_company': None}
+
     return app

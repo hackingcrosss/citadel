@@ -1,0 +1,168 @@
+import logging
+from flask import request, jsonify
+from flask_login import login_required, current_user
+from app.api import api_bp
+from app import db
+from app.models.company import Company, COMPANY_STRUCTURAL_FIELDS, COMPANY_PROFILE_FIELDS
+from app.models.project import Project, ProjectMember
+from app.utils.decorators import admin_required
+
+_log = logging.getLogger(__name__)
+
+
+def _can_access_company(company_id):
+    """Return True if the current user may read/update this company.
+
+    Admins always can. For non-admins, they must be a white_team member
+    of an active project linked to this company.
+    """
+    if current_user.is_admin:
+        return True
+    return (
+        Project.query
+        .filter_by(company_id=company_id, status='active')
+        .join(ProjectMember, ProjectMember.project_id == Project.id)
+        .filter(
+            ProjectMember.user_id == current_user.id,
+            ProjectMember.project_role == 'white_team',
+        )
+        .first() is not None
+    )
+
+
+@api_bp.route('/companies', methods=['GET'])
+@login_required
+@admin_required
+def list_companies():
+    companies = Company.query.order_by(Company.name).all()
+    return jsonify({'companies': [c.to_dict() for c in companies]})
+
+
+@api_bp.route('/companies', methods=['POST'])
+@login_required
+@admin_required
+def create_company():
+    data = request.get_json()
+    if not data:
+        return jsonify({'error': 'No data provided'}), 400
+
+    name = (data.get('name') or '').strip()
+    code = (data.get('code') or '').strip().upper()
+    if not name:
+        return jsonify({'error': 'Company name is required'}), 400
+    if not code:
+        return jsonify({'error': 'Company code is required'}), 400
+    if len(code) > 30:
+        return jsonify({'error': 'Code must be 30 characters or fewer'}), 400
+
+    if Company.query.filter_by(name=name).first():
+        return jsonify({'error': 'A company with that name already exists'}), 409
+    if Company.query.filter_by(code=code).first():
+        return jsonify({'error': 'A company with that code already exists'}), 409
+
+    company = Company(
+        name=name,
+        code=code,
+        description=data.get('description'),
+        industry=data.get('industry'),
+        status='active',
+        created_by_id=current_user.id,
+    )
+    db.session.add(company)
+    db.session.commit()
+
+    _log.info('Admin %s created company %s', current_user.email, code)
+    return jsonify({'company': company.to_dict()}), 201
+
+
+@api_bp.route('/companies/<int:company_id>', methods=['GET'])
+@login_required
+def get_company(company_id):
+    company = Company.query.get_or_404(company_id)
+    if not _can_access_company(company_id):
+        return jsonify({'error': 'Access denied'}), 403
+    include_projects = request.args.get('include_projects') == 'true'
+    return jsonify({'company': company.to_dict(include_projects=include_projects)})
+
+
+@api_bp.route('/companies/<int:company_id>', methods=['PATCH'])
+@login_required
+def update_company(company_id):
+    company = Company.query.get_or_404(company_id)
+    if not _can_access_company(company_id):
+        return jsonify({'error': 'Access denied'}), 403
+
+    data = request.get_json()
+    if not data:
+        return jsonify({'error': 'No data provided'}), 400
+
+    # Non-admins may only update profile fields
+    if not current_user.is_admin:
+        attempted_structural = set(data.keys()) & COMPANY_STRUCTURAL_FIELDS
+        if attempted_structural:
+            return jsonify({
+                'error': f'Only admins may update: {", ".join(sorted(attempted_structural))}',
+            }), 403
+
+    # Apply structural fields (admin only — already guarded above)
+    for field in COMPANY_STRUCTURAL_FIELDS:
+        if field in data:
+            if field == 'name':
+                name = (data['name'] or '').strip()
+                if not name:
+                    return jsonify({'error': 'Name cannot be empty'}), 400
+                existing = Company.query.filter_by(name=name).first()
+                if existing and existing.id != company_id:
+                    return jsonify({'error': 'A company with that name already exists'}), 409
+                company.name = name
+            elif field == 'code':
+                code = (data['code'] or '').strip().upper()
+                if not code:
+                    return jsonify({'error': 'Code cannot be empty'}), 400
+                existing = Company.query.filter_by(code=code).first()
+                if existing and existing.id != company_id:
+                    return jsonify({'error': 'A company with that code already exists'}), 409
+                company.code = code
+            elif field == 'status':
+                if data['status'] not in ('active', 'archived'):
+                    return jsonify({'error': 'status must be active or archived'}), 400
+                company.status = data['status']
+            else:
+                setattr(company, field, data[field])
+
+    # Apply profile fields (white_team writable)
+    for field in COMPANY_PROFILE_FIELDS:
+        if field in data:
+            setattr(company, field, data[field])
+
+    db.session.commit()
+    return jsonify({'company': company.to_dict()})
+
+
+@api_bp.route('/companies/<int:company_id>', methods=['DELETE'])
+@login_required
+@admin_required
+def delete_company(company_id):
+    company = Company.query.get_or_404(company_id)
+
+    active_count = Project.query.filter_by(company_id=company_id, status='active').count()
+    if active_count:
+        return jsonify({
+            'error': f'Cannot delete company with {active_count} active project(s). '
+                     'Archive or reassign projects first.',
+            'active_project_count': active_count,
+        }), 409
+
+    db.session.delete(company)
+    db.session.commit()
+    _log.info('Admin %s deleted company %s', current_user.email, company.code)
+    return jsonify({'deleted': True})
+
+
+@api_bp.route('/companies/<int:company_id>/projects', methods=['GET'])
+@login_required
+@admin_required
+def list_company_projects(company_id):
+    company = Company.query.get_or_404(company_id)
+    projects = company.projects.order_by(Project.name).all()
+    return jsonify({'projects': [p.to_dict() for p in projects]})

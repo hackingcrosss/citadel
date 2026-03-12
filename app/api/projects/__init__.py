@@ -53,10 +53,17 @@ def create_project():
     if Project.query.filter_by(code=code).first():
         return jsonify({'error': f'Project code "{code}" is already in use'}), 409
 
+    company_id = data.get('company_id') or None
+    if company_id:
+        from app.models.company import Company
+        if not Company.query.get(company_id):
+            return jsonify({'error': 'Company not found'}), 404
+
     project = Project(
         name=name,
         code=code,
         description=description,
+        company_id=company_id,
         status='active',
         created_by_id=current_user.id,
     )
@@ -106,6 +113,14 @@ def update_project(project_id):
         if status not in ('active', 'archived'):
             return jsonify({'error': 'Status must be "active" or "archived"'}), 400
         project.status = status
+
+    if 'company_id' in data:
+        cid = data['company_id']
+        if cid is not None:
+            from app.models.company import Company
+            if not Company.query.get(cid):
+                return jsonify({'error': 'Company not found'}), 404
+        project.company_id = cid
 
     db.session.commit()
     _log.info('Admin %s updated project %s', current_user.email, project.code)
