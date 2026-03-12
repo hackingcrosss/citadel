@@ -903,8 +903,8 @@
                     var dmarcName = '_dmarc.' + selectedZoneName;
                     var rua = dmarcData.rua;
                     var dmarcContent = rua
-                        ? 'v=DMARC1; p=none; rua=mailto:' + rua + '; fo=1'
-                        : 'v=DMARC1; p=none; fo=1';
+                        ? 'v=DMARC1; p=quarantine; rua=mailto:' + rua + '; fo=1'
+                        : 'v=DMARC1; p=quarantine; fo=1';
                     logWarn('email-log', 'Creating DMARC record: ' + dmarcName + '...');
                     fetch('/api/domains/zones/' + selectedZoneId + '/records', {
                         method: 'POST',
