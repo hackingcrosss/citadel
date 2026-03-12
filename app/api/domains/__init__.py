@@ -3,6 +3,7 @@ from flask import request, jsonify, abort
 from flask_login import login_required, current_user
 from app.api import api_bp
 from app.services import dns_service
+from app.services import audit_service
 from app.services.credential_service import get_account_labels
 from app.services.plan_service import get_current_plan
 from app.services.project_service import (
@@ -434,6 +435,10 @@ def create_dns_record(zone_id):
             db.session.add(db_rec)
             db.session.commit()
 
+        audit_service.log('dns.create', 'dns_record', record.get('id', ''),
+                          f"{record.get('type')} {record.get('name')} → {record.get('content')}",
+                          {'zone_id': zone_id, 'type': record.get('type'),
+                           'name': record.get('name'), 'content': record.get('content')})
         return jsonify({'record': record}), 201
     except Exception as e:
         return jsonify({'error': str(e)}), 400
@@ -492,6 +497,8 @@ def delete_dns_record(zone_id, record_id):
             db.session.delete(db_rec)
             db.session.commit()
 
+        audit_service.log('dns.delete', 'dns_record', record_id, record_id,
+                          {'zone_id': zone_id})
         return jsonify({'deleted': True})
     except Exception as e:
         return jsonify({'error': str(e)}), 400

@@ -1,0 +1,325 @@
+{% extends "base.html" %}
+{% block title %}Audit Trail - InfraRed{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1 class="h3 mb-0"><i class="bi bi-journal-text"></i> Audit Trail</h1>
+    <div class="d-flex gap-2">
+        <button class="btn btn-sm btn-outline-secondary" onclick="exportCsv()">
+            <i class="bi bi-download"></i> Export CSV
+        </button>
+        <button class="btn btn-sm btn-outline-secondary" onclick="loadPage(1)">
+            <i class="bi bi-arrow-clockwise"></i> Refresh
+        </button>
+    </div>
+</div>
+
+<!-- Filters -->
+<div class="card-custom mb-3">
+    <div class="card-body py-2">
+        <div class="row g-2 align-items-end">
+            <div class="col-md-3">
+                <label class="form-label text-muted small mb-1">Action</label>
+                <select class="form-select form-select-sm" id="f-action" onchange="loadPage(1)">
+                    <option value="">All actions</option>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label text-muted small mb-1">Entity type</label>
+                <select class="form-select form-select-sm" id="f-entity" onchange="loadPage(1)">
+                    <option value="">All types</option>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label text-muted small mb-1">User</label>
+                <input type="text" class="form-control form-control-sm" id="f-user"
+                       placeholder="email…" oninput="debounceLoad()">
+            </div>
+            <div class="col-md-2">
+                <label class="form-label text-muted small mb-1">From</label>
+                <input type="date" class="form-control form-control-sm" id="f-from" onchange="loadPage(1)">
+            </div>
+            <div class="col-md-2">
+                <label class="form-label text-muted small mb-1">To</label>
+                <input type="date" class="form-control form-control-sm" id="f-to" onchange="loadPage(1)">
+            </div>
+            <div class="col-md-1 d-flex gap-1">
+                <button class="btn btn-sm btn-outline-secondary w-100" onclick="clearFilters()">
+                    <i class="bi bi-x-lg"></i>
+                </button>
+            </div>
+        </div>
+        <div class="row g-2 mt-1">
+            <div class="col">
+                <input type="text" class="form-control form-control-sm" id="f-search"
+                       placeholder="Search entity name, user, action, details…" oninput="debounceLoad()">
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Results -->
+<div class="card-custom">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <span id="result-info" class="small text-muted">Loading…</span>
+        <div class="d-flex align-items-center gap-2">
+            <label class="text-muted small mb-0">Per page</label>
+            <select class="form-select form-select-sm w-auto" id="per-page" onchange="loadPage(1)">
+                <option value="25">25</option>
+                <option value="50" selected>50</option>
+                <option value="100">100</option>
+                <option value="200">200</option>
+            </select>
+        </div>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0" style="font-size:0.83rem;">
+                <thead>
+                    <tr>
+                        <th style="width:150px">Timestamp</th>
+                        <th style="width:200px">User</th>
+                        <th style="width:160px">Action</th>
+                        <th>Entity</th>
+                        <th>Details</th>
+                        <th style="width:110px">IP</th>
+                    </tr>
+                </thead>
+                <tbody id="audit-tbody">
+                    <tr><td colspan="6" class="text-center text-muted py-4">
+                        <span class="spinner-border spinner-border-sm me-2"></span>Loading…
+                    </td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+    <div class="card-footer d-flex justify-content-between align-items-center py-2" id="pagination-bar">
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const ACTION_COLORS = {
+    'auth.login':           'bg-success',
+    'auth.login_failed':    'bg-danger',
+    'auth.password_change': 'bg-warning text-dark',
+    'domain.checkout':      'bg-primary',
+    'domain.release':       'bg-secondary',
+    'domain.force_release': 'bg-danger',
+    'dns.create':           'bg-info text-dark',
+    'dns.delete':           'bg-danger',
+    'project.create':       'bg-primary',
+    'project.delete':       'bg-danger',
+    'project.archive':      'bg-secondary',
+    'project.member_add':   'bg-info text-dark',
+    'project.member_remove':'bg-warning text-dark',
+    'ec2.start':            'bg-success',
+    'ec2.stop':             'bg-warning text-dark',
+    'ec2.terminate':        'bg-danger',
+    'cs_listener.create':   'bg-primary',
+    'cs_listener.delete':   'bg-danger',
+    'npm_proxy.create':     'bg-success',
+    'npm_proxy.delete':     'bg-danger',
+    'user.create':          'bg-primary',
+    'user.update':          'bg-info text-dark',
+    'user.delete':          'bg-danger',
+    'credential.update':    'bg-warning text-dark',
+};
+
+const ENTITY_ICONS = {
+    'domain':       'bi-globe',
+    'dns_record':   'bi-card-list',
+    'project':      'bi-folder2',
+    'ec2':          'bi-cloud',
+    'cs_listener':  'bi-bullseye',
+    'npm_proxy':    'bi-hdd-network',
+    'user':         'bi-person',
+    'credential':   'bi-key',
+};
+
+let _debounceTimer = null;
+let _currentPage   = 1;
+let _totalPages    = 1;
+
+function debounceLoad() {
+    clearTimeout(_debounceTimer);
+    _debounceTimer = setTimeout(function() { loadPage(1); }, 400);
+}
+
+function clearFilters() {
+    document.getElementById('f-action').value = '';
+    document.getElementById('f-entity').value = '';
+    document.getElementById('f-user').value   = '';
+    document.getElementById('f-from').value   = '';
+    document.getElementById('f-to').value     = '';
+    document.getElementById('f-search').value = '';
+    loadPage(1);
+}
+
+function buildParams(page) {
+    const p = new URLSearchParams();
+    p.set('page',     page);
+    p.set('per_page', document.getElementById('per-page').value);
+    const action  = document.getElementById('f-action').value;
+    const entity  = document.getElementById('f-entity').value;
+    const user    = document.getElementById('f-user').value.trim();
+    const from    = document.getElementById('f-from').value;
+    const to      = document.getElementById('f-to').value;
+    const search  = document.getElementById('f-search').value.trim();
+    if (action)  p.set('action',      action);
+    if (entity)  p.set('entity_type', entity);
+    if (user)    p.set('user',        user);
+    if (from)    p.set('date_from',   from);
+    if (to)      p.set('date_to',     to);
+    if (search)  p.set('search',      search);
+    return p.toString();
+}
+
+function loadPage(page) {
+    _currentPage = page;
+    document.getElementById('audit-tbody').innerHTML =
+        '<tr><td colspan="6" class="text-center text-muted py-4">' +
+        '<span class="spinner-border spinner-border-sm me-2"></span>Loading…</td></tr>';
+    document.getElementById('result-info').textContent = 'Loading…';
+
+    fetch('/api/audit?' + buildParams(page))
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            _totalPages = data.pages || 1;
+            renderTable(data.entries || []);
+            renderInfo(data);
+            renderPagination(data);
+        })
+        .catch(function(err) {
+            document.getElementById('audit-tbody').innerHTML =
+                '<tr><td colspan="6" class="text-danger text-center py-4">Failed to load: ' + err + '</td></tr>';
+        });
+}
+
+function renderTable(entries) {
+    const tbody = document.getElementById('audit-tbody');
+    if (!entries.length) {
+        tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-5">' +
+            '<i class="bi bi-journal-x d-block mb-2" style="font-size:2rem;opacity:0.3"></i>No audit entries found</td></tr>';
+        return;
+    }
+
+    tbody.innerHTML = entries.map(function(e) {
+        const ts      = new Date(e.timestamp).toLocaleString();
+        const badgeCls = ACTION_COLORS[e.action] || 'bg-secondary';
+        const iconCls  = ENTITY_ICONS[e.entity_type] || 'bi-box';
+        const roleBadge = e.user_role
+            ? '<span class="badge bg-dark ms-1" style="font-size:0.65em">' + escHtml(e.user_role) + '</span>'
+            : '';
+        const entityHtml = e.entity_name
+            ? '<i class="bi ' + iconCls + ' me-1 text-muted"></i><code class="small">' + escHtml(e.entity_name) + '</code>'
+              + (e.entity_id && e.entity_id !== e.entity_name ? '<span class="text-muted ms-1 small">#' + escHtml(e.entity_id) + '</span>' : '')
+            : (e.entity_id ? '<code class="small text-muted">' + escHtml(e.entity_id) + '</code>' : '<span class="text-muted">—</span>');
+        const detailHtml = e.details ? renderDetails(e.details) : '';
+        return '<tr>' +
+            '<td class="text-muted" style="white-space:nowrap;font-size:0.78rem">' + ts + '</td>' +
+            '<td><span class="text-truncate d-block" style="max-width:190px" title="' + escHtml(e.user_email) + '">' +
+                escHtml(e.user_email) + '</span>' + roleBadge + '</td>' +
+            '<td><span class="badge ' + badgeCls + ' font-monospace" style="font-size:0.72rem">' + escHtml(e.action) + '</span></td>' +
+            '<td>' + entityHtml + '</td>' +
+            '<td style="max-width:320px">' + detailHtml + '</td>' +
+            '<td class="text-muted small font-monospace">' + escHtml(e.ip_address || '') + '</td>' +
+            '</tr>';
+    }).join('');
+}
+
+function renderDetails(d) {
+    if (typeof d !== 'object' || !d) return '';
+    return Object.entries(d).map(function(kv) {
+        var val = kv[1];
+        if (Array.isArray(val)) val = val.join(', ');
+        return '<span class="me-2 small text-muted">' + escHtml(kv[0]) + ':<code class="ms-1">' + escHtml(String(val)) + '</code></span>';
+    }).join('');
+}
+
+function renderInfo(data) {
+    const start = ((data.page - 1) * data.per_page) + 1;
+    const end   = Math.min(data.page * data.per_page, data.total);
+    document.getElementById('result-info').textContent =
+        data.total ? (start + '–' + end + ' of ' + data.total + ' entries') : '0 entries';
+}
+
+function renderPagination(data) {
+    const bar = document.getElementById('pagination-bar');
+    if (data.pages <= 1) { bar.innerHTML = ''; return; }
+
+    let html = '<nav><ul class="pagination pagination-sm mb-0">';
+    html += '<li class="page-item' + (data.page <= 1 ? ' disabled' : '') + '">' +
+            '<a class="page-link" href="#" onclick="loadPage(' + (data.page - 1) + ');return false">‹</a></li>';
+
+    const lo = Math.max(1, data.page - 3);
+    const hi = Math.min(data.pages, data.page + 3);
+    if (lo > 1) html += '<li class="page-item disabled"><span class="page-link">…</span></li>';
+    for (let p = lo; p <= hi; p++) {
+        html += '<li class="page-item' + (p === data.page ? ' active' : '') + '">' +
+                '<a class="page-link" href="#" onclick="loadPage(' + p + ');return false">' + p + '</a></li>';
+    }
+    if (hi < data.pages) html += '<li class="page-item disabled"><span class="page-link">…</span></li>';
+
+    html += '<li class="page-item' + (data.page >= data.pages ? ' disabled' : '') + '">' +
+            '<a class="page-link" href="#" onclick="loadPage(' + (data.page + 1) + ');return false">›</a></li>';
+    html += '</ul></nav>';
+    html += '<span class="text-muted small">Page ' + data.page + ' of ' + data.pages + '</span>';
+    bar.innerHTML = html;
+}
+
+function escHtml(str) {
+    const d = document.createElement('div');
+    d.appendChild(document.createTextNode(String(str || '')));
+    return d.innerHTML;
+}
+
+function exportCsv() {
+    const params = new URLSearchParams(buildParams(1));
+    params.set('per_page', '200');
+    fetch('/api/audit?' + params.toString())
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            const rows = [['Timestamp','User','Role','Action','Entity Type','Entity ID','Entity Name','Details','IP']];
+            (data.entries || []).forEach(function(e) {
+                rows.push([
+                    e.timestamp, e.user_email, e.user_role || '', e.action,
+                    e.entity_type || '', e.entity_id || '', e.entity_name || '',
+                    e.details ? JSON.stringify(e.details) : '', e.ip_address || ''
+                ]);
+            });
+            const csv = rows.map(function(r) {
+                return r.map(function(v) { return '"' + String(v).replace(/"/g, '""') + '"'; }).join(',');
+            }).join('\n');
+            const blob = new Blob([csv], {type: 'text/csv'});
+            const url  = URL.createObjectURL(blob);
+            const a    = document.createElement('a');
+            a.href = url;
+            a.download = 'audit-trail-' + new Date().toISOString().slice(0,10) + '.csv';
+            a.click();
+            URL.revokeObjectURL(url);
+        });
+}
+
+// Load filter dropdown options
+fetch('/api/audit/meta')
+    .then(function(r) { return r.json(); })
+    .then(function(meta) {
+        const aSelect = document.getElementById('f-action');
+        (meta.actions || []).forEach(function(a) {
+            const o = document.createElement('option');
+            o.value = a; o.textContent = a;
+            aSelect.appendChild(o);
+        });
+        const eSelect = document.getElementById('f-entity');
+        (meta.entity_types || []).forEach(function(t) {
+            const o = document.createElement('option');
+            o.value = t; o.textContent = t;
+            eSelect.appendChild(o);
+        });
+    });
+
+document.addEventListener('DOMContentLoaded', function() { loadPage(1); });
+</script>
+{% endblock %}

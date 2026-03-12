@@ -724,6 +724,10 @@
                 <i class="bi bi-patch-check"></i> License
             </a>
 
+            <a class="nav-link {% if request.endpoint == 'admin_audit' %}active{% endif %}" href="{{ url_for('admin_audit') }}">
+                <i class="bi bi-journal-text"></i> Audit Trail
+            </a>
+
             <a class="nav-link {% if request.endpoint == 'settings' %}active{% endif %}" href="{{ url_for('settings') }}">
                 <i class="bi bi-gear"></i> Settings
             </a>

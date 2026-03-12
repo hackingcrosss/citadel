@@ -7,6 +7,7 @@ from urllib.parse import urlparse
 from app import db
 from app.models.user import User
 from app.utils.decorators import admin_required, feature_required
+from app.services import audit_service
 from datetime import datetime
 
 _log = logging.getLogger(__name__)
@@ -120,6 +121,7 @@ def register_routes(app):
                     flash('You are using the default password. Please change it immediately!', 'warning')
                     return redirect(url_for('change_password'))
 
+                audit_service.log('auth.login', 'user', user.id, user.email)
                 flash('Login successful!', 'success')
                 next_page = request.args.get('next')
                 # Only allow relative redirects — reject any URL with a scheme or host
@@ -131,6 +133,7 @@ def register_routes(app):
             else:
                 _record_failure(client_ip)
                 _log.warning('Failed login attempt for %r from %s', email, client_ip)
+                audit_service.log('auth.login_failed', 'user', '', email or '', {'ip': client_ip})
                 flash('Invalid email or password', 'danger')
 
         return render_template('login.html')
@@ -175,6 +178,7 @@ def register_routes(app):
             current_user.must_change_password = False
             db.session.commit()
 
+            audit_service.log('auth.password_change', 'user', current_user.id, current_user.email)
             flash('Password changed successfully!', 'success')
             return redirect(url_for('dashboard'))
 
@@ -283,6 +287,12 @@ def register_routes(app):
             flash('Project Admin or Admin role required.', 'danger')
             return redirect(url_for('dashboard'))
         return render_template('admin_projects.html')
+
+    @app.route('/admin/audit')
+    @login_required
+    @admin_required
+    def admin_audit():
+        return render_template('admin_audit.html')
 
     @app.route('/admin/companies')
     @login_required

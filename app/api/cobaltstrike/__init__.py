@@ -4,6 +4,7 @@ from app.api import api_bp
 from app.services import cobaltstrike_service
 from app.utils.decorators import feature_required
 from app.services.project_service import build_project_tag_map, assert_resource_writable, get_active_project, filter_by_active_project, tag_resource, get_project_domain_names
+from app.services import audit_service
 
 # Valid listener types — these are the exact URL slugs for POST /api/v1/listeners/{type}
 VALID_TYPES = {'http', 'https', 'dns', 'smb', 'tcp', 'foreignHttp', 'foreignHttps', 'externalC2', 'userDefinedC2'}
@@ -118,6 +119,8 @@ def create_cs_listener():
                     tag_resource(active_project.id, 'cs_listener', listener_name, listener_name, current_user.id)
                 except Exception:
                     pass  # tagging failure must never block the create response
+        audit_service.log('cs_listener.create', 'cs_listener', listener_name, listener_name,
+                          {'type': listener_type, 'hosts': data.get('host') or data.get('hosts')})
         return jsonify({'listener': result}), 201
     except Exception as e:
         return jsonify({'error': str(e)}), 400
@@ -130,6 +133,7 @@ def delete_cs_listener(listener_name):
     assert_resource_writable('cs_listener', listener_name, current_user)
     try:
         cobaltstrike_service.delete_listener(listener_name)
+        audit_service.log('cs_listener.delete', 'cs_listener', listener_name, listener_name)
         return jsonify({'deleted': True})
     except Exception as e:
         return jsonify({'error': str(e)}), 400
