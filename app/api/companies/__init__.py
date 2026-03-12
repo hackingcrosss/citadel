@@ -32,10 +32,52 @@ def _can_access_company(company_id):
 
 @api_bp.route('/companies', methods=['GET'])
 @login_required
-@admin_required
 def list_companies():
-    companies = Company.query.order_by(Company.name).all()
-    return jsonify({'companies': [c.to_dict() for c in companies]})
+    """List companies.
+
+    Admins: all companies.
+    Operators / white_team: only companies linked to their active projects,
+    enriched with per-company role and project list.
+    """
+    if current_user.is_admin:
+        companies = Company.query.order_by(Company.name).all()
+        return jsonify({'companies': [c.to_dict() for c in companies]})
+
+    # Non-admin: companies reachable via any of the user's project memberships
+    memberships = (
+        ProjectMember.query
+        .filter_by(user_id=current_user.id)
+        .join(Project, Project.id == ProjectMember.project_id)
+        .filter(Project.status == 'active', Project.company_id.isnot(None))
+        .add_columns(Project.company_id, Project.code, ProjectMember.project_role)
+        .all()
+    )
+
+    # Group by company_id, collect projects + determine best role per company
+    from collections import defaultdict
+    company_projects = defaultdict(list)
+    company_best_role = {}
+    for _, company_id, project_code, role in memberships:
+        company_projects[company_id].append({'code': project_code, 'role': role})
+        # operator beats white_team
+        if company_best_role.get(company_id) != 'operator':
+            company_best_role[company_id] = role
+
+    if not company_projects:
+        return jsonify({'companies': []})
+
+    companies = Company.query.filter(
+        Company.id.in_(company_projects.keys())
+    ).order_by(Company.name).all()
+
+    result = []
+    for c in companies:
+        d = c.to_dict()
+        d['user_role'] = company_best_role.get(c.id)
+        d['user_projects'] = company_projects.get(c.id, [])
+        result.append(d)
+
+    return jsonify({'companies': result})
 
 
 @api_bp.route('/companies', methods=['POST'])
