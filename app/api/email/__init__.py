@@ -28,7 +28,14 @@ def list_mailgun_domains():
                 domains = []
             else:
                 project_domains = get_project_domain_names(active_project.id)
-                domains = [d for d in domains if d.get('name', '') in project_domains]
+                # Match exact name OR subdomain suffix (e.g. "mg.example.com" matches "example.com")
+                def _matches_project(mg_name):
+                    if not mg_name:
+                        return False
+                    if mg_name in project_domains:
+                        return True
+                    return any(mg_name.endswith('.' + pd) for pd in project_domains)
+                domains = [d for d in domains if _matches_project(d.get('name', ''))]
 
         return jsonify({'domains': domains})
     except Exception as e:
