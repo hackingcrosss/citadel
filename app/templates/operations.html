@@ -839,9 +839,8 @@
 
         function pushNext() {
             if (index >= recordsToPush.length) {
-                setButtonLoading('btn-push-dns', false);
                 logOk('email-log', 'Done: ' + created + ' created, ' + failed + ' failed');
-                document.getElementById('btn-verify-email').disabled = false;
+                enableDmarcAndAddRecord();
                 return;
             }
 
@@ -887,6 +886,64 @@
                 index++;
                 pushNext();
             });
+        }
+
+        function enableDmarcAndAddRecord() {
+            logWarn('email-log', 'Enabling Cloudflare DMARC Management...');
+            fetch('/api/domains/zones/' + selectedZoneId + '/enable-dmarc', { method: 'POST' })
+                .then(function(r) { return r.json(); })
+                .then(function(dmarcData) {
+                    if (dmarcData.error) {
+                        logWarn('email-log', 'DMARC Management: ' + dmarcData.error + ' — skipping DMARC record');
+                        finalisePush();
+                        return;
+                    }
+                    logOk('email-log', 'Cloudflare DMARC Management enabled');
+                    // Build _dmarc TXT record at the root zone level
+                    var dmarcName = '_dmarc.' + selectedZoneName;
+                    var rua = dmarcData.rua;
+                    var dmarcContent = rua
+                        ? 'v=DMARC1; p=none; rua=mailto:' + rua + '; fo=1'
+                        : 'v=DMARC1; p=none; fo=1';
+                    logWarn('email-log', 'Creating DMARC record: ' + dmarcName + '...');
+                    fetch('/api/domains/zones/' + selectedZoneId + '/records', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({
+                            type: 'TXT',
+                            name: dmarcName,
+                            content: dmarcContent,
+                            ttl: 1,
+                            proxied: false
+                        })
+                    })
+                    .then(function(r) { return r.json(); })
+                    .then(function(recData) {
+                        if (recData.error) {
+                            if (recData.error.toLowerCase().indexOf('already exists') !== -1) {
+                                logWarn('email-log', 'DMARC record already exists — skipped');
+                            } else {
+                                logErr('email-log', 'Failed to create DMARC record: ' + recData.error);
+                            }
+                        } else {
+                            logOk('email-log', 'DMARC record created: ' + dmarcName + (rua ? ' (rua: ' + rua + ')' : ''));
+                        }
+                        finalisePush();
+                    })
+                    .catch(function(err) {
+                        logErr('email-log', 'DMARC record request failed: ' + err);
+                        finalisePush();
+                    });
+                })
+                .catch(function(err) {
+                    logErr('email-log', 'DMARC Management request failed: ' + err);
+                    finalisePush();
+                });
+        }
+
+        function finalisePush() {
+            setButtonLoading('btn-push-dns', false);
+            document.getElementById('btn-verify-email').disabled = false;
         }
 
         pushNext();
