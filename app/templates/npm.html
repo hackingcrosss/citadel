@@ -190,9 +190,9 @@
 
 {% block extra_js %}
 <script>
-    const IS_VIEWER = {{ 'true' if current_user.role == 'viewer' else 'false' }};
-    const IS_WHITE_TEAM = {{ 'true' if active_project_role == 'white_team' else 'false' }};
-    const IS_READONLY = IS_VIEWER || IS_WHITE_TEAM;
+    const IS_AUDITOR = {{ 'true' if current_user.role == 'auditor' else 'false' }};
+    const IS_WHITE_TEAM = {{ 'true' if current_user.role == 'white_team' else 'false' }};
+    const IS_READONLY = IS_AUDITOR || IS_WHITE_TEAM;
     const IS_ADMIN = {{ 'true' if current_user.is_admin else 'false' }};
     const ACTIVE_PROJECT_ID = {{ active_project.id if active_project else 'null' }};
     const ACTIVE_PROJECT_CODE = {{ active_project.code | tojson if active_project else 'null' }};

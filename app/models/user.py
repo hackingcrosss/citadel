@@ -3,7 +3,7 @@ from flask_login import UserMixin
 from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime
 
-VALID_ROLES = ('admin', 'operator', 'viewer')
+VALID_ROLES = ('admin', 'project_admin', 'operator', 'white_team', 'auditor')
 
 class User(UserMixin, db.Model):
     __tablename__ = 'users'
@@ -19,6 +19,10 @@ class User(UserMixin, db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     last_login = db.Column(db.DateTime)
 
+    # white_team users belong to exactly one company
+    company_id = db.Column(db.Integer, db.ForeignKey('companies.id'), nullable=True, index=True)
+    company = db.relationship('Company', foreign_keys=[company_id])
+
     # Back-reference to project memberships — avoids circular import by using string ref
     project_memberships = db.relationship(
         'ProjectMember',
@@ -32,8 +36,28 @@ class User(UserMixin, db.Model):
         return self.role == 'admin'
 
     @property
-    def is_viewer(self):
-        return self.role == 'viewer'
+    def is_project_admin(self):
+        return self.role == 'project_admin'
+
+    @property
+    def is_operator(self):
+        return self.role == 'operator'
+
+    @property
+    def is_white_team(self):
+        return self.role == 'white_team'
+
+    @property
+    def is_auditor(self):
+        return self.role == 'auditor'
+
+    @property
+    def can_write_infra(self):
+        return self.role in ('admin', 'project_admin', 'operator')
+
+    @property
+    def can_manage_projects(self):
+        return self.role in ('admin', 'project_admin')
 
     def set_password(self, password):
         self.password_hash = generate_password_hash(password)

@@ -26,10 +26,11 @@ def project_member_required(write=False):
     Resolves the project from the `project_id` integer URL kwarg.
     On success, sets `g.project` and `g.project_role` for use in the view.
 
-    write=True: additionally requires project_role='operator'.
+    write=True: additionally requires project_role in ('project_admin', 'operator').
                 Blocks white_team members from mutation endpoints.
 
     Global admins bypass all checks and receive g.project_role='operator'.
+    Auditors bypass membership check and receive g.project_role='auditor' (read-only).
 
     Usage:
         @api_bp.route('/projects/<int:project_id>/resources', methods=['POST'])
@@ -52,6 +53,17 @@ def project_member_required(write=False):
                 g.project_role = 'operator'
                 return f(*args, **kwargs)
 
+            # Auditors can read any project without membership
+            if current_user.is_auditor:
+                if write:
+                    if request.path.startswith('/api/'):
+                        return jsonify({'error': 'Auditors have read-only access'}), 403
+                    flash('You have read-only access.', 'danger')
+                    return redirect(url_for('dashboard'))
+                g.project = project
+                g.project_role = 'auditor'
+                return f(*args, **kwargs)
+
             role = get_user_project_role(current_user.id, project_id)
             if not role:
                 if request.path.startswith('/api/'):
@@ -59,7 +71,7 @@ def project_member_required(write=False):
                 flash('You are not a member of this project.', 'danger')
                 return redirect(url_for('dashboard'))
 
-            if write and role != 'operator':
+            if write and role not in ('project_admin', 'operator'):
                 if request.path.startswith('/api/'):
                     return jsonify({'error': 'Operator access required for this action'}), 403
                 flash('You do not have write access to this project.', 'danger')

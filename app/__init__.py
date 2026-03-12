@@ -54,8 +54,13 @@ def create_app(config_class=Config):
             )
             active = get_active_project(current_user)
             role = None
-            if active and not current_user.is_admin:
-                role = get_user_project_role(current_user.id, active.id)
+            if active:
+                if current_user.is_admin:
+                    role = 'operator'
+                elif current_user.is_auditor:
+                    role = 'auditor'
+                else:
+                    role = get_user_project_role(current_user.id, active.id)
             return {
                 'user_projects': get_projects_for_user(current_user),
                 'active_project': active,
@@ -74,12 +79,19 @@ def create_app(config_class=Config):
             from app.services.project_service import get_active_project
             from app.models.company import Company
             from app.models.project import Project, ProjectMember
-            # Derive active_company from active project
+            # white_team: use direct company_id on user
+            if current_user.is_white_team:
+                active_company = current_user.company if current_user.company_id else None
+                user_companies = [active_company] if active_company else []
+                return {'active_company': active_company, 'user_companies': user_companies}
+            # auditor sees all companies (via admin company page); no user_companies needed
+            if current_user.is_auditor:
+                return {'active_company': None, 'user_companies': []}
+            # project_admin/operator: derive from active project + all memberships
             active = get_active_project(current_user)
             active_company = None
             if active and active.company_id:
                 active_company = Company.query.get(active.company_id)
-            # All companies reachable via any active project membership
             user_companies = (
                 Company.query
                 .join(Project, Project.company_id == Company.id)

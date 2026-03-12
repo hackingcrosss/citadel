@@ -550,9 +550,10 @@
             letter-spacing: 0.05em;
         }
         .role-badge-admin      { background: rgba(240,82,82,0.2);    color: var(--ir-red);    border: 1px solid rgba(240,82,82,0.3); }
-        .role-badge-operator   { background: rgba(240,136,62,0.2);   color: var(--ir-orange); border: 1px solid rgba(240,136,62,0.3); }
-        .role-badge-viewer     { background: rgba(88,166,255,0.15);  color: var(--ir-blue);   border: 1px solid rgba(88,166,255,0.25); }
-        .role-badge-white_team { background: rgba(88,166,255,0.15);  color: var(--ir-blue);   border: 1px solid rgba(88,166,255,0.25); }
+        .role-badge-operator      { background: rgba(240,136,62,0.2);   color: var(--ir-orange); border: 1px solid rgba(240,136,62,0.3); }
+        .role-badge-project_admin { background: rgba(240,82,82,0.15);   color: var(--ir-red);    border: 1px solid rgba(240,82,82,0.25); }
+        .role-badge-white_team    { background: rgba(88,166,255,0.15);  color: var(--ir-blue);   border: 1px solid rgba(88,166,255,0.25); }
+        .role-badge-auditor       { background: rgba(63,185,80,0.15);   color: var(--ir-green);  border: 1px solid rgba(63,185,80,0.25); }
 
         .plan-badge-community    { background: rgba(255,255,255,0.07); color: var(--ir-text-muted); border: 1px solid var(--ir-border-2); }
         .plan-badge-professional { background: rgba(88,166,255,0.15);  color: var(--ir-blue);       border: 1px solid rgba(88,166,255,0.25); }
@@ -588,7 +589,11 @@
                 <i class="bi bi-speedometer2"></i> Dashboard
             </a>
 
-            {% if current_user.is_authenticated and user_projects and current_plan.is_enabled('projects') %}
+            {% if current_user.is_authenticated and current_user.can_manage_projects and current_plan.is_enabled('projects') %}
+            <a class="nav-link {% if request.endpoint == 'admin_projects' %}active{% endif %}" href="{{ url_for('admin_projects') }}">
+                <i class="bi bi-folder2-open"></i> Projects
+            </a>
+            {% elif current_user.is_authenticated and user_projects and current_plan.is_enabled('projects') %}
             <a class="nav-link {% if request.endpoint == 'projects' %}active{% endif %}" href="{{ url_for('projects') }}">
                 <i class="bi bi-folder2-open"></i> My Projects
             </a>
@@ -683,7 +688,7 @@
                 <i class="bi bi-chevron-right"></i>
             </button>
             <div class="collapse nav-collapse {% if request.endpoint in ops_pages %}show{% endif %}" id="nav-ops">
-                {% if current_user.is_admin or active_project_role != 'white_team' %}
+                {% if current_user.can_write_infra %}
                 <a class="nav-link {% if request.endpoint == 'operations' %}active{% endif %}" href="{{ url_for('operations') }}">
                     <i class="bi bi-tools"></i> Setup
                 </a>

@@ -13,9 +13,10 @@ _log = logging.getLogger(__name__)
 def get_projects_for_user(user):
     """Return all projects visible to the user.
 
-    Admins see all projects. Operators/white_team see only their memberships.
+    Admins and auditors see all projects.
+    project_admin/operator/white_team see only their memberships.
     """
-    if user.is_admin:
+    if user.is_admin or user.is_auditor:
         return Project.query.order_by(Project.name).all()
     memberships = ProjectMember.query.filter_by(user_id=user.id).all()
     project_ids = [m.project_id for m in memberships]
@@ -27,9 +28,9 @@ def get_projects_for_user(user):
 def get_user_project_ids(user):
     """Return the set of project IDs the user can access.
 
-    Admins get all project IDs. Others get only their memberships.
+    Admins and auditors get all project IDs. Others get only their memberships.
     """
-    if user.is_admin:
+    if user.is_admin or user.is_auditor:
         ids = Project.query.with_entities(Project.id).all()
         return {row[0] for row in ids}
     rows = ProjectMember.query.filter_by(user_id=user.id).with_entities(
@@ -48,14 +49,16 @@ def get_user_project_role(user_id, project_id):
 
 def can_write(user, project_id):
     """True if the user can perform write actions on this project."""
+    if user.is_auditor or user.is_white_team:
+        return False
     if user.is_admin:
         return True
-    return get_user_project_role(user.id, project_id) == 'operator'
+    return get_user_project_role(user.id, project_id) in ('project_admin', 'operator')
 
 
 def can_read(user, project_id):
     """True if the user has any membership (including white_team) in this project."""
-    if user.is_admin:
+    if user.is_admin or user.is_auditor:
         return True
     return get_user_project_role(user.id, project_id) is not None
 
@@ -189,7 +192,7 @@ def filter_by_active_project(user, items, active_project):
     - Non-admins with an active project see only items whose project_id matches.
     - Non-admins with no active project see nothing (empty list).
     """
-    if user.is_admin:
+    if user.is_admin or user.is_auditor:
         return items
     if active_project is None:
         return []
@@ -224,11 +227,15 @@ def assert_resource_writable(resource_type, external_id, user):
     if user.is_admin:
         return
 
+    if not user.can_write_infra:
+        abort(403)
+
     from app.models.project import ProjectMember
-    has_operator_role = ProjectMember.query.filter_by(
-        user_id=user.id, project_role='operator'
+    has_write_role = ProjectMember.query.filter(
+        ProjectMember.user_id == user.id,
+        ProjectMember.project_role.in_(('project_admin', 'operator')),
     ).first() is not None
-    if not has_operator_role:
+    if not has_write_role:
         abort(403)
 
     resource = ProjectResource.query.filter_by(

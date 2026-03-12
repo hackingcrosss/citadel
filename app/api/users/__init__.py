@@ -39,6 +39,15 @@ def create_user():
     if len(password) < 12:
         return jsonify({'error': 'Password must be at least 12 characters'}), 400
 
+    # white_team users must be bound to a company
+    company_id = data.get('company_id') or None
+    if role == 'white_team':
+        if not company_id:
+            return jsonify({'error': 'white_team users must be assigned a company'}), 400
+        from app.models.company import Company
+        if not Company.query.get(company_id):
+            return jsonify({'error': 'Company not found'}), 404
+
     # Enforce plan user limit
     plan = get_current_plan()
     current_count = User.query.count()
@@ -57,6 +66,7 @@ def create_user():
         email=email,
         display_name=display_name or None,
         role=role,
+        company_id=company_id if role == 'white_team' else None,
         must_change_password=True,
     )
     user.set_password(password)
@@ -87,6 +97,19 @@ def update_user(user_id):
             if admin_count <= 1:
                 return jsonify({'error': 'Cannot demote the last admin user'}), 400
         user.role = new_role
+        # Clear company_id when switching away from white_team
+        if new_role != 'white_team':
+            user.company_id = None
+
+    if 'company_id' in data:
+        company_id = data['company_id'] or None
+        if company_id is not None:
+            from app.models.company import Company
+            if not Company.query.get(company_id):
+                return jsonify({'error': 'Company not found'}), 404
+        if user.role != 'white_team' and company_id is not None:
+            return jsonify({'error': 'Only white_team users can be assigned a company'}), 400
+        user.company_id = company_id
 
     if 'is_active' in data:
         # Cannot deactivate self
@@ -134,6 +157,8 @@ def _user_dict(user):
         'email': user.email,
         'display_name': user.display_name,
         'role': user.role,
+        'company_id': user.company_id,
+        'company_name': user.company.name if user.company else None,
         'plan_override': user.plan_override,
         'is_active': user.is_active,
         'must_change_password': user.must_change_password,

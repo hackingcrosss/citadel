@@ -177,9 +177,9 @@
 
 {% block extra_js %}
 <script>
-    const IS_VIEWER = {{ 'true' if current_user.role == 'viewer' else 'false' }};
-    const IS_WHITE_TEAM = {{ 'true' if active_project_role == 'white_team' else 'false' }};
-    const IS_READONLY = IS_VIEWER || IS_WHITE_TEAM;
+    const IS_AUDITOR = {{ 'true' if current_user.role == 'auditor' else 'false' }};
+    const IS_WHITE_TEAM = {{ 'true' if current_user.role == 'white_team' else 'false' }};
+    const IS_READONLY = IS_AUDITOR || IS_WHITE_TEAM;
 
     let allZones = [];
     let currentZone = null;   // {name, resource_group, account_label, ...}

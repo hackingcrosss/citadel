@@ -92,7 +92,9 @@
 <script>
 const ACTIVE_PROJECT_ID = {{ active_project.id if active_project else 'null' }};
 const IS_ADMIN = {{ 'true' if current_user.is_admin else 'false' }};
-const IS_VIEWER = {{ 'true' if current_user.role == 'viewer' else 'false' }};
+const IS_AUDITOR = {{ 'true' if current_user.role == 'auditor' else 'false' }};
+const IS_WHITE_TEAM = {{ 'true' if current_user.role == 'white_team' else 'false' }};
+const IS_READONLY = IS_AUDITOR || IS_WHITE_TEAM;
 
 function escapeHtml(s) {
     var d = document.createElement('div');
@@ -153,11 +155,11 @@ function renderProjects(projects) {
             : '<i class="bi bi-circle-fill status-archived me-1" style="font-size:0.5rem"></i>';
 
         // Domains section
-        const checkoutBtn = isOperator && !IS_VIEWER
+        const checkoutBtn = isOperator && !IS_READONLY
             ? `<button class="btn btn-outline-danger btn-sm ms-1" style="font-size:0.7rem;padding:0.1rem 0.4rem" title="Check out a domain" onclick="openCheckoutModal(${p.id},'${escapeHtml(p.code)}')"><i class="bi bi-plus-lg me-1"></i>Check Out</button>`
             : '';
         const domainsHtml = (p.domains && p.domains.length
-            ? p.domains.map(d => `<span class="domain-chip"><i class="bi bi-globe me-1"></i>${escapeHtml(d.name)}${isOperator && !IS_VIEWER ? ` <i class="bi bi-x text-danger" style="cursor:pointer" title="Release domain" onclick="releaseDomain(${p.id},${d.id},'${escapeHtml(d.name)}')"></i>` : ''}</span>`).join('')
+            ? p.domains.map(d => `<span class="domain-chip"><i class="bi bi-globe me-1"></i>${escapeHtml(d.name)}${isOperator && !IS_READONLY ? ` <i class="bi bi-x text-danger" style="cursor:pointer" title="Release domain" onclick="releaseDomain(${p.id},${d.id},'${escapeHtml(d.name)}')"></i>` : ''}</span>`).join('')
             : '<span class="text-muted small">No domains checked out</span>') + checkoutBtn;
 
         // Members summary
