@@ -11,21 +11,23 @@ _log = logging.getLogger(__name__)
 
 
 def _can_access_company(company_id):
-    """Return True if the current user may read/update this company.
+    """Return True if the current user may read this company.
 
-    Admins always can. For non-admins, they must be a white_team member
-    of an active project linked to this company.
+    Admins and auditors always can.
+    project_admin/operator: via any project membership linked to this company.
+    white_team: via direct company_id match OR project membership.
     """
-    if current_user.is_admin:
+    if current_user.is_admin or current_user.is_auditor:
         return True
+    # white_team: direct company binding
+    if current_user.is_white_team and current_user.company_id == company_id:
+        return True
+    # Any user with project membership linked to this company
     return (
         Project.query
         .filter_by(company_id=company_id, status='active')
         .join(ProjectMember, ProjectMember.project_id == Project.id)
-        .filter(
-            ProjectMember.user_id == current_user.id,
-            ProjectMember.project_role == 'white_team',
-        )
+        .filter(ProjectMember.user_id == current_user.id)
         .first() is not None
     )
 
@@ -39,7 +41,7 @@ def list_companies():
     Operators / white_team: only companies linked to their active projects,
     enriched with per-company role and project list.
     """
-    if current_user.is_admin:
+    if current_user.is_admin or current_user.is_auditor:
         companies = Company.query.order_by(Company.name).all()
         return jsonify({'companies': [c.to_dict() for c in companies]})
 
@@ -145,6 +147,12 @@ def update_company(company_id):
             return jsonify({
                 'error': f'Only admins may update: {", ".join(sorted(attempted_structural))}',
             }), 403
+        # white_team can only edit their own company
+        if current_user.is_white_team and current_user.company_id != company_id:
+            return jsonify({'error': 'White team users can only edit their own company profile'}), 403
+        # auditors are read-only
+        if current_user.is_auditor:
+            return jsonify({'error': 'Auditors have read-only access'}), 403
 
     # Apply structural fields (admin only — already guarded above)
     for field in COMPANY_STRUCTURAL_FIELDS:

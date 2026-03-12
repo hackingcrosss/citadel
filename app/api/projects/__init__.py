@@ -30,13 +30,16 @@ _log = logging.getLogger(__name__)
 @login_required
 def list_projects():
     projects = get_projects_for_user(current_user)
-    return jsonify([p.to_dict() for p in projects])
+    include_members = request.args.get('include_members') == 'true'
+    return jsonify([p.to_dict(include_members=include_members) for p in projects])
 
 
 @api_bp.route('/projects', methods=['POST'])
 @login_required
-@admin_required
 def create_project():
+    if not current_user.can_manage_projects:
+        return jsonify({'error': 'Project Admin or Admin role required to create projects'}), 403
+
     data = request.get_json(silent=True) or {}
 
     name = (data.get('name') or '').strip()
@@ -70,17 +73,18 @@ def create_project():
     db.session.add(project)
     db.session.flush()
 
-    # Creator is automatically added as an operator member
+    # Creator is automatically added as project_admin (if project_admin role) or operator (admin)
+    creator_role = 'project_admin' if current_user.is_project_admin else 'operator'
     member = ProjectMember(
         project_id=project.id,
         user_id=current_user.id,
-        project_role='operator',
+        project_role=creator_role,
         added_by_id=current_user.id,
     )
     db.session.add(member)
     db.session.commit()
 
-    _log.info('Admin %s created project %s', current_user.email, code)
+    _log.info('User %s created project %s', current_user.email, code)
     return jsonify(project.to_dict(include_members=True)), 201
 
 
@@ -94,9 +98,17 @@ def get_project(project_id):
 
 @api_bp.route('/projects/<int:project_id>', methods=['PATCH'])
 @login_required
-@admin_required
 def update_project(project_id):
     project = Project.query.get_or_404(project_id)
+
+    # Allow admin or project_admin who is a member of this project
+    if not current_user.is_admin:
+        if not current_user.is_project_admin:
+            return jsonify({'error': 'Project Admin or Admin role required'}), 403
+        member_role = get_user_project_role(current_user.id, project_id)
+        if member_role != 'project_admin':
+            return jsonify({'error': 'You are not a project admin of this project'}), 403
+
     data = request.get_json(silent=True) or {}
 
     if 'name' in data:
@@ -123,7 +135,7 @@ def update_project(project_id):
         project.company_id = cid
 
     db.session.commit()
-    _log.info('Admin %s updated project %s', current_user.email, project.code)
+    _log.info('User %s updated project %s', current_user.email, project.code)
     return jsonify(project.to_dict())
 
 
@@ -160,11 +172,23 @@ def list_members(project_id):
     return jsonify([m.to_dict() for m in members])
 
 
+def _can_manage_members(project_id):
+    """Return True if current_user can add/remove/update members of this project."""
+    if current_user.is_admin:
+        return True
+    if current_user.is_project_admin:
+        return get_user_project_role(current_user.id, project_id) == 'project_admin'
+    return False
+
+
 @api_bp.route('/projects/<int:project_id>/members', methods=['POST'])
 @login_required
-@admin_required
 def add_member(project_id):
     project = Project.query.get_or_404(project_id)
+
+    if not _can_manage_members(project_id):
+        return jsonify({'error': 'Project Admin or Admin role required to manage members'}), 403
+
     data = request.get_json(silent=True) or {}
 
     user_id = data.get('user_id')
@@ -176,6 +200,19 @@ def add_member(project_id):
         return jsonify({'error': f'project_role must be one of: {", ".join(PROJECT_ROLES)}'}), 400
 
     user = User.query.get_or_404(user_id)
+
+    # Auditors don't need project membership — they already see everything
+    if user.is_auditor:
+        return jsonify({'error': 'Auditors have global read access; project membership is not needed'}), 400
+
+    # white_team users can only be added to projects linked to their company
+    if user.is_white_team:
+        if project_role != 'white_team':
+            return jsonify({'error': 'Users with white_team role must be added with project_role=white_team'}), 400
+        if user.company_id is None or project.company_id is None or user.company_id != project.company_id:
+            return jsonify({
+                'error': 'White team user can only be added to projects belonging to their company',
+            }), 409
 
     if ProjectMember.query.filter_by(project_id=project_id, user_id=user_id).first():
         return jsonify({'error': 'User is already a member of this project'}), 409
@@ -189,16 +226,19 @@ def add_member(project_id):
     db.session.add(member)
     db.session.commit()
 
-    _log.info('Admin %s added user %s to project %s as %s',
+    _log.info('User %s added user %s to project %s as %s',
               current_user.email, user.email, project.code, project_role)
     return jsonify(member.to_dict()), 201
 
 
 @api_bp.route('/projects/<int:project_id>/members/<int:user_id>', methods=['PUT'])
 @login_required
-@admin_required
 def update_member(project_id, user_id):
     Project.query.get_or_404(project_id)
+
+    if not _can_manage_members(project_id):
+        return jsonify({'error': 'Project Admin or Admin role required to manage members'}), 403
+
     member = ProjectMember.query.filter_by(
         project_id=project_id, user_id=user_id
     ).first_or_404()
@@ -217,9 +257,12 @@ def update_member(project_id, user_id):
 
 @api_bp.route('/projects/<int:project_id>/members/<int:user_id>', methods=['DELETE'])
 @login_required
-@admin_required
 def remove_member(project_id, user_id):
     Project.query.get_or_404(project_id)
+
+    if not _can_manage_members(project_id):
+        return jsonify({'error': 'Project Admin or Admin role required to manage members'}), 403
+
     member = ProjectMember.query.filter_by(
         project_id=project_id, user_id=user_id
     ).first_or_404()

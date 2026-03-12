@@ -1,7 +1,7 @@
 from app import db
 from datetime import datetime
 
-PROJECT_ROLES = ('operator', 'white_team')
+PROJECT_ROLES = ('project_admin', 'operator', 'white_team')
 PROJECT_STATUSES = ('active', 'archived')
 
 

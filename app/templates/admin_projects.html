@@ -23,9 +23,11 @@
         <h4 class="mb-0"><i class="bi bi-folder2-open me-2"></i>Project Management</h4>
         <small class="text-muted">Manage red team projects, members, and domain checkouts</small>
     </div>
+    {% if current_user.can_manage_projects %}
     <button class="btn btn-danger btn-sm" onclick="openCreateModal()">
         <i class="bi bi-plus-lg me-1"></i> New Project
     </button>
+    {% endif %}
 </div>
 
 <div class="card bg-dark border-secondary">
@@ -245,6 +247,10 @@
 
 {% block extra_js %}
 <script>
+const IS_ADMIN = {{ 'true' if current_user.is_admin else 'false' }};
+const IS_PROJECT_ADMIN = {{ 'true' if current_user.is_project_admin else 'false' }};
+const CURRENT_USER_ID = {{ current_user.id }};
+
 let _projects = [];
 let _companies = [];
 let _activeProjectId = null;
@@ -260,8 +266,16 @@ const readinessModal = new bootstrap.Modal(document.getElementById('readinessMod
 
 // ── Role badge HTML ──────────────────────────────────────────────────────────
 function roleBadge(role) {
-    const cls = role === 'operator' ? 'role-badge-operator' : 'role-badge-white_team';
-    return `<span class="role-badge ${cls}">${role === 'white_team' ? 'White Team' : 'Operator'}</span>`;
+    const labels = {operator: 'Operator', project_admin: 'Project Admin', white_team: 'White Team'};
+    const cls = {operator: 'role-badge-operator', project_admin: 'role-badge-project_admin', white_team: 'role-badge-white_team'}[role] || 'role-badge-operator';
+    return `<span class="role-badge ${cls}">${labels[role] || role}</span>`;
+}
+
+// ── Check if current user can manage a project ───────────────────────────────
+function canManageProject(project) {
+    if (IS_ADMIN) return true;
+    if (!IS_PROJECT_ADMIN) return false;
+    return project.members && project.members.some(m => m.user_id === CURRENT_USER_ID && m.project_role === 'project_admin');
 }
 
 function statusBadge(status) {
@@ -273,7 +287,8 @@ function statusBadge(status) {
 async function loadProjects() {
     const tbody = document.getElementById('projects-tbody');
     try {
-        const res = await fetch('/api/projects');
+        const url = IS_PROJECT_ADMIN ? '/api/projects?include_members=true' : '/api/projects';
+        const res = await fetch(url);
         const data = await res.json();
         if (!res.ok) throw new Error((data && data.error) || 'Failed to load projects');
         _projects = Array.isArray(data) ? data : (data.projects || []);
@@ -304,12 +319,14 @@ function renderProjects() {
                 <button class="btn btn-outline-secondary btn-sm me-1" title="Domains" onclick="openDomainsModal(${p.id})">
                     <i class="bi bi-globe"></i>
                 </button>
+                ${canManageProject(p) ? `
                 <button class="btn btn-outline-secondary btn-sm me-1" title="Edit" onclick="openEditModal(${p.id})">
                     <i class="bi bi-pencil"></i>
-                </button>
+                </button>` : ''}
+                ${IS_ADMIN ? `
                 <button class="btn btn-outline-danger btn-sm" title="Delete" onclick="deleteProject(${p.id}, '${escapeHtml(p.code)}')">
                     <i class="bi bi-trash"></i>
-                </button>
+                </button>` : ''}
             </td>
         </tr>
     `).join('');

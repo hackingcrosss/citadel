@@ -57,11 +57,20 @@
                 </div>
                 <div class="mb-3">
                     <label class="form-label">Role <span class="text-danger">*</span></label>
-                    <select class="form-select" id="create-role">
-                        <option value="operator" selected>Operator — full infrastructure access, no settings</option>
-                        <option value="viewer">Viewer — read-only access to all pages</option>
+                    <select class="form-select" id="create-role" onchange="onCreateRoleChange()">
+                        <option value="operator" selected>Operator — RT infrastructure access, assigned to projects</option>
+                        <option value="project_admin">Project Admin — RT lead, create &amp; manage own projects</option>
+                        <option value="white_team">White Team — view-only, target company representative</option>
+                        <option value="auditor">Auditor — read-only across all projects</option>
                         <option value="admin">Admin — full access including settings and user management</option>
                     </select>
+                </div>
+                <div class="mb-3 d-none" id="create-company-row">
+                    <label class="form-label">Company <span class="text-danger">*</span></label>
+                    <select class="form-select" id="create-company">
+                        <option value="">Loading…</option>
+                    </select>
+                    <div class="form-text text-muted">White team users must belong to their target company.</div>
                 </div>
                 <div class="mb-3">
                     <label class="form-label">Initial Password <span class="text-danger">*</span></label>
@@ -111,8 +120,16 @@
                     <label class="form-label">Role</label>
                     <select class="form-select" id="edit-role" onchange="onEditRoleChange()">
                         <option value="operator">Operator</option>
-                        <option value="viewer">Viewer</option>
+                        <option value="project_admin">Project Admin</option>
+                        <option value="white_team">White Team</option>
+                        <option value="auditor">Auditor</option>
                         <option value="admin">Admin</option>
+                    </select>
+                </div>
+                <div class="mb-3 d-none" id="edit-company-row">
+                    <label class="form-label">Company</label>
+                    <select class="form-select" id="edit-company">
+                        <option value="">Loading…</option>
                     </select>
                 </div>
                 <div class="mb-3" id="edit-plan-row">
@@ -206,7 +223,7 @@ function loadUsers() {
             return `<tr>
                 <td>${u.email}${isSelf ? ' <span class="badge bg-secondary">you</span>' : ''}</td>
                 <td>${u.display_name || '<span class="text-muted">—</span>'}</td>
-                <td>${roleBadge(u.role)}</td>
+                <td>${roleBadge(u.role)}${u.role === 'white_team' && u.company_name ? ` <span class="badge bg-secondary ms-1" style="font-size:0.65rem">${u.company_name}</span>` : ''}</td>
                 <td>${planBadge(u)}</td>
                 <td>${statusIcon}</td>
                 <td><small>${lastLogin}</small></td>
@@ -225,6 +242,32 @@ function loadUsers() {
     });
 }
 
+let _companies = [];
+
+async function loadCompaniesForSelect(selectId, selectedId) {
+    if (!_companies.length) {
+        try {
+            const res = await fetch('/api/companies');
+            const data = await res.json();
+            _companies = data.companies || [];
+        } catch(e) { _companies = []; }
+    }
+    const sel = document.getElementById(selectId);
+    sel.innerHTML = '<option value="">— Select company —</option>' +
+        _companies.map(c => `<option value="${c.id}" ${c.id == selectedId ? 'selected' : ''}>${c.name} (${c.code})</option>`).join('');
+}
+
+function onCreateRoleChange() {
+    const role = document.getElementById('create-role').value;
+    const row = document.getElementById('create-company-row');
+    if (role === 'white_team') {
+        row.classList.remove('d-none');
+        loadCompaniesForSelect('create-company', null);
+    } else {
+        row.classList.add('d-none');
+    }
+}
+
 function openCreateModal() {
     document.getElementById('create-email').value = '';
     document.getElementById('create-display-name').value = '';
@@ -232,6 +275,7 @@ function openCreateModal() {
     document.getElementById('create-password').value = '';
     document.getElementById('create-confirm-password').value = '';
     document.getElementById('create-error').classList.add('d-none');
+    document.getElementById('create-company-row').classList.add('d-none');
     new bootstrap.Modal(document.getElementById('createUserModal')).show();
 }
 
@@ -242,6 +286,7 @@ function submitCreateUser() {
     const password = document.getElementById('create-password').value;
     const confirm = document.getElementById('create-confirm-password').value;
     const errEl = document.getElementById('create-error');
+    const companyId = role === 'white_team' ? (document.getElementById('create-company').value || null) : null;
 
     errEl.classList.add('d-none');
 
@@ -255,11 +300,19 @@ function submitCreateUser() {
         errEl.classList.remove('d-none');
         return;
     }
+    if (role === 'white_team' && !companyId) {
+        errEl.textContent = 'A company is required for white team users.';
+        errEl.classList.remove('d-none');
+        return;
+    }
+
+    const payload = {email, display_name: displayName, role, password};
+    if (companyId) payload.company_id = parseInt(companyId);
 
     fetch('/api/users', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({email, display_name: displayName, role, password})
+        body: JSON.stringify(payload)
     })
     .then(r => r.json().then(d => ({status: r.status, data: d})))
     .then(({status, data}) => {
@@ -289,13 +342,13 @@ function openEditModal(userJson) {
     document.getElementById('edit-plan-override').value = u.plan_override || '';
     document.getElementById('edit-active').checked = u.is_active;
     document.getElementById('edit-error').classList.add('d-none');
-    onEditRoleChange();
+    onEditRoleChange(u.company_id);
     new bootstrap.Modal(document.getElementById('editUserModal')).show();
 }
 
-function onEditRoleChange() {
-    // Plan override is meaningless for admins (they always get enterprise)
+function onEditRoleChange(selectedCompanyId) {
     const role = document.getElementById('edit-role').value;
+    // Plan override is meaningless for admins
     const planRow = document.getElementById('edit-plan-row');
     if (role === 'admin') {
         planRow.style.opacity = '0.4';
@@ -303,6 +356,14 @@ function onEditRoleChange() {
     } else {
         planRow.style.opacity = '1';
         planRow.querySelector('select').disabled = false;
+    }
+    // Company selector for white_team
+    const companyRow = document.getElementById('edit-company-row');
+    if (role === 'white_team') {
+        companyRow.classList.remove('d-none');
+        loadCompaniesForSelect('edit-company', selectedCompanyId !== undefined ? selectedCompanyId : null);
+    } else {
+        companyRow.classList.add('d-none');
     }
 }
 
@@ -313,13 +374,24 @@ function submitEditUser() {
     const planOverride = document.getElementById('edit-plan-override').value || null;
     const isActive = document.getElementById('edit-active').checked;
     const errEl = document.getElementById('edit-error');
+    const companyIdRaw = role === 'white_team' ? document.getElementById('edit-company').value : null;
+    const companyId = companyIdRaw ? parseInt(companyIdRaw) : null;
 
     errEl.classList.add('d-none');
+
+    if (role === 'white_team' && !companyId) {
+        errEl.textContent = 'A company is required for white team users.';
+        errEl.classList.remove('d-none');
+        return;
+    }
+
+    const payload = {display_name: displayName, role, is_active: isActive, plan_override: planOverride};
+    if (role === 'white_team') payload.company_id = companyId;
 
     fetch(`/api/users/${id}`, {
         method: 'PUT',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({display_name: displayName, role, is_active: isActive, plan_override: planOverride})
+        body: JSON.stringify(payload)
     })
     .then(r => r.json().then(d => ({status: r.status, data: d})))
     .then(({status, data}) => {
