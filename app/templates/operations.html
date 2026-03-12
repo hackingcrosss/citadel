@@ -83,7 +83,7 @@
                 {% endif %}
             </div>
             {% endif %}
-            <div id="email-log" class="border rounded p-2" style="max-height: 200px; overflow-y: auto; background: #f8f9fa; min-height: 40px;">
+            <div id="email-log" class="border rounded p-2" style="max-height: 200px; overflow-y: auto; background: #0d1117; border-color: #374151 !important; color: #e2e8f0; min-height: 40px; font-family: monospace; font-size: 0.82rem;">
                 <small class="text-muted">Waiting for action...</small>
             </div>
         </div>
@@ -189,7 +189,7 @@
                 </button>
             </div>
             {% endif %}
-            <div id="point-log" class="border rounded p-2" style="max-height: 200px; overflow-y: auto; background: #f8f9fa; min-height: 40px;">
+            <div id="point-log" class="border rounded p-2" style="max-height: 200px; overflow-y: auto; background: #0d1117; border-color: #374151 !important; color: #e2e8f0; min-height: 40px; font-family: monospace; font-size: 0.82rem;">
                 <small class="text-muted">Waiting for action...</small>
             </div>
         </div>
@@ -223,7 +223,7 @@
                 </button>
             </div>
             {% endif %}
-            <div id="c2-log" class="border rounded p-2" style="max-height: 300px; overflow-y: auto; background: #f8f9fa; min-height: 40px;">
+            <div id="c2-log" class="border rounded p-2" style="max-height: 300px; overflow-y: auto; background: #0d1117; border-color: #374151 !important; color: #e2e8f0; min-height: 40px; font-family: monospace; font-size: 0.82rem;">
                 <small class="text-muted">Waiting for action...</small>
             </div>
         </div>
@@ -1743,7 +1743,8 @@
             .then(function(ok) {
                 if (!ok) return Promise.reject('stop');
 
-                // Step 4 (optional): Create CDN distribution pointing to RedWarden
+                // Step 4 (optional): Create CDN distribution pointing to RedWarden.
+                // Fire-and-forget — CDN provisioning (2–15 min) must not block Step 5 (A records).
                 if (!cdnEnabled) return true;
 
                 var cdnPort = (type === 'http') ? 80 : 443;
@@ -1764,49 +1765,36 @@
                 .then(function(r) { return r.json(); })
                 .then(function(data) {
                     if (data.error) {
-                        logErr(LOG, 'Failed to create CDN distribution: ' + data.error);
-                        return Promise.reject('stop');
+                        logErr(LOG, 'Failed to create CDN distribution: ' + data.error + ' — continuing with DNS setup');
+                        return true;
                     }
                     cdnDistId = data.distribution.id;
                     var cdnLabelStr = cdnProvider === 'azure_front_door' ? 'Azure Front Door (2–4 min)' : 'CloudFront (5–15 min)';
-                    logOk(LOG, 'CDN distribution queued (id: ' + cdnDistId + ') — polling for domain (' + cdnLabelStr + ')...');
-                    return waitForCdnDomain(cdnDistId);
+                    logOk(LOG, 'CDN distribution queued (id: ' + cdnDistId + ') — provisioning in background (' + cdnLabelStr + '). Check CDN page for status.');
+                    // Poll for domain in background without blocking DNS setup
+                    waitForCdnDomain(cdnDistId)
+                        .then(function(domain) {
+                            cdnDomain = domain;
+                            logOk(LOG, 'CDN domain ready: <strong>' + domain + '</strong>');
+                        })
+                        .catch(function(err) {
+                            logWarn(LOG, 'CDN domain poll: ' + err);
+                        });
+                    return true;
                 })
-                .then(function(domain) {
-                    cdnDomain = domain;
-                    logOk(LOG, 'CDN domain ready: <strong>' + domain + '</strong>');
+                .catch(function(err) {
+                    logErr(LOG, 'CDN request failed: ' + err + ' — continuing with DNS setup');
                     return true;
                 });
             })
             .then(function(ok) {
                 if (!ok) return Promise.reject('stop');
 
-                // Step 5: DNS records — CNAME → CDN domain if CDN enabled, else A → RedWarden
-                if (cdnDomain) {
-                    logWarn(LOG, 'Creating Cloudflare CNAME records for ' + callbackHosts.length + ' host(s) &rarr; ' + cdnDomain + '...');
-                    var dnsPromises = callbackHosts.map(function(host) {
-                        return fetch('/api/domains/zones/' + selectedZoneId + '/records', {
-                            method: 'POST',
-                            headers: {'Content-Type': 'application/json'},
-                            body: JSON.stringify({type: 'CNAME', name: host, content: cdnDomain, ttl: 1, proxied: false})
-                        })
-                        .then(function(r) { return r.json(); })
-                        .then(function(dnsData) {
-                            if (dnsData.error) {
-                                if (dnsData.error.toLowerCase().indexOf('already exists') !== -1) {
-                                    logWarn(LOG, 'CNAME already exists for ' + host + ' — skipped');
-                                } else {
-                                    logErr(LOG, 'Failed to create CNAME for ' + host + ': ' + dnsData.error);
-                                }
-                            } else {
-                                logOk(LOG, 'CNAME created: ' + host + ' &rarr; ' + cdnDomain);
-                            }
-                        });
-                    });
-                    return Promise.all(dnsPromises);
-                }
-
-                logWarn(LOG, 'Creating Cloudflare A records for ' + callbackHosts.length + ' callback host(s) &rarr; ' + redwardenIp + '...');
+                // Step 5: Cloudflare A records → RedWarden (same regardless of CDN)
+                // When CDN is enabled the CDN distribution's origin is the callback domain,
+                // which resolves to RedWarden via this A record:
+                // Beacon → CDN → c2.example.com (A → RedWarden) → NPM → CS Listener
+                logWarn(LOG, 'Creating Cloudflare A records for ' + callbackHosts.length + ' callback host(s) &rarr; ' + redwardenIp + (cdnDomain ? ' (CDN origin)' : '') + '...');
                 var dnsPromises = callbackHosts.map(function(host) {
                     return fetch('/api/domains/zones/' + selectedZoneId + '/records', {
                         method: 'POST',
@@ -1837,7 +1825,7 @@
             .then(function() {
                 setButtonLoading('btn-c2-setup', false);
                 var flowStr = cdnDomain
-                    ? 'Beacon &rarr; DNS CNAME &rarr; CDN (' + cdnDomain + ') &rarr; RedWarden (' + redwardenIp + ') &rarr; NPM &rarr; CS Listener (' + listenerName + ')'
+                    ? 'Beacon &rarr; CDN (' + cdnDomain + ') &rarr; Cloudflare &rarr; RedWarden (' + redwardenIp + ') &rarr; NPM &rarr; CS Listener (' + listenerName + ')'
                     : 'Beacon &rarr; Cloudflare &rarr; RedWarden (' + redwardenIp + ') &rarr; NPM &rarr; CS Listener (' + listenerName + ')';
                 logInfo(LOG, '<strong>C2 setup complete!</strong> Flow: ' + flowStr);
             })

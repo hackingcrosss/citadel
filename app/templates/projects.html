@@ -40,6 +40,27 @@
     </div>
 </div>
 
+<!-- Readiness Modal -->
+<div class="modal fade" id="readinessModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content bg-dark border-secondary">
+            <div class="modal-header border-secondary">
+                <h5 class="modal-title"><i class="bi bi-clipboard-check me-2"></i>Readiness — <span id="readiness-domain-name"></span></h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="readiness-body">
+                <div class="text-center text-muted py-3">Loading…</div>
+            </div>
+            <div class="modal-footer border-secondary">
+                <button class="btn btn-outline-secondary btn-sm" onclick="refreshReadiness()">
+                    <i class="bi bi-arrow-clockwise"></i> Refresh
+                </button>
+                <button class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- Domain Pool Checkout Modal -->
 <div class="modal fade" id="checkoutModal" tabindex="-1" aria-labelledby="checkoutModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-lg modal-dialog-scrollable">
@@ -159,7 +180,7 @@ function renderProjects(projects) {
             ? `<button class="btn btn-outline-danger btn-sm ms-1" style="font-size:0.7rem;padding:0.1rem 0.4rem" title="Check out a domain" onclick="openCheckoutModal(${p.id},'${escapeHtml(p.code)}')"><i class="bi bi-plus-lg me-1"></i>Check Out</button>`
             : '';
         const domainsHtml = (p.domains && p.domains.length
-            ? p.domains.map(d => `<span class="domain-chip"><i class="bi bi-globe me-1"></i>${escapeHtml(d.name)}${isOperator && !IS_READONLY ? ` <i class="bi bi-x text-danger" style="cursor:pointer" title="Release domain" onclick="releaseDomain(${p.id},${d.id},'${escapeHtml(d.name)}')"></i>` : ''}</span>`).join('')
+            ? p.domains.map(d => `<span class="domain-chip"><i class="bi bi-globe me-1"></i>${escapeHtml(d.name)}<i class="bi bi-clipboard-check ms-1" style="cursor:pointer;opacity:0.7" title="Check readiness" onclick="checkReadiness(${d.id},'${escapeHtml(d.name)}',${p.id})"></i>${isOperator && !IS_READONLY ? ` <i class="bi bi-x text-danger" style="cursor:pointer" title="Release domain" onclick="releaseDomain(${p.id},${d.id},'${escapeHtml(d.name)}')"></i>` : ''}</span>`).join('')
             : '<span class="text-muted small">No domains checked out</span>') + checkoutBtn;
 
         // Members summary
@@ -391,6 +412,78 @@ async function checkoutDomain(idx, domainName) {
         if (btn) { btn.disabled = false; btn.innerHTML = '<i class="bi bi-box-arrow-in-down me-1"></i>Check Out'; }
         showToast(e.message, 'danger');
     }
+}
+
+// ── Domain Readiness ──────────────────────────────────────────────────────────
+const readinessModal = new bootstrap.Modal(document.getElementById('readinessModal'));
+let _readinessDomainId  = null;
+let _readinessProjectId = null;
+
+const _CHECK_LABELS = {
+    dns_a_record:     'DNS A Record',
+    ssl_strict:       'SSL Strict / Full',
+    spf:              'SPF Record',
+    dkim:             'DKIM Record',
+    dmarc:            'DMARC Record',
+    mailgun_verified: 'Mailgun Verified',
+    npm_proxy_active: 'NPM Proxy Active',
+};
+
+async function checkReadiness(domainId, domainName, projectId) {
+    _readinessDomainId  = domainId;
+    _readinessProjectId = projectId;
+    document.getElementById('readiness-domain-name').textContent = domainName;
+    document.getElementById('readiness-body').innerHTML =
+        '<div class="text-center text-muted py-3">' +
+        '<span class="spinner-border spinner-border-sm me-2"></span>Running checks…</div>';
+    readinessModal.show();
+    await _loadReadiness();
+}
+
+async function refreshReadiness() {
+    document.getElementById('readiness-body').innerHTML =
+        '<div class="text-center text-muted py-3">' +
+        '<span class="spinner-border spinner-border-sm me-2"></span>Running checks…</div>';
+    await _loadReadiness();
+}
+
+async function _loadReadiness() {
+    try {
+        const res  = await fetch(`/api/projects/${_readinessProjectId}/domains/${_readinessDomainId}/readiness`);
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Failed to run readiness checks');
+        _renderReadiness(data);
+    } catch(e) {
+        document.getElementById('readiness-body').innerHTML =
+            `<div class="text-danger text-center py-3">${escapeHtml(e.message)}</div>`;
+    }
+}
+
+function _renderReadiness(data) {
+    const checks  = data.checks || {};
+    const overall = data.overall;
+
+    const overallBadge = overall
+        ? '<span class="badge bg-success px-3 py-2"><i class="bi bi-check-circle me-1"></i>Ready</span>'
+        : '<span class="badge bg-danger  px-3 py-2"><i class="bi bi-exclamation-circle me-1"></i>Not Ready</span>';
+
+    const rows = Object.entries(checks).map(([key, c]) => {
+        const icon  = c.ok
+            ? '<i class="bi bi-check-circle-fill text-success"></i>'
+            : '<i class="bi bi-x-circle-fill text-danger"></i>';
+        const label = _CHECK_LABELS[key] || key;
+        return `<tr>
+            <td class="text-center" style="width:2rem">${icon}</td>
+            <td class="fw-semibold">${escapeHtml(label)}</td>
+            <td class="text-muted small">${escapeHtml(c.detail || '')}</td>
+        </tr>`;
+    }).join('');
+
+    document.getElementById('readiness-body').innerHTML = `
+        <div class="text-center mb-3">${overallBadge}</div>
+        <table class="table table-dark table-sm mb-0">
+            <tbody>${rows}</tbody>
+        </table>`;
 }
 
 document.addEventListener('DOMContentLoaded', loadProjects);

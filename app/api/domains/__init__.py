@@ -47,12 +47,18 @@ def _assert_zone_accessible(zone_id, write=False):
     """Abort 403 if the current user cannot access this Cloudflare zone.
 
     Admins: always allowed.
-    Operators / white_team: only if the zone maps to a domain checked out
-    to one of their projects.
+    Auditors: read-only access to all zones (no checkout required).
+    Operators / project_admin / white_team: only if the zone maps to a domain
+    checked out to one of their projects.
 
-    write=True: additionally requires project_role='operator' (blocks white_team).
+    write=True: additionally requires project_role in ('project_admin', 'operator')
+                (blocks white_team and auditors).
     """
     if current_user.is_admin:
+        return
+    if current_user.is_auditor:
+        if write:
+            abort(403)
         return
     domain = Domain.query.filter_by(cloudflare_zone_id=zone_id).first()
     if not domain or domain.checkout_project_id is None:
@@ -61,7 +67,7 @@ def _assert_zone_accessible(zone_id, write=False):
         abort(403)
     if write:
         role = get_user_project_role(current_user.id, domain.checkout_project_id)
-        if role != 'operator':
+        if role not in ('project_admin', 'operator'):
             abort(403)
 
 
@@ -240,7 +246,7 @@ def sync_domain(domain_id):
         # Additionally block white_team from triggering syncs
         if domain.checkout_project_id:
             role = get_user_project_role(current_user.id, domain.checkout_project_id)
-            if role != 'operator':
+            if role not in ('project_admin', 'operator'):
                 return jsonify({'error': 'Operator access required to sync domain'}), 403
 
     if not domain.cloudflare_zone_id:
