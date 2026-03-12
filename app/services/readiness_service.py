@@ -118,20 +118,29 @@ def check_domain_readiness(domain):
 
     # ── 7. Mailgun verified ──────────────────────────────────────────────────
     try:
-        region = domain.mailgun_region or 'us'
-        # Mailgun domains are often registered as mg.<domain> — try both.
+        configured_region = domain.mailgun_region or 'us'
+        # Try configured region first, then fall back to the other region.
+        # Domains are sometimes registered in EU while the local record says 'us'.
+        regions_to_try = [configured_region] + [r for r in ('us', 'eu') if r != configured_region]
+        # Name candidates: bare domain and mg.<domain> prefix.
+        name_candidates = [domain_name, f'mg.{domain_name}']
         mg_data = None
         mg_matched_name = None
-        for candidate in (domain_name, f'mg.{domain_name}'):
-            try:
-                mg_data = mg_get_domain(candidate, region=region)
-                mg_matched_name = candidate
+        mg_matched_region = None
+        for region in regions_to_try:
+            for candidate in name_candidates:
+                try:
+                    mg_data = mg_get_domain(candidate, region=region)
+                    mg_matched_name = candidate
+                    mg_matched_region = region
+                    break
+                except Exception as exc:
+                    err = str(exc)
+                    if '404' in err or 'not found' in err.lower():
+                        continue
+                    raise
+            if mg_data is not None:
                 break
-            except Exception as exc:
-                err = str(exc)
-                if '404' in err or 'not found' in err.lower():
-                    continue
-                raise
         if mg_data is None:
             checks['mailgun_verified'] = _check(False, 'Not registered in Mailgun')
         else:
@@ -139,6 +148,8 @@ def check_domain_readiness(domain):
             detail = f'State: {state}'
             if mg_matched_name != domain_name:
                 detail += f' (as {mg_matched_name})'
+            if mg_matched_region != configured_region:
+                detail += f' [{mg_matched_region.upper()}]'
             checks['mailgun_verified'] = _check(True, detail)
     except Exception as exc:
         checks['mailgun_verified'] = _check(False, f'Error: {exc}')
@@ -146,7 +157,13 @@ def check_domain_readiness(domain):
     # ── 8. NPM proxy active ──────────────────────────────────────────────────
     try:
         hosts = list_proxy_hosts()
-        matching = [h for h in hosts if domain_name in h.get('domain_names', [])]
+        matching = [
+            h for h in hosts
+            if any(
+                n == domain_name or n.endswith('.' + domain_name)
+                for n in h.get('domain_names', [])
+            )
+        ]
         if matching:
             h = matching[0]
             forward = (
