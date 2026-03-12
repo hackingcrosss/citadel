@@ -333,20 +333,18 @@ def publish_website(html, category, zone_id, zone_name, subdomain):
         steps.append({'step': 'deploy', 'status': 'error', 'error': str(e)})
         return {'steps': steps, 'fqdn': fqdn, 'folder': None}
 
-    # Step 2: Relaunch containers, then inspect the new container IP
-    container_ip = None
+    # Step 2: Start only the new container — leave existing containers untouched
+    # so their IPs stay stable. NPM resolves the container by name via Docker DNS.
+    service_name = f'nginx_{folder_name}'
     try:
-        relaunch_containers()
+        start_container(service_name)
         steps.append({'step': 'relaunch', 'status': 'ok'})
-        try:
-            container_ip = _get_container_ip(folder_name)
-        except Exception:
-            pass  # fall back to container name if inspect fails
     except Exception as e:
         steps.append({'step': 'relaunch', 'status': 'error', 'error': str(e)})
 
-    # Step 3: NPM proxy host — use actual container IP (mirrors Point Domain flow)
-    forward_host = container_ip or folder_name
+    # Step 3: NPM proxy host — always use container name (Docker DNS resolves it
+    # reliably even after restarts, unlike IPs which can change).
+    forward_host = folder_name
     try:
         proxy = npm_service.create_proxy_host(
             domain_names=[fqdn],
@@ -397,16 +395,40 @@ def _get_container_ip(container_name):
         client.close()
 
 
-def relaunch_containers():
+def start_container(service_name):
     """
-    SSH into the NPM host and run `docker compose down && docker compose up -d`
-    in the configured deploy_path directory.
+    SSH into the NPM host and run `docker compose up -d <service>` to start
+    only the newly added service without touching existing containers.
     Returns {'stdout': str, 'stderr': str}.
     """
     deploy_path = (get_credential('npm', 'deploy_path') or '/var/www/html').rstrip('/')
     client = _get_ssh_client()
     try:
-        cmd = f'cd {shlex.quote(deploy_path)} && docker compose down && docker compose up -d'
+        cmd = (f'cd {shlex.quote(deploy_path)} && '
+               f'docker compose up -d {shlex.quote(service_name)}')
+        stdin, stdout, stderr = client.exec_command(cmd)
+        exit_code = stdout.channel.recv_exit_status()
+        out = stdout.read().decode('utf-8', errors='replace')
+        err = stderr.read().decode('utf-8', errors='replace')
+    finally:
+        client.close()
+
+    if exit_code != 0:
+        raise RuntimeError(err or out or f'Command exited with code {exit_code}')
+
+    return {'stdout': out, 'stderr': err}
+
+
+def relaunch_containers():
+    """
+    SSH into the NPM host and run `docker compose up -d` (no down) so that
+    existing containers keep their IPs and only missing/updated services start.
+    Returns {'stdout': str, 'stderr': str}.
+    """
+    deploy_path = (get_credential('npm', 'deploy_path') or '/var/www/html').rstrip('/')
+    client = _get_ssh_client()
+    try:
+        cmd = f'cd {shlex.quote(deploy_path)} && docker compose up -d'
         stdin, stdout, stderr = client.exec_command(cmd)
         exit_code = stdout.channel.recv_exit_status()
         out = stdout.read().decode('utf-8', errors='replace')
