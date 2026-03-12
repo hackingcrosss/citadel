@@ -27,15 +27,23 @@ def list_gophish_profiles():
                 profiles = []
             else:
                 project_domains = get_project_domain_names(active_project.id)
+
+                def _domain_matches(addr):
+                    """Extract domain from an email address and check against project domains
+                    with subdomain suffix support (e.g. mg.example.com matches example.com)."""
+                    part = addr.split('@')[-1].strip().rstrip('>').lower() if '@' in addr else ''
+                    if not part:
+                        return False
+                    if part in project_domains:
+                        return True
+                    return any(part.endswith('.' + pd) for pd in project_domains)
+
                 filtered = []
                 for p in profiles:
                     if p.get('project_id') == active_project.id:
                         filtered.append(p)
-                    else:
-                        from_addr = p.get('from_address', '')
-                        domain_part = from_addr.split('@')[-1].lower() if '@' in from_addr else ''
-                        if domain_part in project_domains:
-                            filtered.append(p)
+                    elif _domain_matches(p.get('from_address', '')) or _domain_matches(p.get('username', '')):
+                        filtered.append(p)
                 profiles = filtered
 
         return jsonify({'profiles': profiles})
