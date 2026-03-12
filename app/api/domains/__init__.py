@@ -512,6 +512,21 @@ def get_ssl(zone_id):
         return jsonify({'error': str(e)}), 400
 
 
+@api_bp.route('/domains/zones/<zone_id>/enable-dmarc', methods=['POST'])
+@login_required
+def enable_zone_dmarc(zone_id):
+    """Enable Cloudflare DMARC Management for a zone.
+
+    Returns the rua address Cloudflare provides for inclusion in the _dmarc TXT record.
+    """
+    _assert_zone_accessible(zone_id, write=True)
+    try:
+        result = dns_service.enable_dmarc_management(zone_id, label=_zone_label(zone_id))
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 400
+
+
 @api_bp.route('/domains/zones/<zone_id>/ssl', methods=['PATCH'])
 @login_required
 def set_ssl(zone_id):

@@ -184,3 +184,23 @@ def get_ssl_setting(zone_id, label='default'):
 def set_ssl_setting(zone_id, value, label='default'):
     data = _request('PATCH', f'/zones/{zone_id}/settings/ssl', label=label, json={'value': value})
     return data['result']
+
+
+def enable_dmarc_management(zone_id, label='default'):
+    """Enable Cloudflare DMARC Management for a zone.
+
+    Returns a dict with:
+      - 'tag': unique Cloudflare reporting tag (the rua address prefix)
+      - 'rua': full rua mailto address for use in the _dmarc TXT record
+    """
+    data = _request(
+        'PATCH',
+        f'/zones/{zone_id}/email/security/dmarc-reports',
+        label=label,
+        json={'enabled': True},
+    )
+    result = data.get('result', {})
+    # Cloudflare returns the reporting tag used to build the rua address.
+    tag = result.get('tag') or result.get('rua_tag') or result.get('rua_mailbox') or ''
+    rua = f'{tag}@dmarc-reports.cloudflare.net' if tag else None
+    return {'enabled': result.get('enabled', True), 'tag': tag, 'rua': rua}
