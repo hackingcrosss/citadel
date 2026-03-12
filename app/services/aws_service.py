@@ -105,6 +105,73 @@ def list_instances_all_accounts(region=None):
     return all_instances
 
 
+def get_instance_status_checks(instance_id, region=None, label='default'):
+    """Return system, instance, and EBS status checks for one instance."""
+    ec2 = _get_client('ec2', region, label=label)
+    resp = ec2.describe_instance_status(
+        InstanceIds=[instance_id],
+        IncludeAllInstances=True,   # include stopped/pending instances
+    )
+    statuses = resp.get('InstanceStatuses', [])
+    if not statuses:
+        return {'instance_id': instance_id, 'state': 'unknown',
+                'system': None, 'instance': None, 'ebs': None}
+
+    s = statuses[0]
+    state = s.get('InstanceState', {}).get('Name', 'unknown')
+
+    def _fmt(block):
+        if not block:
+            return None
+        details = [
+            {'name': d.get('Name', ''), 'status': d.get('Status', '')}
+            for d in block.get('Details', [])
+        ]
+        return {'status': block.get('Status', 'unknown'), 'details': details}
+
+    ebs = _fmt(s.get('AttachedEbsStatus'))
+
+    # Fallback: fetch volume status directly when AttachedEbsStatus is not in the response
+    if ebs is None:
+        try:
+            inst_resp = ec2.describe_instances(InstanceIds=[instance_id])
+            volume_ids = []
+            for res in inst_resp.get('Reservations', []):
+                for inst in res.get('Instances', []):
+                    for bdm in inst.get('BlockDeviceMappings', []):
+                        vol_id = bdm.get('Ebs', {}).get('VolumeId')
+                        if vol_id:
+                            volume_ids.append(vol_id)
+
+            if volume_ids:
+                vol_resp = ec2.describe_volume_status(VolumeIds=volume_ids)
+                vol_statuses = vol_resp.get('VolumeStatuses', [])
+                if vol_statuses:
+                    per_vol = [
+                        {'name': v.get('VolumeId', ''),
+                         'status': v.get('VolumeStatus', {}).get('Status', 'unknown')}
+                        for v in vol_statuses
+                    ]
+                    statuses_values = [v['status'] for v in per_vol]
+                    if all(sv == 'ok' for sv in statuses_values):
+                        overall = 'ok'
+                    elif any(sv == 'impaired' for sv in statuses_values):
+                        overall = 'impaired'
+                    else:
+                        overall = statuses_values[0]
+                    ebs = {'status': overall, 'details': per_vol}
+        except Exception as exc:
+            _log.debug("EBS volume status fallback failed for %s: %s", instance_id, exc)
+
+    return {
+        'instance_id': instance_id,
+        'state':       state,
+        'system':      _fmt(s.get('SystemStatus')),
+        'instance':    _fmt(s.get('InstanceStatus')),
+        'ebs':         ebs,
+    }
+
+
 def get_instance(instance_id, region=None, label='default'):
     ec2 = _get_client('ec2', region, label=label)
     resp = ec2.describe_instances(InstanceIds=[instance_id])

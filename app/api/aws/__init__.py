@@ -402,6 +402,20 @@ def aws_service_action(instance_id, service_name, action):
         return jsonify({'error': str(e)}), 400
 
 
+# --- Status Checks ---
+
+@api_bp.route('/aws/instances/<instance_id>/status-checks', methods=['GET'])
+@login_required
+def aws_get_instance_status_checks(instance_id):
+    region = request.args.get('region')
+    try:
+        label = _instance_label(instance_id)
+        result = aws_service.get_instance_status_checks(instance_id, region, label=label)
+        return jsonify({'status_checks': result})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 400
+
+
 # --- Regions ---
 
 @api_bp.route('/aws/regions', methods=['GET'])
