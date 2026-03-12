@@ -236,7 +236,29 @@ def checkout_domain(project_id, domain_id):
         return jsonify({'error': 'Cannot check out domains to an archived project'}), 409
 
     # SELECT FOR UPDATE prevents race conditions
-    domain = Domain.query.with_for_update().get_or_404(domain_id)
+    domain = Domain.query.with_for_update().get(domain_id)
+
+    # If the domain record doesn't exist locally yet, auto-create it from the
+    # request body. This allows operators to check out CF zones that haven't
+    # been imported by an admin yet (the frontend passes name/cloudflare_zone_id).
+    if domain is None:
+        data = request.get_json(silent=True) or {}
+        name = (data.get('name') or '').strip().lower()
+        zone_id = (data.get('cloudflare_zone_id') or '').strip()
+        if not name:
+            return jsonify({'error': 'Domain not found and no name provided to create it'}), 404
+        # Avoid duplicate by name
+        domain = Domain.query.filter_by(name=name).first()
+        if domain is None:
+            domain = Domain(
+                name=name,
+                cloudflare_zone_id=zone_id or None,
+                status='active',
+                credential_label=data.get('credential_label', 'default') or 'default',
+                provider=data.get('provider', 'cloudflare') or 'cloudflare',
+            )
+            db.session.add(domain)
+            db.session.flush()  # get domain.id without committing yet
 
     if domain.checkout_project_id is not None:
         conflict_project = Project.query.get(domain.checkout_project_id)
