@@ -53,7 +53,7 @@ class User(UserMixin, db.Model):
 
     @property
     def can_write_infra(self):
-        return self.role in ('admin', 'project_admin', 'operator')
+        return self.role in ('admin', 'operator')
 
     @property
     def can_manage_projects(self):

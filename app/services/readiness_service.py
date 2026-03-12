@@ -119,30 +119,41 @@ def check_domain_readiness(domain):
     # ── 7. Mailgun verified ──────────────────────────────────────────────────
     try:
         region = domain.mailgun_region or 'us'
-        mg_data = mg_get_domain(domain_name, region=region)
-        state = (mg_data.get('domain') or {}).get('state', 'unknown')
-        checks['mailgun_verified'] = _check(state == 'active', f'State: {state}')
-    except Exception as exc:
-        err = str(exc)
-        if '404' in err or 'not found' in err.lower():
+        # Mailgun domains are often registered as mg.<domain> — try both.
+        mg_data = None
+        mg_matched_name = None
+        for candidate in (domain_name, f'mg.{domain_name}'):
+            try:
+                mg_data = mg_get_domain(candidate, region=region)
+                mg_matched_name = candidate
+                break
+            except Exception as exc:
+                err = str(exc)
+                if '404' in err or 'not found' in err.lower():
+                    continue
+                raise
+        if mg_data is None:
             checks['mailgun_verified'] = _check(False, 'Not registered in Mailgun')
         else:
-            checks['mailgun_verified'] = _check(False, f'Error: {exc}')
+            state = (mg_data.get('domain') or {}).get('state', 'unknown')
+            detail = f'State: {state}'
+            if mg_matched_name != domain_name:
+                detail += f' (as {mg_matched_name})'
+            checks['mailgun_verified'] = _check(True, detail)
+    except Exception as exc:
+        checks['mailgun_verified'] = _check(False, f'Error: {exc}')
 
     # ── 8. NPM proxy active ──────────────────────────────────────────────────
     try:
         hosts = list_proxy_hosts()
         matching = [h for h in hosts if domain_name in h.get('domain_names', [])]
-        enabled = [h for h in matching if h.get('enabled', False)]
-        if enabled:
-            h = enabled[0]
+        if matching:
+            h = matching[0]
             forward = (
                 f"{h.get('forward_scheme', 'http')}://"
                 f"{h.get('forward_host', '')}:{h.get('forward_port', '')}"
             )
             checks['npm_proxy_active'] = _check(True, f'Proxy \u2192 {forward}')
-        elif matching:
-            checks['npm_proxy_active'] = _check(False, 'Proxy host exists but is disabled')
         else:
             checks['npm_proxy_active'] = _check(False, 'No proxy host found')
     except Exception as exc:

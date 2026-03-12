@@ -82,6 +82,11 @@
         <span id="count-containers" class="fw-bold">—</span>
         <span class="text-muted small">Containers</span>
     </div>
+    <div class="card-custom px-3 py-2 d-flex align-items-center gap-2">
+        <i class="bi bi-cloud-fill" style="color:#38bdf8"></i>
+        <span id="count-cdn" class="fw-bold">—</span>
+        <span class="text-muted small">CDN Distributions</span>
+    </div>
 </div>
 
 <!-- Tabs -->
@@ -233,6 +238,31 @@
     </div>
 </div>
 
+<!-- CDN Distributions -->
+<div class="card-custom mb-4">
+    <div class="card-header">
+        <i class="bi bi-cloud-fill me-1" style="color:#38bdf8"></i> CDN Distributions
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead>
+                    <tr>
+                        <th>Provider</th>
+                        <th>CDN Domain (endpoint)</th>
+                        <th>Origin Host</th>
+                        <th>Status</th>
+                        <th>Comment</th>
+                    </tr>
+                </thead>
+                <tbody id="cdn-tbody">
+                    <tr><td colspan="5" class="text-center text-muted py-3"><span class="spinner-border spinner-border-sm"></span></td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
 </div><!-- /pane-table -->
 
 <!-- ── Diagram pane ─────────────────────────────────────────────────────── -->
@@ -261,6 +291,7 @@
             <span class="small"><span style="display:inline-block;width:12px;height:12px;background:#374151;border-radius:2px;vertical-align:middle;" class="me-1"></span>Container</span>
             <span class="small"><span style="display:inline-block;width:12px;height:12px;background:#991b1b;border-radius:2px;vertical-align:middle;" class="me-1"></span>CS Listener</span>
             <span class="small"><span style="display:inline-block;width:12px;height:12px;background:#6b21a8;border-radius:2px;vertical-align:middle;" class="me-1"></span>Unknown Backend</span>
+            <span class="small"><span style="display:inline-block;width:12px;height:12px;background:#075985;border:1px solid #38bdf8;border-radius:2px;vertical-align:middle;" class="me-1"></span>CDN</span>
         </div>
     </div>
 </div><!-- /pane-diagram -->
@@ -275,17 +306,19 @@
     var IS_READONLY       = IS_AUDITOR || IS_WHITE_TEAM;
     var ACTIVE_PROJECT_ID = {{ active_project.id if active_project else 'null' }};
 
-    var allDomains         = [];
-    var allDnsRecords      = {}; // domainId -> records[] (normalised: always .type field)
-    var allInstances       = [];
-    var allNpmHosts        = [];
-    var allContainers      = [];
-    var allListeners       = [];
-    var ipToInstance       = {}; // ip          -> instance
-    var ipToContainer      = {}; // ip          -> container
-    var nameToContainer    = {}; // name        -> container
-    var hostPortToListener = {}; // "host:port" -> listener
-    var portToListener     = {}; // "port"      -> listener (fallback when host is 0.0.0.0)
+    var allDomains              = [];
+    var allDnsRecords           = {}; // domainId -> records[] (normalised: always .type field)
+    var allInstances            = [];
+    var allNpmHosts             = [];
+    var allContainers           = [];
+    var allListeners            = [];
+    var allCdnDistributions     = [];
+    var ipToInstance            = {}; // ip          -> instance
+    var ipToContainer           = {}; // ip          -> container
+    var nameToContainer         = {}; // name        -> container
+    var hostPortToListener      = {}; // "host:port" -> listener
+    var portToListener          = {}; // "port"      -> listener (fallback when host is 0.0.0.0)
+    var cdnDomainToDistribution = {}; // cdn_domain  -> distribution
 
     // Module-level entries map so both table and diagram renderers share it
     var entriesByDomain    = {}; // domainId -> { normFqdn -> {fqdn, dnsRec, npmHosts[]} }
@@ -329,13 +362,15 @@
             fetch('/api/aws/instances').then(function(r) { return r.json(); }).catch(function() { return {instances: []}; }),
             fetch('/api/npm/hosts').then(function(r) { return r.json(); }).catch(function() { return {hosts: []}; }),
             fetch('/api/containers').then(function(r) { return r.json(); }).catch(function() { return {containers: []}; }),
-            fetch('/api/cobaltstrike/listeners').then(function(r) { return r.json(); }).catch(function() { return {listeners: []}; })
+            fetch('/api/cobaltstrike/listeners').then(function(r) { return r.json(); }).catch(function() { return {listeners: []}; }),
+            fetch('/api/cdn/distributions').then(function(r) { return r.ok ? r.json() : {distributions: []}; }).catch(function() { return {distributions: []}; })
         ]).then(function(results) {
-            var cfZones   = results[0].zones      || [];
-            allInstances  = results[1].instances  || [];
-            allNpmHosts   = results[2].hosts      || [];
-            allContainers = results[3].containers || [];
-            allListeners  = results[4].listeners  || [];
+            var cfZones        = results[0].zones         || [];
+            allInstances       = results[1].instances     || [];
+            allNpmHosts        = results[2].hosts         || [];
+            allContainers      = results[3].containers    || [];
+            allListeners       = results[4].listeners     || [];
+            allCdnDistributions = results[5].distributions || [];
 
             // Build allDomains from Cloudflare zones (primary source).
             allDomains = cfZones.map(function(z) {
@@ -346,6 +381,7 @@
             document.getElementById('count-ec2').textContent        = allInstances.length;
             document.getElementById('count-npm').textContent        = allNpmHosts.length;
             document.getElementById('count-containers').textContent = allContainers.length;
+            document.getElementById('count-cdn').textContent        = allCdnDistributions.length;
 
             buildLookupMaps();
             loadDnsRecords();
@@ -359,13 +395,15 @@
             fetch('/api/aws/instances').then(function(r) { return r.json(); }).catch(function() { return {instances: []}; }),
             fetch('/api/npm/hosts').then(function(r) { return r.json(); }).catch(function() { return {hosts: []}; }),
             fetch('/api/containers').then(function(r) { return r.json(); }).catch(function() { return {containers: []}; }),
-            fetch('/api/cobaltstrike/listeners').then(function(r) { return r.json(); }).catch(function() { return {listeners: []}; })
+            fetch('/api/cobaltstrike/listeners').then(function(r) { return r.json(); }).catch(function() { return {listeners: []}; }),
+            fetch('/api/cdn/distributions').then(function(r) { return r.ok ? r.json() : {distributions: []}; }).catch(function() { return {distributions: []}; })
         ]).then(function(results) {
-            var localDomains = results[0].domains || [];
-            allInstances  = results[1].instances  || [];
-            allNpmHosts   = results[2].hosts      || [];
-            allContainers = results[3].containers || [];
-            allListeners  = results[4].listeners  || [];
+            var localDomains    = results[0].domains       || [];
+            allInstances        = results[1].instances     || [];
+            allNpmHosts         = results[2].hosts         || [];
+            allContainers       = results[3].containers    || [];
+            allListeners        = results[4].listeners     || [];
+            allCdnDistributions = results[5].distributions || [];
 
             // Use local domain records (id = DB PK, cloudflare_zone_id = CF zone).
             // Skip any domain without a zone ID (manually tracked, no CF link).
@@ -375,6 +413,7 @@
             document.getElementById('count-ec2').textContent        = allInstances.length;
             document.getElementById('count-npm').textContent        = allNpmHosts.length;
             document.getElementById('count-containers').textContent = allContainers.length;
+            document.getElementById('count-cdn').textContent        = allCdnDistributions.length;
 
             buildLookupMaps();
             loadDnsRecords();
@@ -390,11 +429,13 @@
         document.getElementById('orphan-ec2-tbody').innerHTML = '<tr><td colspan="6"></td></tr>';
         document.getElementById('orphan-npm-tbody').innerHTML = '<tr><td colspan="4"></td></tr>';
         document.getElementById('dns-no-npm-tbody').innerHTML = '<tr><td colspan="5"></td></tr>';
+        document.getElementById('cdn-tbody').innerHTML = '<tr><td colspan="5"></td></tr>';
         document.getElementById('count-domains').textContent = '—';
         document.getElementById('count-records').textContent = '—';
         document.getElementById('count-ec2').textContent = '—';
         document.getElementById('count-npm').textContent = '—';
         document.getElementById('count-containers').textContent = '—';
+        document.getElementById('count-cdn').textContent = '—';
     }
 
     function setLoading() {
@@ -405,6 +446,8 @@
         document.getElementById('orphan-npm-tbody').innerHTML =
             '<tr><td colspan="4" class="text-center text-muted py-3"><span class="spinner-border spinner-border-sm"></span></td></tr>';
         document.getElementById('dns-no-npm-tbody').innerHTML =
+            '<tr><td colspan="5" class="text-center text-muted py-3"><span class="spinner-border spinner-border-sm"></span></td></tr>';
+        document.getElementById('cdn-tbody').innerHTML =
             '<tr><td colspan="5" class="text-center text-muted py-3"><span class="spinner-border spinner-border-sm"></span></td></tr>';
     }
 
@@ -424,6 +467,12 @@
             });
             var name = (c.name || '').replace(/^\//, '').toLowerCase();
             if (name) nameToContainer[name] = c;
+        });
+
+        // CDN distribution lookup: cdn domain → distribution
+        cdnDomainToDistribution = {};
+        allCdnDistributions.forEach(function(dist) {
+            if (dist.domain) cdnDomainToDistribution[dist.domain.toLowerCase()] = dist;
         });
 
         // Cobalt Strike listener lookup maps
@@ -525,6 +574,44 @@
         renderOrphanEc2(usedInstanceIds);
         renderOrphanNpm(usedNpmIds);
         renderDnsWithoutNpm();
+        renderCdnTable();
+    }
+
+    function renderCdnTable() {
+        var tbody = document.getElementById('cdn-tbody');
+        if (!allCdnDistributions.length) {
+            tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-3">No CDN distributions found</td></tr>';
+            return;
+        }
+        var html = '';
+        allCdnDistributions.forEach(function(dist) {
+            var providerLabel = dist.provider === 'azure_front_door' ? 'Azure Front Door'
+                              : dist.provider === 'cloudfront'       ? 'AWS CloudFront'
+                              : escapeHtml(dist.provider || '—');
+            var providerBadge = dist.provider === 'azure_front_door'
+                ? '<span class="badge" style="background:#0078d4">Azure Front Door</span>'
+                : dist.provider === 'cloudfront'
+                ? '<span class="badge bg-warning text-dark">CloudFront</span>'
+                : '<span class="badge bg-secondary">' + escapeHtml(dist.provider || '—') + '</span>';
+            var domain = dist.domain
+                ? '<code class="small">' + escapeHtml(dist.domain) + '</code>'
+                : '<span class="text-muted small">provisioning…</span>';
+            var originHost = dist.origin_host
+                ? '<code class="small">' + escapeHtml(dist.origin_host) + '</code>'
+                : '—';
+            var statusBadge = dist.status === 'active'     ? '<span class="badge bg-success">active</span>'
+                            : dist.status === 'deploying'  ? '<span class="badge bg-warning text-dark">deploying</span>'
+                            : dist.status === 'error'      ? '<span class="badge bg-danger">error</span>'
+                            : '<span class="badge bg-secondary">' + escapeHtml(dist.status || '—') + '</span>';
+            html += '<tr>'
+                + '<td>' + providerBadge + '</td>'
+                + '<td>' + domain + '</td>'
+                + '<td>' + originHost + '</td>'
+                + '<td>' + statusBadge + '</td>'
+                + '<td class="text-muted small">' + escapeHtml(dist.comment || dist.name || '—') + '</td>'
+                + '</tr>';
+        });
+        tbody.innerHTML = html;
     }
 
     function renderChainTable(usedNpmIds, usedInstanceIds) {
@@ -601,9 +688,16 @@
                 var ipCell    = rec
                     ? '<code class="small">' + escapeHtml(rec.content) + '</code>'
                     : '<span class="text-muted small">—</span>';
-                var ec2Inst   = (rec && rec.type === 'A') ? (ipToInstance[rec.content] || null) : null;
-                var ec2Html   = ec2Inst
+                var ec2Inst = (rec && rec.type === 'A') ? (ipToInstance[rec.content] || null) : null;
+                var cdnDist = null;
+                if (rec && rec.type === 'CNAME') {
+                    cdnDist = cdnDomainToDistribution[(rec.content || '').toLowerCase().replace(/\.$/, '')] || null;
+                }
+                var ec2Html = ec2Inst
                     ? stateBadge(ec2Inst.state) + ' <span class="small">' + escapeHtml(instanceLabel(ec2Inst)) + '</span>'
+                    : cdnDist
+                    ? '<span class="badge bg-info"><i class="bi bi-cloud-fill me-1"></i>' + escapeHtml(cdnDist.provider || 'CDN') + '</span>'
+                      + (cdnDist.origin_host ? ' <code class="small">' + escapeHtml(cdnDist.origin_host) + '</code>' : '')
                     : '<span class="text-muted small">—</span>';
 
                 var npmHtml = entry.npmHosts.length > 0
@@ -1162,11 +1256,13 @@
         var nodes = [];
         var edges = [];
 
-        // Track created nodes to deduplicate EC2, NPM, and backend nodes
-        var ec2Nodes      = {}; // instanceId  -> vis node id
-        var npmNodes      = {}; // npmId        -> vis node id
-        var backendNodes  = {}; // "host:port"  -> vis node id
-        var nodeIdCounter = 0;
+        // Track created nodes to deduplicate EC2, NPM, CDN, and backend nodes
+        var ec2Nodes       = {}; // instanceId  -> vis node id
+        var npmNodes       = {}; // npmId        -> vis node id
+        var cdnNodes       = {}; // cdnKey       -> vis node id
+        var backendNodes   = {}; // "host:port"  -> vis node id
+        var fqdnNodeByNorm = {}; // norm FQDN   -> vis node id (for CDN origin linking)
+        var nodeIdCounter  = 0;
 
         // Reset per-render path-filter helpers
         diagramNpmFqdnLinks = {};
@@ -1180,7 +1276,8 @@
             npm:       { background: '#14532d', border: '#4ade80', hover: { background: '#15803d' } },
             container: { background: '#1f2937', border: '#9ca3af', hover: { background: '#374151' } },
             listener:  { background: '#7f1d1d', border: '#f87171', hover: { background: '#991b1b' } },
-            backend:   { background: '#3b0764', border: '#c084fc', hover: { background: '#6b21a8' } }
+            backend:   { background: '#3b0764', border: '#c084fc', hover: { background: '#6b21a8' } },
+            cdn:       { background: '#0c4a6e', border: '#38bdf8', hover: { background: '#075985' } }
         };
 
         var fontBase = { color: '#f9fafb', size: 13, face: 'monospace' };
@@ -1216,8 +1313,9 @@
                 }
                 nodes.push(makeNode(fqdnId, fqdnLabel, 'fqdn', { level: 1 }));
                 edges.push({ from: zoneId, to: fqdnId, color: { color: '#3b82f6', opacity: 0.7 }, dashes: false });
+                fqdnNodeByNorm[entry.fqdn.toLowerCase().replace(/\.$/, '')] = fqdnId;
 
-                // EC2 node (from DNS A record)
+                // EC2 node (from DNS A record) — edge deferred until after CDN check
                 var ec2Id = null;
                 if (entry.dnsRec && entry.dnsRec.type === 'A') {
                     var inst = ipToInstance[entry.dnsRec.content];
@@ -1231,8 +1329,46 @@
                             if (inst.state) ec2Label += '\n[' + inst.state + ']';
                             nodes.push(makeNode(ec2Id, ec2Label, 'ec2', { level: 2 }));
                         }
-                        edges.push({ from: fqdnId, to: ec2Id, label: entry.dnsRec.content, color: { color: '#fb923c', opacity: 0.8 }, font: { color: '#fb923c', size: 10 } });
                     }
+                }
+
+                // CDN node (from DNS CNAME pointing to a tracked CDN distribution domain)
+                var cdnId = null;
+                if (entry.dnsRec && entry.dnsRec.type === 'CNAME') {
+                    var cnameLower = (entry.dnsRec.content || '').toLowerCase().replace(/\.$/, '');
+                    var cdnDist = cdnDomainToDistribution[cnameLower];
+                    if (cdnDist) {
+                        var cdnKey = String(cdnDist.id || cdnDist.domain);
+                        if (cdnNodes[cdnKey]) {
+                            cdnId = cdnNodes[cdnKey];
+                        } else {
+                            cdnId = uid();
+                            cdnNodes[cdnKey] = cdnId;
+                            var cdnLabel = '☁ ' + (cdnDist.provider || 'CDN') + '\n' + (cdnDist.domain || '');
+                            if (cdnDist.origin_host) cdnLabel += '\n→ ' + cdnDist.origin_host;
+                            nodes.push(makeNode(cdnId, cdnLabel, 'cdn', { level: 2 }));
+                        }
+                        edges.push({ from: fqdnId, to: cdnId, label: 'CNAME', color: { color: '#38bdf8', opacity: 0.8 }, font: { color: '#38bdf8', size: 10 } });
+                    }
+                }
+
+                // CDN node (Cloudflare proxy — A/AAAA record with proxied=true)
+                if (!cdnId && entry.dnsRec && entry.dnsRec.proxied) {
+                    var cfKey = 'cf-proxy:' + (entry.dnsRec.content || domain.name);
+                    if (cdnNodes[cfKey]) {
+                        cdnId = cdnNodes[cfKey];
+                    } else {
+                        cdnId = uid();
+                        cdnNodes[cfKey] = cdnId;
+                        nodes.push(makeNode(cdnId, '☁ Cloudflare Proxy\n' + (entry.dnsRec.content || ''), 'cdn', { level: 2 }));
+                    }
+                    edges.push({ from: fqdnId, to: cdnId, label: 'proxied', color: { color: '#38bdf8', opacity: 0.8 }, font: { color: '#38bdf8', size: 10 } });
+                }
+
+                // EC2 edge — route through CDN/CF-proxy node when the record is proxied
+                if (ec2Id) {
+                    var ec2From = cdnId || fqdnId;
+                    edges.push({ from: ec2From, to: ec2Id, label: entry.dnsRec.content, color: { color: '#fb923c', opacity: 0.8 }, font: { color: '#fb923c', size: 10 } });
                 }
 
                 // NPM + backend nodes
@@ -1249,9 +1385,8 @@
                         nodes.push(makeNode(npmId, npmLabel, 'npm', { level: 3 }));
                     }
 
-                    // Visual edge: EC2 → NPM (if EC2 exists) keeps NPM at level 3 in the
-                    // hierarchical layout, giving a correct EC2 → proxy → backend chain.
-                    var npmVisFrom = ec2Id || fqdnId;
+                    // Visual edge: CDN → NPM → backend, or EC2 → NPM → backend if no CDN
+                    var npmVisFrom = cdnId || ec2Id || fqdnId;
                     edges.push({ from: npmVisFrom, to: npmId, color: { color: '#4ade80', opacity: 0.8 } });
 
                     // Record the owning FQDN for this NPM proxy node so the backward BFS
@@ -1294,6 +1429,33 @@
                     edges.push({ from: npmId, to: bId, color: { color: '#c084fc', opacity: 0.8 }, arrows: { to: { scaleFactor: 0.7 } } });
                 });
             });
+        });
+
+        // Second pass: CDN distributions not yet shown via CNAME match.
+        // Place them at level -1 (left of zones) and link to origin_host FQDN when found.
+        allCdnDistributions.forEach(function(dist) {
+            var cdnKey = String(dist.id || dist.domain || dist.external_id || Math.random());
+            if (cdnNodes[cdnKey]) return; // already rendered via CNAME
+
+            var cdnId = uid();
+            cdnNodes[cdnKey] = cdnId;
+            var providerStr = dist.provider === 'azure_front_door' ? 'Azure Front Door'
+                            : dist.provider === 'cloudfront'       ? 'AWS CloudFront'
+                            : (dist.provider || 'CDN');
+            var cdnLabel = '☁ ' + providerStr;
+            if (dist.domain) cdnLabel += '\n' + dist.domain;
+            if (dist.origin_host) cdnLabel += '\n→ ' + dist.origin_host;
+            if (dist.status && dist.status !== 'active') cdnLabel += '\n[' + dist.status + ']';
+            nodes.push(makeNode(cdnId, cdnLabel, 'cdn', { level: -1 }));
+
+            // Link to origin_host FQDN node if already in diagram
+            if (dist.origin_host) {
+                var originNorm = dist.origin_host.toLowerCase().replace(/\.$/, '');
+                var targetFqdnId = fqdnNodeByNorm[originNorm];
+                if (targetFqdnId) {
+                    edges.push({ from: cdnId, to: targetFqdnId, label: 'origin', color: { color: '#38bdf8', opacity: 0.8 }, font: { color: '#38bdf8', size: 10 }, dashes: [6, 4] });
+                }
+            }
         });
 
         // Assign stable IDs to edges before DataSet creation
