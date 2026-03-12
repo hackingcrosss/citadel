@@ -3,6 +3,7 @@ from flask_login import login_required, current_user
 from app.api import api_bp
 from app.services import npm_service
 from app.services.project_service import build_project_tag_map, assert_resource_writable, get_active_project, get_project_domain_names
+from app.services import audit_service
 
 
 # --- Proxy Hosts ---
@@ -65,6 +66,10 @@ def create_proxy_host():
             allow_websocket_upgrade=data.get('allow_websocket_upgrade', False),
             advanced_config=data.get('advanced_config', ''),
         )
+        names = ', '.join(data.get('domain_names', []))
+        audit_service.log('npm_proxy.create', 'npm_proxy', host.get('id', ''), names,
+                          {'domain_names': data['domain_names'],
+                           'forward': f"{data.get('forward_scheme','http')}://{data['forward_host']}:{data['forward_port']}"})
         return jsonify({'host': host}), 201
     except Exception as e:
         return jsonify({'error': str(e)}), 400
@@ -109,6 +114,7 @@ def delete_proxy_host(host_id):
     assert_resource_writable('npm_host', str(host_id), current_user)
     try:
         npm_service.delete_proxy_host(host_id)
+        audit_service.log('npm_proxy.delete', 'npm_proxy', host_id, str(host_id))
         return jsonify({'deleted': True})
     except Exception as e:
         return jsonify({'error': str(e)}), 400

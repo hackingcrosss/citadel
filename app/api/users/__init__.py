@@ -7,6 +7,7 @@ from app.models.user import User, VALID_ROLES
 from app.services.plan_service import TIERS
 from app.services.plan_service import get_current_plan
 from app.utils.decorators import admin_required
+from app.services import audit_service
 
 _log = logging.getLogger(__name__)
 
@@ -74,6 +75,7 @@ def create_user():
     db.session.commit()
 
     _log.info('Admin %s created user %s (role=%s)', current_user.email, email, role)
+    audit_service.log('user.create', 'user', user.id, email, {'role': role})
     return jsonify(_user_dict(user)), 201
 
 
@@ -128,6 +130,8 @@ def update_user(user_id):
 
     db.session.commit()
     _log.info('Admin %s updated user %s', current_user.email, user.email)
+    audit_service.log('user.update', 'user', user.id, user.email,
+                      {k: v for k, v in data.items() if k != 'password'})
     return jsonify(_user_dict(user))
 
 
@@ -146,6 +150,7 @@ def delete_user(user_id):
             return jsonify({'error': 'Cannot delete the last admin user'}), 400
 
     _log.info('Admin %s deleted user %s', current_user.email, user.email)
+    audit_service.log('user.delete', 'user', user.id, user.email, {'role': user.role})
     db.session.delete(user)
     db.session.commit()
     return jsonify({'deleted': True})

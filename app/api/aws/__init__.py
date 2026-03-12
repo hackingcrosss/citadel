@@ -8,6 +8,7 @@ from app.models.instance_ssh_config import InstanceSSHConfig
 from app.services.credential_service import _get_fernet, get_account_labels
 from app.services import ssh_service
 from app.services.project_service import build_project_tag_map, assert_resource_writable
+from app.services import audit_service
 
 
 def _instance_label(instance_id):
@@ -105,6 +106,7 @@ def aws_start_instances():
         results = []
         for lbl, grp in _group_by_label(ids).items():
             results.extend(aws_service.start_instances(grp, region, label=lbl))
+        audit_service.log('ec2.start', 'ec2', '', ', '.join(ids), {'instance_ids': ids, 'region': region})
         return jsonify({'result': results})
     except Exception as e:
         return jsonify({'error': str(e)}), 400
@@ -124,6 +126,7 @@ def aws_stop_instances():
         results = []
         for lbl, grp in _group_by_label(ids).items():
             results.extend(aws_service.stop_instances(grp, region, label=lbl))
+        audit_service.log('ec2.stop', 'ec2', '', ', '.join(ids), {'instance_ids': ids, 'region': region})
         return jsonify({'result': results})
     except Exception as e:
         return jsonify({'error': str(e)}), 400
@@ -161,6 +164,7 @@ def aws_terminate_instances():
         results = []
         for lbl, grp in _group_by_label(ids).items():
             results.extend(aws_service.terminate_instances(grp, region, label=lbl))
+        audit_service.log('ec2.terminate', 'ec2', '', ', '.join(ids), {'instance_ids': ids, 'region': region})
         return jsonify({'result': results})
     except Exception as e:
         return jsonify({'error': str(e)}), 400

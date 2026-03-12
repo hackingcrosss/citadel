@@ -3,6 +3,7 @@ from datetime import datetime
 from flask import request, jsonify, session
 from flask_login import login_required, current_user
 from app.api import api_bp
+from app.services import audit_service
 from app import db
 from app.models.project import Project, ProjectMember, PROJECT_ROLES
 from app.models.project_resource import ProjectResource, RESOURCE_TYPES
@@ -85,6 +86,7 @@ def create_project():
     db.session.commit()
 
     _log.info('User %s created project %s', current_user.email, code)
+    audit_service.log('project.create', 'project', project.id, project.code, {'name': name})
     return jsonify(project.to_dict(include_members=True)), 201
 
 
@@ -154,6 +156,7 @@ def delete_project(project_id):
         }), 409
 
     _log.info('Admin %s deleted project %s', current_user.email, project.code)
+    audit_service.log('project.delete', 'project', project.id, project.code)
     db.session.delete(project)
     db.session.commit()
     return jsonify({'deleted': True})
@@ -228,6 +231,8 @@ def add_member(project_id):
 
     _log.info('User %s added user %s to project %s as %s',
               current_user.email, user.email, project.code, project_role)
+    audit_service.log('project.member_add', 'project', project.id, project.code,
+                      {'user': user.email, 'role': project_role})
     return jsonify(member.to_dict()), 201
 
 
@@ -267,6 +272,9 @@ def remove_member(project_id, user_id):
         project_id=project_id, user_id=user_id
     ).first_or_404()
 
+    removed_user = User.query.get(user_id)
+    audit_service.log('project.member_remove', 'project', project_id, '',
+                      {'user': removed_user.email if removed_user else str(user_id)})
     db.session.delete(member)
     db.session.commit()
     return jsonify({'deleted': True})
@@ -333,6 +341,8 @@ def checkout_domain(project_id, domain_id):
 
     _log.info('User %s checked out domain %s to project %s',
               current_user.email, domain.name, project.code)
+    audit_service.log('domain.checkout', 'domain', domain.id, domain.name,
+                      {'project': project.code, 'project_id': project_id})
     return jsonify(domain.to_dict())
 
 
@@ -352,6 +362,8 @@ def release_domain(project_id, domain_id):
 
     _log.info('User %s released domain %s from project %s',
               current_user.email, domain.name, project_id)
+    audit_service.log('domain.release', 'domain', domain.id, domain.name,
+                      {'project_id': project_id})
     return jsonify(domain.to_dict())
 
 
@@ -374,6 +386,8 @@ def force_release_domain(domain_id):
     _log.warning('Admin %s force-released domain %s from project %s',
                  current_user.email, domain.name,
                  prev_project.code if prev_project else prev_project_id)
+    audit_service.log('domain.force_release', 'domain', domain.id, domain.name,
+                      {'prev_project': prev_project.code if prev_project else str(prev_project_id)})
     return jsonify(domain.to_dict())
 
 
