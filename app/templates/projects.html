@@ -16,6 +16,8 @@
         margin: 2px;
         color: var(--ir-text);
     }
+    #pool-table td { vertical-align: middle; }
+    .purpose-badge { font-size: 0.7rem; }
 </style>
 {% endblock %}
 
@@ -35,6 +37,52 @@
 <div id="projects-container">
     <div class="text-center text-muted py-5">
         <div class="spinner-border spinner-border-sm me-2"></div> Loading projects…
+    </div>
+</div>
+
+<!-- Domain Pool Checkout Modal -->
+<div class="modal fade" id="checkoutModal" tabindex="-1" aria-labelledby="checkoutModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content bg-dark text-white border-secondary">
+            <div class="modal-header border-secondary">
+                <h5 class="modal-title" id="checkoutModalLabel">
+                    <i class="bi bi-globe me-2"></i>Check Out Domain
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p class="text-muted small mb-3">
+                    Select a domain from the pool to assign to project
+                    <strong id="checkout-project-label">—</strong>.
+                </p>
+                <div class="mb-3">
+                    <input type="text" id="pool-search" class="form-control form-control-sm bg-dark text-white border-secondary"
+                           placeholder="Filter by name, purpose…" oninput="filterPool()">
+                </div>
+                <div id="pool-loading" class="text-center text-muted py-3">
+                    <div class="spinner-border spinner-border-sm me-2"></div> Loading pool…
+                </div>
+                <table class="table table-dark table-sm table-hover border-secondary d-none" id="pool-table">
+                    <thead>
+                        <tr>
+                            <th>Domain</th>
+                            <th>Purpose</th>
+                            <th>Registrar</th>
+                            <th>CF Account</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody id="pool-tbody"></tbody>
+                </table>
+                <div id="pool-empty" class="text-center text-muted py-3 d-none">
+                    <i class="bi bi-inbox d-block mb-1" style="font-size:1.8rem;opacity:0.4"></i>
+                    No available domains in the pool.
+                </div>
+            </div>
+            <div class="modal-footer border-secondary">
+                <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
     </div>
 </div>
 {% endblock %}
@@ -105,9 +153,12 @@ function renderProjects(projects) {
             : '<i class="bi bi-circle-fill status-archived me-1" style="font-size:0.5rem"></i>';
 
         // Domains section
-        const domainsHtml = p.domains && p.domains.length
-            ? p.domains.map(d => `<span class="domain-chip"><i class="bi bi-globe me-1"></i>${escapeHtml(d.name)}${isOperator ? ` <i class="bi bi-x text-danger" style="cursor:pointer" title="Release domain" onclick="releaseDomain(${p.id},${d.id},'${escapeHtml(d.name)}')"></i>` : ''}</span>`).join('')
-            : '<span class="text-muted small">No domains checked out</span>';
+        const checkoutBtn = isOperator && !IS_VIEWER
+            ? `<button class="btn btn-outline-danger btn-sm ms-1" style="font-size:0.7rem;padding:0.1rem 0.4rem" title="Check out a domain" onclick="openCheckoutModal(${p.id},'${escapeHtml(p.code)}')"><i class="bi bi-plus-lg me-1"></i>Check Out</button>`
+            : '';
+        const domainsHtml = (p.domains && p.domains.length
+            ? p.domains.map(d => `<span class="domain-chip"><i class="bi bi-globe me-1"></i>${escapeHtml(d.name)}${isOperator && !IS_VIEWER ? ` <i class="bi bi-x text-danger" style="cursor:pointer" title="Release domain" onclick="releaseDomain(${p.id},${d.id},'${escapeHtml(d.name)}')"></i>` : ''}</span>`).join('')
+            : '<span class="text-muted small">No domains checked out</span>') + checkoutBtn;
 
         // Members summary
         const memberCount = p.member_count ?? (p.members ? p.members.length : '?');
@@ -174,6 +225,104 @@ async function releaseDomain(projectId, domainId, domainName) {
 
 // Inject current user ID from server for role detection
 var _MY_USER_ID = {{ current_user.id }};
+
+// ── Domain Pool Checkout ──────────────────────────────────────────────────────
+var _checkoutProjectId = null;
+var _poolDomains = [];
+
+function openCheckoutModal(projectId, projectCode) {
+    _checkoutProjectId = projectId;
+    document.getElementById('checkout-project-label').textContent = projectCode;
+    document.getElementById('pool-search').value = '';
+    document.getElementById('pool-loading').classList.remove('d-none');
+    document.getElementById('pool-table').classList.add('d-none');
+    document.getElementById('pool-empty').classList.add('d-none');
+    document.getElementById('pool-tbody').innerHTML = '';
+
+    var modal = new bootstrap.Modal(document.getElementById('checkoutModal'));
+    modal.show();
+    loadPool();
+}
+
+async function loadPool() {
+    try {
+        const res = await fetch('/api/domains?pool=true');
+        const data = await res.json();
+        _poolDomains = (data.domains || []);
+        renderPool(_poolDomains);
+    } catch(e) {
+        document.getElementById('pool-loading').innerHTML =
+            '<span class="text-danger"><i class="bi bi-exclamation-triangle me-1"></i>Failed to load pool</span>';
+    }
+}
+
+function renderPool(domains) {
+    document.getElementById('pool-loading').classList.add('d-none');
+    const tbody = document.getElementById('pool-tbody');
+    if (!domains.length) {
+        document.getElementById('pool-table').classList.add('d-none');
+        document.getElementById('pool-empty').classList.remove('d-none');
+        return;
+    }
+    document.getElementById('pool-empty').classList.add('d-none');
+    document.getElementById('pool-table').classList.remove('d-none');
+
+    const PURPOSE_COLORS = {
+        phishing: 'danger', c2: 'warning', redirect: 'info', staging: 'secondary'
+    };
+    tbody.innerHTML = domains.map(d => {
+        const purposeColor = PURPOSE_COLORS[d.purpose] || 'secondary';
+        const purposeBadge = d.purpose
+            ? `<span class="badge bg-${purposeColor} purpose-badge">${escapeHtml(d.purpose)}</span>`
+            : '<span class="text-muted">—</span>';
+        return `<tr id="pool-row-${d.id}">
+            <td><strong>${escapeHtml(d.name)}</strong></td>
+            <td>${purposeBadge}</td>
+            <td><span class="text-muted small">${escapeHtml(d.registrar || '—')}</span></td>
+            <td><span class="text-muted small">${escapeHtml(d.credential_label || 'default')}</span></td>
+            <td class="text-end">
+                <button class="btn btn-danger btn-sm" style="font-size:0.75rem"
+                        onclick="checkoutDomain(${d.id},'${escapeHtml(d.name)}')">
+                    <i class="bi bi-box-arrow-in-down me-1"></i>Check Out
+                </button>
+            </td>
+        </tr>`;
+    }).join('');
+}
+
+function filterPool() {
+    const q = document.getElementById('pool-search').value.toLowerCase().trim();
+    if (!q) { renderPool(_poolDomains); return; }
+    renderPool(_poolDomains.filter(d =>
+        (d.name || '').toLowerCase().includes(q) ||
+        (d.purpose || '').toLowerCase().includes(q) ||
+        (d.registrar || '').toLowerCase().includes(q) ||
+        (d.credential_label || '').toLowerCase().includes(q)
+    ));
+}
+
+async function checkoutDomain(domainId, domainName) {
+    if (!_checkoutProjectId) return;
+    const btn = document.querySelector(`#pool-row-${domainId} button`);
+    if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>'; }
+
+    const res = await fetch(`/api/projects/${_checkoutProjectId}/domains/${domainId}/checkout`, {method: 'POST'});
+    const data = await res.json();
+    if (!res.ok) {
+        if (btn) { btn.disabled = false; btn.innerHTML = '<i class="bi bi-box-arrow-in-down me-1"></i>Check Out'; }
+        showToast(data.error || 'Checkout failed', 'danger');
+        return;
+    }
+    // Remove from pool list
+    _poolDomains = _poolDomains.filter(d => d.id !== domainId);
+    document.getElementById(`pool-row-${domainId}`)?.remove();
+    if (!_poolDomains.length) {
+        document.getElementById('pool-table').classList.add('d-none');
+        document.getElementById('pool-empty').classList.remove('d-none');
+    }
+    showToast(`${domainName} checked out`, 'success');
+    loadProjects();
+}
 
 document.addEventListener('DOMContentLoaded', loadProjects);
 </script>
