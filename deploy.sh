@@ -93,6 +93,7 @@ set -euo pipefail
 cd "${REMOTE_DIR}"
 chmod 700 .
 docker compose up -d --build --remove-orphans
+docker compose restart web nginx
 REMOTE
 
 # ─── Step 4: status ───────────────────────────────────────────────────────────
