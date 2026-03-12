@@ -17,7 +17,10 @@ class Project(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
+    company_id = db.Column(db.Integer, db.ForeignKey('companies.id'), nullable=True, index=True)
+
     created_by = db.relationship('User', foreign_keys=[created_by_id])
+    company = db.relationship('Company', foreign_keys=[company_id], back_populates='projects')
     members = db.relationship('ProjectMember', back_populates='project',
                               cascade='all, delete-orphan')
 
@@ -28,6 +31,9 @@ class Project(db.Model):
             'code': self.code,
             'description': self.description,
             'status': self.status,
+            'company_id': self.company_id,
+            'company_name': self.company.name if self.company else None,
+            'company_code': self.company.code if self.company else None,
             'created_by_id': self.created_by_id,
             'created_by_email': self.created_by.email if self.created_by else None,
             'member_count': len(self.members),

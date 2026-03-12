@@ -35,6 +35,7 @@
                 <tr>
                     <th>Code</th>
                     <th>Name</th>
+                    <th>Company</th>
                     <th>Status</th>
                     <th>Members</th>
                     <th>Created</th>
@@ -42,7 +43,7 @@
                 </tr>
             </thead>
             <tbody id="projects-tbody">
-                <tr><td colspan="6" class="text-center text-muted py-4">Loading...</td></tr>
+                <tr><td colspan="7" class="text-center text-muted py-4">Loading...</td></tr>
             </tbody>
         </table>
     </div>
@@ -67,6 +68,12 @@
                         <small class="text-muted">(short slug, unique)</small>
                     </label>
                     <input type="text" class="form-control bg-dark text-light border-secondary" id="create-code" placeholder="nightfall" maxlength="32">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Company</label>
+                    <select class="form-select bg-dark text-light border-secondary" id="create-company-id">
+                        <option value="">— None —</option>
+                    </select>
                 </div>
                 <div class="mb-3">
                     <label class="form-label">Description</label>
@@ -219,6 +226,12 @@
                         <option value="archived">Archived</option>
                     </select>
                 </div>
+                <div class="mb-3">
+                    <label class="form-label">Company</label>
+                    <select class="form-select bg-dark text-light border-secondary" id="edit-company-id">
+                        <option value="">— None —</option>
+                    </select>
+                </div>
             </div>
             <div class="modal-footer border-secondary">
                 <button class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
@@ -233,6 +246,7 @@
 {% block extra_js %}
 <script>
 let _projects = [];
+let _companies = [];
 let _activeProjectId = null;
 let _allUsers = [];
 let _zoneToLocalDomain = {};
@@ -265,20 +279,21 @@ async function loadProjects() {
         _projects = Array.isArray(data) ? data : (data.projects || []);
         renderProjects();
     } catch(e) {
-        tbody.innerHTML = `<tr><td colspan="6" class="text-danger text-center py-3">${e.message}</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="7" class="text-danger text-center py-3">${e.message}</td></tr>`;
     }
 }
 
 function renderProjects() {
     const tbody = document.getElementById('projects-tbody');
     if (!_projects.length) {
-        tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-4">No projects yet</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted py-4">No projects yet</td></tr>';
         return;
     }
     tbody.innerHTML = _projects.map(p => `
         <tr>
             <td><code class="text-danger">${p.code}</code></td>
             <td>${escapeHtml(p.name)}</td>
+            <td>${p.company_code ? `<span class="badge bg-danger" style="font-size:0.7rem">${escapeHtml(p.company_code)}</span>` : '<span class="text-muted">—</span>'}</td>
             <td>${statusBadge(p.status)}</td>
             <td><span class="text-muted">${p.member_count ?? '—'}</span></td>
             <td class="text-muted small">${p.created_at ? p.created_at.substring(0,10) : '—'}</td>
@@ -309,6 +324,7 @@ function openCreateModal() {
     document.getElementById('create-name').value = '';
     document.getElementById('create-code').value = '';
     document.getElementById('create-description').value = '';
+    loadCompaniesIntoSelect('create-company-id', null);
     createModal.show();
 }
 
@@ -318,11 +334,12 @@ async function createProject() {
     const description = document.getElementById('create-description').value.trim();
     if (!name || !code) { showToast('Name and code are required', 'danger'); return; }
 
+    const companyId = parseInt(document.getElementById('create-company-id').value) || null;
     try {
         const res = await fetch('/api/projects', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({name, code, description}),
+            body: JSON.stringify({name, code, description, company_id: companyId}),
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || 'Failed to create project');
@@ -353,6 +370,7 @@ function openEditModal(projectId) {
     document.getElementById('edit-name').value = p.name;
     document.getElementById('edit-description').value = p.description || '';
     document.getElementById('edit-status').value = p.status;
+    loadCompaniesIntoSelect('edit-company-id', p.company_id);
     editModal.show();
 }
 
@@ -361,13 +379,14 @@ async function saveEdit() {
     const name = document.getElementById('edit-name').value.trim();
     const description = document.getElementById('edit-description').value.trim();
     const status = document.getElementById('edit-status').value;
+    const companyId = parseInt(document.getElementById('edit-company-id').value) || null;
     if (!name) { showToast('Name is required', 'danger'); return; }
 
     try {
         const res = await fetch(`/api/projects/${id}`, {
             method: 'PATCH',
             headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({name, description, status}),
+            body: JSON.stringify({name, description, status, company_id: companyId}),
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || 'Failed to update project');
@@ -703,6 +722,23 @@ function _renderReadiness(data) {
         <table class="table table-dark table-sm mb-0">
             <tbody>${rows}</tbody>
         </table>`;
+}
+
+// ── Companies dropdown ────────────────────────────────────────────────────────
+async function loadCompaniesIntoSelect(selectId, selectedId) {
+    if (!_companies.length) {
+        try {
+            const res = await fetch('/api/companies');
+            const data = await res.json();
+            _companies = (data.companies || []);
+        } catch(e) { /* ignore */ }
+    }
+    const sel = document.getElementById(selectId);
+    if (!sel) return;
+    sel.innerHTML = '<option value="">— None —</option>' +
+        _companies.map(c =>
+            `<option value="${c.id}" ${c.id === selectedId ? 'selected' : ''}>${escapeHtml(c.code)} — ${escapeHtml(c.name)}</option>`
+        ).join('');
 }
 
 // ── Init ─────────────────────────────────────────────────────────────────────

@@ -27,6 +27,7 @@ ALL_FEATURES = frozenset({
     'cdn',
     'api_access',
     'engagements',        # Phase 2
+    'companies',
 })
 
 TIERS = {
@@ -49,7 +50,7 @@ TIERS = {
         'description': 'Complete red team platform with C2 and mapping.',
         'max_users': 20,
         'max_domains': -1,   # -1 = unlimited
-        'features': frozenset({'gophish', 'website_generator', 'cobaltstrike', 'infra_map', 'projects', 'cdn'}),
+        'features': frozenset({'gophish', 'website_generator', 'cobaltstrike', 'infra_map', 'projects', 'cdn', 'companies'}),
     },
     'enterprise': {
         'display_name': 'Enterprise',

@@ -1,0 +1,281 @@
+{% extends "base.html" %}
+
+{% block title %}Company — InfraRed{% endblock %}
+
+{% block content %}
+{% set can_edit = (active_project_role == 'white_team') %}
+
+{% if not active_company %}
+<div class="card-custom text-center py-5">
+    <i class="bi bi-building text-muted" style="font-size:3rem"></i>
+    <h5 class="mt-3 text-muted">No company linked</h5>
+    {% if active_project %}
+    <p class="text-muted mb-0">The active project <strong>{{ active_project.code }}</strong> has no company assigned. Contact your admin.</p>
+    {% else %}
+    <p class="text-muted mb-0">Activate a project first to view its company information.</p>
+    <a href="{{ url_for('projects') }}" class="btn btn-sm btn-outline-secondary mt-3">
+        <i class="bi bi-folder2-open me-1"></i> My Projects
+    </a>
+    {% endif %}
+</div>
+{% else %}
+
+<div class="d-flex justify-content-between align-items-start mb-4">
+    <div>
+        <h4 class="mb-1">
+            <i class="bi bi-building me-2"></i>{{ active_company.name }}
+            {% if active_company.status == 'archived' %}
+            <span class="badge bg-secondary ms-2">Archived</span>
+            {% endif %}
+        </h4>
+        <div class="d-flex gap-2 align-items-center flex-wrap">
+            <code class="text-danger small">{{ active_company.code }}</code>
+            {% if active_company.industry %}
+            <span class="badge bg-secondary">{{ active_company.industry }}</span>
+            {% endif %}
+            {% if active_project %}
+            <span class="text-muted small">Project: <strong>{{ active_project.code }}</strong></span>
+            {% endif %}
+        </div>
+        {% if active_company.description %}
+        <p class="text-muted mt-2 mb-0 small">{{ active_company.description }}</p>
+        {% endif %}
+    </div>
+    {% if can_edit %}
+    <button class="btn btn-sm btn-infrared" id="save-btn" onclick="saveProfile()" style="display:none">
+        <i class="bi bi-check-lg me-1"></i> Save Changes
+    </button>
+    {% endif %}
+</div>
+
+<!-- Nav tabs -->
+<ul class="nav nav-tabs border-secondary mb-4" id="companyTabs">
+    <li class="nav-item">
+        <a class="nav-link active" data-bs-toggle="tab" href="#tab-scope">Scope</a>
+    </li>
+    <li class="nav-item">
+        <a class="nav-link" data-bs-toggle="tab" href="#tab-roe">Rules of Engagement</a>
+    </li>
+    <li class="nav-item">
+        <a class="nav-link" data-bs-toggle="tab" href="#tab-contacts">Contacts</a>
+    </li>
+    <li class="nav-item">
+        <a class="nav-link" data-bs-toggle="tab" href="#tab-notes">Notes</a>
+    </li>
+</ul>
+
+<div class="tab-content">
+
+    <!-- Scope tab -->
+    <div class="tab-pane fade show active" id="tab-scope">
+        <div class="card-custom mb-3">
+            <div class="card-header"><i class="bi bi-check2-circle me-2"></i>In-Scope Systems &amp; IP Ranges</div>
+            <div class="card-body">
+                {% if can_edit %}
+                <textarea class="form-control bg-dark text-light border-secondary profile-field" id="f-scope_notes"
+                    rows="6" placeholder="List of in-scope hosts, IP ranges, domains, applications…"
+                    oninput="markDirty()">{{ active_company.scope_notes or '' }}</textarea>
+                {% else %}
+                <pre class="text-light mb-0" style="white-space:pre-wrap;font-family:inherit">{{ active_company.scope_notes or '—' }}</pre>
+                {% endif %}
+            </div>
+        </div>
+        <div class="card-custom">
+            <div class="card-header"><i class="bi bi-x-circle me-2"></i>Out-of-Scope</div>
+            <div class="card-body">
+                {% if can_edit %}
+                <textarea class="form-control bg-dark text-light border-secondary profile-field" id="f-out_of_scope_notes"
+                    rows="4" placeholder="Explicitly excluded systems or actions…"
+                    oninput="markDirty()">{{ active_company.out_of_scope_notes or '' }}</textarea>
+                {% else %}
+                <pre class="text-light mb-0" style="white-space:pre-wrap;font-family:inherit">{{ active_company.out_of_scope_notes or '—' }}</pre>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- RoE tab -->
+    <div class="tab-pane fade" id="tab-roe">
+        <div class="card-custom mb-3">
+            <div class="card-header"><i class="bi bi-journal-check me-2"></i>Rules of Engagement</div>
+            <div class="card-body">
+                {% if can_edit %}
+                <textarea class="form-control bg-dark text-light border-secondary profile-field" id="f-roe_notes"
+                    rows="8" placeholder="Permitted techniques, escalation triggers, notification requirements…"
+                    oninput="markDirty()">{{ active_company.roe_notes or '' }}</textarea>
+                {% else %}
+                <pre class="text-light mb-0" style="white-space:pre-wrap;font-family:inherit">{{ active_company.roe_notes or '—' }}</pre>
+                {% endif %}
+            </div>
+        </div>
+        <div class="card-custom">
+            <div class="card-header"><i class="bi bi-clock me-2"></i>Permitted Testing Hours</div>
+            <div class="card-body">
+                {% if can_edit %}
+                <input type="text" class="form-control bg-dark text-light border-secondary profile-field" id="f-allowed_hours"
+                    placeholder="e.g. Mon–Fri 09:00–18:00 UTC"
+                    value="{{ active_company.allowed_hours or '' }}"
+                    oninput="markDirty()">
+                {% else %}
+                <span class="text-light">{{ active_company.allowed_hours or '—' }}</span>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Contacts tab -->
+    <div class="tab-pane fade" id="tab-contacts">
+        <div class="row g-3">
+            <!-- Primary contact -->
+            <div class="col-md-6">
+                <div class="card-custom h-100">
+                    <div class="card-header"><i class="bi bi-person-circle me-2"></i>Primary Contact</div>
+                    <div class="card-body">
+                        {% if can_edit %}
+                        <div class="mb-2">
+                            <label class="form-label small text-muted">Name</label>
+                            <input type="text" class="form-control bg-dark text-light border-secondary profile-field" id="f-primary_contact_name"
+                                value="{{ active_company.primary_contact_name or '' }}" placeholder="Full name" oninput="markDirty()">
+                        </div>
+                        <div class="mb-2">
+                            <label class="form-label small text-muted">Email</label>
+                            <input type="email" class="form-control bg-dark text-light border-secondary profile-field" id="f-primary_contact_email"
+                                value="{{ active_company.primary_contact_email or '' }}" placeholder="email@company.com" oninput="markDirty()">
+                        </div>
+                        <div>
+                            <label class="form-label small text-muted">Phone</label>
+                            <input type="text" class="form-control bg-dark text-light border-secondary profile-field" id="f-primary_contact_phone"
+                                value="{{ active_company.primary_contact_phone or '' }}" placeholder="+1 555 000 0000" oninput="markDirty()">
+                        </div>
+                        {% else %}
+                        <dl class="mb-0">
+                            <dt class="small text-muted">Name</dt><dd>{{ active_company.primary_contact_name or '—' }}</dd>
+                            <dt class="small text-muted">Email</dt><dd>{{ active_company.primary_contact_email or '—' }}</dd>
+                            <dt class="small text-muted">Phone</dt><dd>{{ active_company.primary_contact_phone or '—' }}</dd>
+                        </dl>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+
+            <!-- Emergency contact -->
+            <div class="col-md-6">
+                <div class="card-custom h-100">
+                    <div class="card-header"><i class="bi bi-telephone-fill me-2 text-danger"></i>Emergency Contact</div>
+                    <div class="card-body">
+                        {% if can_edit %}
+                        <div class="mb-2">
+                            <label class="form-label small text-muted">Name</label>
+                            <input type="text" class="form-control bg-dark text-light border-secondary profile-field" id="f-emergency_contact_name"
+                                value="{{ active_company.emergency_contact_name or '' }}" placeholder="Full name" oninput="markDirty()">
+                        </div>
+                        <div>
+                            <label class="form-label small text-muted">Phone</label>
+                            <input type="text" class="form-control bg-dark text-light border-secondary profile-field" id="f-emergency_contact_phone"
+                                value="{{ active_company.emergency_contact_phone or '' }}" placeholder="+1 555 000 0000" oninput="markDirty()">
+                        </div>
+                        {% else %}
+                        <dl class="mb-0">
+                            <dt class="small text-muted">Name</dt><dd>{{ active_company.emergency_contact_name or '—' }}</dd>
+                            <dt class="small text-muted">Phone</dt><dd>{{ active_company.emergency_contact_phone or '—' }}</dd>
+                        </dl>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+
+            <!-- IT contact -->
+            <div class="col-md-6">
+                <div class="card-custom h-100">
+                    <div class="card-header"><i class="bi bi-pc-display me-2"></i>IT Contact</div>
+                    <div class="card-body">
+                        {% if can_edit %}
+                        <div class="mb-2">
+                            <label class="form-label small text-muted">Name</label>
+                            <input type="text" class="form-control bg-dark text-light border-secondary profile-field" id="f-it_contact_name"
+                                value="{{ active_company.it_contact_name or '' }}" placeholder="Full name" oninput="markDirty()">
+                        </div>
+                        <div>
+                            <label class="form-label small text-muted">Email</label>
+                            <input type="email" class="form-control bg-dark text-light border-secondary profile-field" id="f-it_contact_email"
+                                value="{{ active_company.it_contact_email or '' }}" placeholder="it@company.com" oninput="markDirty()">
+                        </div>
+                        {% else %}
+                        <dl class="mb-0">
+                            <dt class="small text-muted">Name</dt><dd>{{ active_company.it_contact_name or '—' }}</dd>
+                            <dt class="small text-muted">Email</dt><dd>{{ active_company.it_contact_email or '—' }}</dd>
+                        </dl>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Notes tab -->
+    <div class="tab-pane fade" id="tab-notes">
+        <div class="card-custom">
+            <div class="card-header"><i class="bi bi-sticky me-2"></i>Notes</div>
+            <div class="card-body">
+                {% if can_edit %}
+                <textarea class="form-control bg-dark text-light border-secondary profile-field" id="f-notes"
+                    rows="10" placeholder="Free-form notes about the engagement…"
+                    oninput="markDirty()">{{ active_company.notes or '' }}</textarea>
+                {% else %}
+                <pre class="text-light mb-0" style="white-space:pre-wrap;font-family:inherit">{{ active_company.notes or '—' }}</pre>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+</div><!-- tab-content -->
+{% endif %}
+{% endblock %}
+
+
+{% block extra_js %}
+{% if active_company and active_project_role == 'white_team' %}
+<script>
+const COMPANY_ID = {{ active_company.id }};
+const _PROFILE_FIELDS = [
+    'scope_notes','out_of_scope_notes','roe_notes','allowed_hours',
+    'primary_contact_name','primary_contact_email','primary_contact_phone',
+    'emergency_contact_name','emergency_contact_phone',
+    'it_contact_name','it_contact_email','notes',
+];
+
+function markDirty() {
+    document.getElementById('save-btn').style.display = '';
+}
+
+async function saveProfile() {
+    const payload = {};
+    _PROFILE_FIELDS.forEach(f => {
+        const el = document.getElementById('f-' + f);
+        if (el) payload[f] = el.value.trim() || null;
+    });
+
+    const btn = document.getElementById('save-btn');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Saving…';
+
+    try {
+        const res = await fetch(`/api/companies/${COMPANY_ID}`, {
+            method: 'PATCH',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(payload),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Save failed');
+        btn.style.display = 'none';
+        showToast('Company profile saved', 'success');
+    } catch(e) {
+        showToast(e.message, 'danger');
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="bi bi-check-lg me-1"></i> Save Changes';
+    }
+}
+</script>
+{% endif %}
+{% endblock %}

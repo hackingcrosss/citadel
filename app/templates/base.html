@@ -594,6 +594,12 @@
             </a>
             {% endif %}
 
+            {% if current_user.is_authenticated and active_company and current_plan.is_enabled('companies') %}
+            <a class="nav-link {% if request.endpoint == 'company_detail' %}active{% endif %}" href="{{ url_for('company_detail') }}">
+                <i class="bi bi-building"></i> {{ active_company.name }}
+            </a>
+            {% endif %}
+
             <div class="nav-divider"></div>
 
             <!-- Infrastructure section -->
@@ -700,6 +706,12 @@
             <a class="nav-link {% if request.endpoint == 'admin_projects' %}active{% endif %}" href="{{ url_for('admin_projects') }}">
                 <i class="bi bi-folder2-open"></i> Projects
             </a>
+
+            {% if current_plan.is_enabled('companies') %}
+            <a class="nav-link {% if request.endpoint == 'admin_companies' %}active{% endif %}" href="{{ url_for('admin_companies') }}">
+                <i class="bi bi-building"></i> Companies
+            </a>
+            {% endif %}
 
             <a class="nav-link {% if request.endpoint == 'admin_license' %}active{% endif %}" href="{{ url_for('admin_license') }}">
                 <i class="bi bi-patch-check"></i> License
