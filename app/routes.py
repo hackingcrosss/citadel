@@ -230,6 +230,16 @@ def register_routes(app):
     @app.route('/operations')
     @login_required
     def operations():
+        if not current_user.is_admin:
+            # Block white team members — they represent the target company and
+            # must not see the red team setup workflow.
+            from app.models.project import ProjectMember
+            has_operator = ProjectMember.query.filter_by(
+                user_id=current_user.id, project_role='operator'
+            ).first() is not None
+            if not has_operator:
+                flash('RT Setup is not available for white team members.', 'warning')
+                return redirect(url_for('dashboard'))
         return render_template('operations.html')
 
     @app.route('/gophish')

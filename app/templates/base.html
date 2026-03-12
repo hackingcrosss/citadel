@@ -594,9 +594,9 @@
             </a>
             {% endif %}
 
-            {% if current_user.is_authenticated and active_company and current_plan.is_enabled('companies') %}
+            {% if current_user.is_authenticated and user_companies and current_plan.is_enabled('companies') %}
             <a class="nav-link {% if request.endpoint == 'company_detail' %}active{% endif %}" href="{{ url_for('company_detail') }}">
-                <i class="bi bi-building"></i> {{ active_company.name }}
+                <i class="bi bi-building"></i> Companies
             </a>
             {% endif %}
 
@@ -683,9 +683,11 @@
                 <i class="bi bi-chevron-right"></i>
             </button>
             <div class="collapse nav-collapse {% if request.endpoint in ops_pages %}show{% endif %}" id="nav-ops">
+                {% if current_user.is_admin or active_project_role != 'white_team' %}
                 <a class="nav-link {% if request.endpoint == 'operations' %}active{% endif %}" href="{{ url_for('operations') }}">
                     <i class="bi bi-tools"></i> Setup
                 </a>
+                {% endif %}
                 <a class="nav-link {% if request.endpoint == 'orchestration_mgmt' %}active{% endif %}" href="{{ url_for('orchestration_mgmt') }}">
                     <i class="bi bi-kanban"></i> Deployments
                 </a>

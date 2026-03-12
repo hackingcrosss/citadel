@@ -66,18 +66,34 @@ def create_app(config_class=Config):
 
     @app.context_processor
     def inject_company():
-        """Inject active_company (derived from active project) into every template."""
+        """Inject active_company and user_companies into every template."""
         from flask_login import current_user
         try:
             if not current_user.is_authenticated or current_user.is_admin:
-                return {'active_company': None}
+                return {'active_company': None, 'user_companies': []}
             from app.services.project_service import get_active_project
+            from app.models.company import Company
+            from app.models.project import Project, ProjectMember
+            # Derive active_company from active project
             active = get_active_project(current_user)
+            active_company = None
             if active and active.company_id:
-                from app.models.company import Company
-                return {'active_company': Company.query.get(active.company_id)}
-            return {'active_company': None}
+                active_company = Company.query.get(active.company_id)
+            # All companies reachable via any active project membership
+            user_companies = (
+                Company.query
+                .join(Project, Project.company_id == Company.id)
+                .join(ProjectMember, ProjectMember.project_id == Project.id)
+                .filter(
+                    ProjectMember.user_id == current_user.id,
+                    Project.status == 'active',
+                )
+                .distinct()
+                .order_by(Company.name)
+                .all()
+            )
+            return {'active_company': active_company, 'user_companies': user_companies}
         except Exception:
-            return {'active_company': None}
+            return {'active_company': None, 'user_companies': []}
 
     return app
