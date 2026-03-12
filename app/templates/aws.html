@@ -333,6 +333,25 @@
     </div>
 </div>
 
+<!-- Status Checks Modal -->
+<div class="modal fade" id="statusChecksModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-shield-check"></i> Instance Status Checks — <span id="statusChecksTitle"></span></h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="statusChecksBody">
+                <div class="text-center py-4"><div class="spinner-border text-primary"></div></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary btn-sm" onclick="refreshStatusChecks()"><i class="bi bi-arrow-clockwise"></i> Refresh</button>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- Service Detail Modal -->
 <div class="modal fade" id="serviceDetailModal" tabindex="-1">
     <div class="modal-dialog modal-lg">
@@ -552,6 +571,7 @@
                         ${!IS_READONLY && inst.state === 'running' ? `<button class="btn btn-outline-warning btn-sm" title="Stop" onclick="instanceAction('stop', '${idAttr}')"><i class="bi bi-stop-fill"></i></button>` : ''}
                         ${!IS_READONLY && inst.state === 'running' ? `<button class="btn btn-outline-info btn-sm" title="Reboot" onclick="instanceAction('reboot', '${idAttr}')"><i class="bi bi-arrow-repeat"></i></button>` : ''}
                         ${!IS_READONLY ? `<button class="btn btn-outline-danger btn-sm" title="Terminate" onclick="confirmTerminate('${idAttr}', '${nameAttr}')"><i class="bi bi-trash"></i></button>` : ''}
+                        <button class="btn btn-outline-secondary btn-sm" title="Status Checks" onclick="showStatusChecks('${idAttr}', '${nameAttr}')"><i class="bi bi-shield-check"></i></button>
                     </div>
                 </td>
             </tr>
@@ -756,6 +776,90 @@
         })
         .catch(err => alert('Error: ' + err));
     });
+
+    // --- Status Checks ---
+
+    let _statusChecksInstanceId = null;
+
+    function showStatusChecks(instanceId, name) {
+        _statusChecksInstanceId = instanceId;
+        document.getElementById('statusChecksTitle').textContent = name ? `${name} (${instanceId})` : instanceId;
+        document.getElementById('statusChecksBody').innerHTML = '<div class="text-center py-4"><div class="spinner-border text-primary"></div></div>';
+        new bootstrap.Modal(document.getElementById('statusChecksModal')).show();
+        _loadStatusChecks(instanceId);
+    }
+
+    function refreshStatusChecks() {
+        if (!_statusChecksInstanceId) return;
+        document.getElementById('statusChecksBody').innerHTML = '<div class="text-center py-4"><div class="spinner-border text-primary"></div></div>';
+        _loadStatusChecks(_statusChecksInstanceId);
+    }
+
+    function _loadStatusChecks(instanceId) {
+        fetch(`/api/aws/instances/${instanceId}/status-checks?region=${getRegion()}`)
+            .then(r => r.json())
+            .then(data => {
+                if (data.error) {
+                    document.getElementById('statusChecksBody').innerHTML =
+                        `<div class="alert alert-danger">${escapeHtml(String(data.error))}</div>`;
+                    return;
+                }
+                const sc = data.status_checks;
+                document.getElementById('statusChecksBody').innerHTML = _renderStatusChecks(sc);
+            })
+            .catch(err => {
+                document.getElementById('statusChecksBody').innerHTML =
+                    `<div class="alert alert-danger">Request failed: ${escapeHtml(String(err))}</div>`;
+            });
+    }
+
+    function _statusBadge(status) {
+        if (!status) return '<span class="badge bg-secondary">N/A</span>';
+        const s = status.toLowerCase();
+        if (s === 'ok') return '<span class="badge bg-success">OK</span>';
+        if (s === 'impaired') return '<span class="badge bg-danger">Impaired</span>';
+        if (s.startsWith('initializ')) return '<span class="badge bg-warning text-dark">Initializing</span>';
+        if (s === 'insufficient-data') return '<span class="badge bg-warning text-dark">Insufficient Data</span>';
+        if (s === 'not-applicable') return '<span class="badge bg-secondary">N/A</span>';
+        return `<span class="badge bg-secondary">${escapeHtml(status)}</span>`;
+    }
+
+    function _renderCheckDetails(check) {
+        if (!check) return '<em class="text-muted">Not available</em>';
+        var rows = (check.details || []).map(function(d) {
+            return `<tr><td class="text-muted" style="width:60%">${escapeHtml(d.name)}</td><td>${_statusBadge(d.status)}</td></tr>`;
+        }).join('');
+        var table = rows ? `<table class="table table-sm table-borderless mb-0"><tbody>${rows}</tbody></table>` : '';
+        return _statusBadge(check.status) + table;
+    }
+
+    function _renderStatusChecks(sc) {
+        const stateBadgeHtml = stateBadge(sc.state || 'unknown');
+        return `
+        <div class="mb-3 d-flex align-items-center gap-2">
+            <span class="text-muted small">Instance State:</span> ${stateBadgeHtml}
+        </div>
+        <div class="row g-3">
+            <div class="col-md-4">
+                <div class="card h-100">
+                    <div class="card-header py-2"><i class="bi bi-server"></i> System Status</div>
+                    <div class="card-body py-2">${_renderCheckDetails(sc.system)}</div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card h-100">
+                    <div class="card-header py-2"><i class="bi bi-cpu"></i> Instance Status</div>
+                    <div class="card-body py-2">${_renderCheckDetails(sc.instance)}</div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card h-100">
+                    <div class="card-header py-2"><i class="bi bi-hdd"></i> EBS Status</div>
+                    <div class="card-body py-2">${sc.ebs ? (_renderCheckDetails(sc.ebs)) : '<em class="text-muted">Not reported</em>'}</div>
+                </div>
+            </div>
+        </div>`;
+    }
 
     // --- Instance Detail ---
 
