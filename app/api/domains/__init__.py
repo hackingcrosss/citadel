@@ -82,8 +82,9 @@ def list_local_domains():
       - Returns only domains checked out to their projects.
       - ?project_id=<id> further narrows to a single project they belong to.
     """
+    pool_only = request.args.get('pool') == 'true'
+
     if current_user.is_admin:
-        pool_only = request.args.get('pool') == 'true'
         project_filter = request.args.get('project_id', type=int)
 
         if pool_only:
@@ -96,6 +97,11 @@ def list_local_domains():
             ).order_by(Domain.name).all()
         else:
             domains = Domain.query.order_by(Domain.name).all()
+    elif pool_only:
+        # Any authenticated user may browse the available pool
+        domains = Domain.query.filter_by(
+            checkout_project_id=None
+        ).order_by(Domain.name).all()
     else:
         project_ids = get_user_project_ids(current_user)
         if not project_ids:

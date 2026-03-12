@@ -228,9 +228,10 @@ def list_project_domains(project_id):
 
 @api_bp.route('/projects/<int:project_id>/domains/<int:domain_id>/checkout', methods=['POST'])
 @login_required
-@admin_required
+@project_member_required(write=True)
 def checkout_domain(project_id, domain_id):
-    project = Project.query.get_or_404(project_id)
+    from flask import g
+    project = g.project
     if project.status == 'archived':
         return jsonify({'error': 'Cannot check out domains to an archived project'}), 409
 
@@ -250,7 +251,7 @@ def checkout_domain(project_id, domain_id):
     domain.checked_out_by_id = current_user.id
     db.session.commit()
 
-    _log.info('Admin %s checked out domain %s to project %s',
+    _log.info('User %s checked out domain %s to project %s',
               current_user.email, domain.name, project.code)
     return jsonify(domain.to_dict())
 
