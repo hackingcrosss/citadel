@@ -228,7 +228,8 @@ var _MY_USER_ID = {{ current_user.id }};
 
 // ── Domain Pool Checkout ──────────────────────────────────────────────────────
 var _checkoutProjectId = null;
-var _poolDomains = [];
+var _poolDomains = [];          // [{zoneId, domainId, name, purpose, registrar, account_label}]
+var _zoneToLocalDomain = {};    // zoneId -> local domain record
 
 function openCheckoutModal(projectId, projectCode) {
     _checkoutProjectId = projectId;
@@ -245,10 +246,38 @@ function openCheckoutModal(projectId, projectCode) {
 }
 
 async function loadPool() {
+    document.getElementById('pool-loading').classList.remove('d-none');
+    document.getElementById('pool-table').classList.add('d-none');
+    document.getElementById('pool-empty').classList.add('d-none');
     try {
-        const res = await fetch('/api/domains?pool=true');
-        const data = await res.json();
-        _poolDomains = (data.domains || []);
+        // Fetch available CF zones + local records in parallel
+        const [zonesRes, localRes] = await Promise.all([
+            fetch('/api/domains/zones?pool=true'),
+            fetch('/api/domains?pool=true'),
+        ]);
+        const zonesData = zonesRes.ok ? await zonesRes.json() : {zones: []};
+        const localData = localRes.ok ? await localRes.json() : {domains: []};
+
+        const zones = zonesData.zones || [];
+        const localDomains = localData.domains || [];
+
+        // Build lookup: CF zone_id -> local domain record
+        _zoneToLocalDomain = {};
+        localDomains.forEach(d => { if (d.cloudflare_zone_id) _zoneToLocalDomain[d.cloudflare_zone_id] = d; });
+
+        // Merge: CF zones are authoritative for availability; enrich with local metadata
+        _poolDomains = zones.map(z => {
+            const local = _zoneToLocalDomain[z.id];
+            return {
+                zoneId:        z.id,
+                domainId:      local ? local.id : null,   // null = no local record yet
+                name:          z.name || (local && local.name) || '',
+                purpose:       local ? local.purpose : null,
+                registrar:     local ? local.registrar : null,
+                account_label: z.account_label || (local && local.credential_label) || 'default',
+            };
+        });
+
         renderPool(_poolDomains);
     } catch(e) {
         document.getElementById('pool-loading').innerHTML =
@@ -267,22 +296,20 @@ function renderPool(domains) {
     document.getElementById('pool-empty').classList.add('d-none');
     document.getElementById('pool-table').classList.remove('d-none');
 
-    const PURPOSE_COLORS = {
-        phishing: 'danger', c2: 'warning', redirect: 'info', staging: 'secondary'
-    };
-    tbody.innerHTML = domains.map(d => {
+    const PURPOSE_COLORS = {phishing: 'danger', c2: 'warning', redirect: 'info', staging: 'secondary'};
+    tbody.innerHTML = domains.map((d, idx) => {
         const purposeColor = PURPOSE_COLORS[d.purpose] || 'secondary';
         const purposeBadge = d.purpose
             ? `<span class="badge bg-${purposeColor} purpose-badge">${escapeHtml(d.purpose)}</span>`
             : '<span class="text-muted">—</span>';
-        return `<tr id="pool-row-${d.id}">
+        return `<tr id="pool-row-${idx}">
             <td><strong>${escapeHtml(d.name)}</strong></td>
             <td>${purposeBadge}</td>
             <td><span class="text-muted small">${escapeHtml(d.registrar || '—')}</span></td>
-            <td><span class="text-muted small">${escapeHtml(d.credential_label || 'default')}</span></td>
+            <td><span class="text-muted small">${escapeHtml(d.account_label || 'default')}</span></td>
             <td class="text-end">
                 <button class="btn btn-danger btn-sm" style="font-size:0.75rem"
-                        onclick="checkoutDomain(${d.id},'${escapeHtml(d.name)}')">
+                        onclick="checkoutDomain(${idx},'${escapeHtml(d.name)}')">
                     <i class="bi bi-box-arrow-in-down me-1"></i>Check Out
                 </button>
             </td>
@@ -293,35 +320,75 @@ function renderPool(domains) {
 function filterPool() {
     const q = document.getElementById('pool-search').value.toLowerCase().trim();
     if (!q) { renderPool(_poolDomains); return; }
-    renderPool(_poolDomains.filter(d =>
+    // Re-render filtered view but keep indices pointing into _poolDomains
+    const filtered = _poolDomains.map((d, idx) => ({...d, _origIdx: idx})).filter(d =>
         (d.name || '').toLowerCase().includes(q) ||
         (d.purpose || '').toLowerCase().includes(q) ||
         (d.registrar || '').toLowerCase().includes(q) ||
-        (d.credential_label || '').toLowerCase().includes(q)
-    ));
-}
-
-async function checkoutDomain(domainId, domainName) {
-    if (!_checkoutProjectId) return;
-    const btn = document.querySelector(`#pool-row-${domainId} button`);
-    if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>'; }
-
-    const res = await fetch(`/api/projects/${_checkoutProjectId}/domains/${domainId}/checkout`, {method: 'POST'});
-    const data = await res.json();
-    if (!res.ok) {
-        if (btn) { btn.disabled = false; btn.innerHTML = '<i class="bi bi-box-arrow-in-down me-1"></i>Check Out'; }
-        showToast(data.error || 'Checkout failed', 'danger');
-        return;
-    }
-    // Remove from pool list
-    _poolDomains = _poolDomains.filter(d => d.id !== domainId);
-    document.getElementById(`pool-row-${domainId}`)?.remove();
-    if (!_poolDomains.length) {
+        (d.account_label || '').toLowerCase().includes(q)
+    );
+    const PURPOSE_COLORS = {phishing: 'danger', c2: 'warning', redirect: 'info', staging: 'secondary'};
+    const tbody = document.getElementById('pool-tbody');
+    document.getElementById('pool-loading').classList.add('d-none');
+    if (!filtered.length) {
         document.getElementById('pool-table').classList.add('d-none');
         document.getElementById('pool-empty').classList.remove('d-none');
+        return;
     }
-    showToast(`${domainName} checked out`, 'success');
-    loadProjects();
+    document.getElementById('pool-empty').classList.add('d-none');
+    document.getElementById('pool-table').classList.remove('d-none');
+    tbody.innerHTML = filtered.map(d => {
+        const purposeColor = PURPOSE_COLORS[d.purpose] || 'secondary';
+        const purposeBadge = d.purpose
+            ? `<span class="badge bg-${purposeColor} purpose-badge">${escapeHtml(d.purpose)}</span>`
+            : '<span class="text-muted">—</span>';
+        return `<tr id="pool-row-${d._origIdx}">
+            <td><strong>${escapeHtml(d.name)}</strong></td>
+            <td>${purposeBadge}</td>
+            <td><span class="text-muted small">${escapeHtml(d.registrar || '—')}</span></td>
+            <td><span class="text-muted small">${escapeHtml(d.account_label || 'default')}</span></td>
+            <td class="text-end">
+                <button class="btn btn-danger btn-sm" style="font-size:0.75rem"
+                        onclick="checkoutDomain(${d._origIdx},'${escapeHtml(d.name)}')">
+                    <i class="bi bi-box-arrow-in-down me-1"></i>Check Out
+                </button>
+            </td>
+        </tr>`;
+    }).join('');
+}
+
+async function checkoutDomain(idx, domainName) {
+    if (!_checkoutProjectId) return;
+    const entry = _poolDomains[idx];
+    if (!entry) return;
+
+    const btn = document.querySelector(`#pool-row-${idx} button`);
+    if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>'; }
+
+    try {
+        // If the domain isn't yet tracked locally, pass zone info in the body
+        // so the checkout endpoint can auto-create the local record (no admin call needed).
+        const domainId = entry.domainId || 0;
+        const body = !entry.domainId ? JSON.stringify({
+            name: entry.name,
+            cloudflare_zone_id: entry.zoneId,
+        }) : null;
+
+        const res = await fetch(`/api/projects/${_checkoutProjectId}/domains/${domainId}/checkout`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body,
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Checkout failed');
+
+        showToast(`${domainName} checked out`, 'success');
+        loadProjects();
+        loadPool();  // refresh pool to reflect updated state
+    } catch(e) {
+        if (btn) { btn.disabled = false; btn.innerHTML = '<i class="bi bi-box-arrow-in-down me-1"></i>Check Out'; }
+        showToast(e.message, 'danger');
+    }
 }
 
 document.addEventListener('DOMContentLoaded', loadProjects);

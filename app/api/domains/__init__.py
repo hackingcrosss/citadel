@@ -310,7 +310,27 @@ def list_zones():
         except Exception as e:
             return jsonify({'error': str(e)}), 400
 
-    # Operators / white_team: return only zones for the active project
+    # Operators / white_team with ?pool=true: return all available (un-checked-out) CF zones
+    # so operators can browse what's available to check out for their project.
+    pool_only = request.args.get('pool') == 'true'
+    if pool_only:
+        try:
+            all_zones = dns_service.list_zones_all_accounts()
+        except Exception as e:
+            return jsonify({'error': str(e)}), 400
+
+        # Build set of zone_ids already checked out to any project
+        taken_zone_ids = {
+            d.cloudflare_zone_id
+            for d in Domain.query.filter(
+                Domain.checkout_project_id.isnot(None),
+                Domain.cloudflare_zone_id.isnot(None),
+            ).with_entities(Domain.cloudflare_zone_id).all()
+        }
+        zones = [z for z in all_zones if z.get('id') not in taken_zone_ids]
+        return jsonify({'zones': zones, 'page_info': {'total_count': len(zones)}})
+
+    # Operators / white_team (no pool flag): return only zones for the active project
     from app.services.project_service import get_active_project
     active_project = get_active_project(current_user)
     if active_project is None:
