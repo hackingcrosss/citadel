@@ -171,17 +171,19 @@ def get_current_plan() -> PlanInfo:
                 g._current_plan = plan
                 return plan
 
-            # project_admin users always get 'projects' and 'companies'
-            # features — they exist specifically to manage these.
-            _project_admin_extras = frozenset({'projects', 'companies'})
+            # project_admin and white_team users always get 'projects' and
+            # 'companies' features — they need these to see their assigned
+            # projects and company pages regardless of the global license tier.
+            _membership_extras = frozenset({'projects', 'companies'})
             is_pa = getattr(current_user, 'is_project_admin', False)
+            is_wt = getattr(current_user, 'is_white_team', False)
 
             override = getattr(current_user, 'plan_override', None)
             if override and override in TIERS:
                 tier_cfg = TIERS[override]
                 features = tier_cfg['features']
-                if is_pa:
-                    features = features | _project_admin_extras
+                if is_pa or is_wt:
+                    features = features | _membership_extras
                 plan = PlanInfo(
                     tier=override,
                     max_users=tier_cfg['max_users'],
@@ -194,12 +196,14 @@ def get_current_plan() -> PlanInfo:
     except Exception:
         pass
 
-    # Determine if project_admin outside the try block (safe fallback)
-    _pa_extras = frozenset()
+    # Determine if project_admin or white_team outside the try block (safe fallback)
+    _role_extras = frozenset()
     try:
         from flask_login import current_user as _cu
-        if _cu.is_authenticated and getattr(_cu, 'is_project_admin', False):
-            _pa_extras = frozenset({'projects', 'companies'})
+        if _cu.is_authenticated and (
+            getattr(_cu, 'is_project_admin', False) or getattr(_cu, 'is_white_team', False)
+        ):
+            _role_extras = frozenset({'projects', 'companies'})
     except Exception:
         pass
 
@@ -215,7 +219,7 @@ def get_current_plan() -> PlanInfo:
             tier='community',
             max_users=1,
             max_domains=3,
-            features=TIERS['community']['features'] | _pa_extras,
+            features=TIERS['community']['features'] | _role_extras,
             org_name='',
         )
         g._current_plan = plan
@@ -231,7 +235,7 @@ def get_current_plan() -> PlanInfo:
         tier=tier_key,
         max_users=max_users,
         max_domains=max_domains,
-        features=tier_cfg['features'] | _pa_extras,
+        features=tier_cfg['features'] | _role_extras,
         org_name=lic.org_name or '',
     )
     g._current_plan = plan
