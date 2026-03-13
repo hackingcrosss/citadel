@@ -275,6 +275,9 @@
                 <button class="btn btn-sm btn-outline-secondary" onclick="fitDiagram()">
                     <i class="bi bi-fullscreen"></i> Fit
                 </button>
+                <button class="btn btn-sm btn-outline-secondary" onclick="exportDiagramPNG()">
+                    <i class="bi bi-download"></i> Export PNG
+                </button>
             </div>
         </div>
         <div class="card-body p-0">
@@ -1539,6 +1542,15 @@
 
         // Fit after a short delay to let layout settle
         setTimeout(function() { fitDiagram(); }, 150);
+    }
+
+    function exportDiagramPNG() {
+        if (!diagramNetwork) return;
+        var canvas = diagramNetwork.canvas.frame.canvas;
+        var link = document.createElement('a');
+        link.download = 'infra-map.png';
+        link.href = canvas.toDataURL('image/png');
+        link.click();
     }
 </script>
 {% endblock %}
