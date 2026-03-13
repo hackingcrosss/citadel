@@ -8,6 +8,7 @@ from app import db
 from app.models.project import Project, ProjectMember, PROJECT_ROLES
 from app.models.project_resource import ProjectResource, RESOURCE_TYPES
 from app.models.domain import Domain
+from app.models.cdn_distribution import CdnDistribution
 from app.models.user import User
 from app.utils.decorators import admin_required, project_member_required
 from app.services.project_service import (
@@ -451,14 +452,21 @@ def teardown_preview(project_id):
         result['cs_listeners'].append(entry)
 
     # ── NPM Proxy Hosts ──────────────────────────────────────────────────────
+    # Collect checked-out domain names for domain-based NPM discovery
+    checked_out_domains = Domain.query.filter_by(checkout_project_id=project_id).all()
+    checked_out_names = {d.name.lower() for d in checked_out_domains}
+
     npm_host_map = {}
-    if by_type.get('npm_host'):
-        try:
-            from app.services import npm_service
-            npm_host_map = {str(h['id']): h for h in (npm_service.list_proxy_hosts() or [])}
-        except Exception as exc:
-            warnings.append(f'NPM hosts: {exc}')
+    try:
+        from app.services import npm_service
+        npm_host_map = {str(h['id']): h for h in (npm_service.list_proxy_hosts() or [])}
+    except Exception as exc:
+        warnings.append(f'NPM hosts: {exc}')
+
+    # Start with explicitly tagged NPM hosts
+    seen_npm_ids = set()
     for r in by_type.get('npm_host', []):
+        seen_npm_ids.add(r.external_id)
         h = npm_host_map.get(r.external_id)
         domain_display = (h.get('domain_names') or [''])[0] if h else (r.label or r.external_id)
         result['npm_hosts'].append({
@@ -467,6 +475,25 @@ def teardown_preview(project_id):
             'domain': domain_display,
             'project_resource_id': r.id,
         })
+
+    # Also discover untagged NPM hosts whose domain_names match a
+    # checked-out domain (exact match or subdomain of it)
+    if checked_out_names and npm_host_map:
+        for hid, h in npm_host_map.items():
+            if hid in seen_npm_ids:
+                continue
+            for dn in (h.get('domain_names') or []):
+                dn_lower = dn.lower()
+                if any(dn_lower == co or dn_lower.endswith('.' + co)
+                       for co in checked_out_names):
+                    result['npm_hosts'].append({
+                        'id': hid,
+                        'label': None,
+                        'domain': dn,
+                        'project_resource_id': None,
+                    })
+                    seen_npm_ids.add(hid)
+                    break
 
     # ── Containers + Website Gen Sites ────────────────────────────────────────
     deployed_site_map = {}
@@ -498,7 +525,9 @@ def teardown_preview(project_id):
             })
 
     # ── GoPhish Senders ──────────────────────────────────────────────────────
+    seen_gophish_ids = set()
     for r in by_type.get('gophish_sender', []):
+        seen_gophish_ids.add(r.external_id)
         entry = {
             'id': r.external_id,
             'name': r.label or r.external_id,
@@ -517,8 +546,36 @@ def teardown_preview(project_id):
             warnings.append(f'GoPhish profile {r.external_id}: {exc}')
         result['gophish_senders'].append(entry)
 
+    # Discover untagged GoPhish profiles whose SMTP username domain
+    # matches a checked-out domain
+    if checked_out_names:
+        try:
+            from app.services import gophish_service
+            all_profiles = gophish_service.list_sending_profiles() or []
+            for profile in all_profiles:
+                pid_str = str(profile.get('id', ''))
+                if pid_str in seen_gophish_ids:
+                    continue
+                username = profile.get('username', '') or ''
+                at_idx = username.rfind('@')
+                if at_idx > 0:
+                    smtp_domain = username[at_idx + 1:].lower()
+                    if smtp_domain in checked_out_names:
+                        seen_gophish_ids.add(pid_str)
+                        result['gophish_senders'].append({
+                            'id': pid_str,
+                            'name': profile.get('name', pid_str),
+                            'smtp_username': username,
+                            'smtp_host': profile.get('host', ''),
+                            'project_resource_id': None,
+                        })
+        except Exception as exc:
+            warnings.append(f'GoPhish discovery: {exc}')
+
     # ── Mailgun Domains ──────────────────────────────────────────────────────
+    seen_mg_names = set()
     for r in by_type.get('mailgun_domain', []):
+        seen_mg_names.add(r.external_id.lower())
         domain_rec = Domain.query.filter_by(name=r.external_id).first()
         region = domain_rec.mailgun_region if (domain_rec and domain_rec.mailgun_region) else 'us'
         result['mailgun_domains'].append({
@@ -527,16 +584,64 @@ def teardown_preview(project_id):
             'project_resource_id': r.id,
         })
 
+    # Discover untagged Mailgun domains that match a checked-out domain
+    if checked_out_names:
+        try:
+            from app.services import email_service
+            all_mg_domains = email_service.list_domains() or []
+            for mg in all_mg_domains:
+                mg_name = (mg.get('name') or '').lower()
+                if mg_name in seen_mg_names:
+                    continue
+                if mg_name in checked_out_names:
+                    seen_mg_names.add(mg_name)
+                    domain_rec = Domain.query.filter_by(name=mg_name).first()
+                    region = mg.get('region', 'US').lower() if mg.get('region') else (
+                        domain_rec.mailgun_region if (domain_rec and domain_rec.mailgun_region) else 'us'
+                    )
+                    result['mailgun_domains'].append({
+                        'name': mg.get('name', mg_name),
+                        'region': region,
+                        'project_resource_id': None,
+                    })
+        except Exception as exc:
+            warnings.append(f'Mailgun discovery: {exc}')
+
     # ── CDN Distributions ────────────────────────────────────────────────────
+    seen_cdn_ids = set()
     for r in by_type.get('cdn_dist', []):
+        seen_cdn_ids.add(r.external_id)
         result['cdn_distributions'].append({
             'id': r.external_id,
             'label': r.label,
             'project_resource_id': r.id,
         })
 
+    # Discover untagged CDN distributions whose origin_host matches a
+    # checked-out domain or whose comment matches a tagged CS listener
+    if checked_out_names or by_type.get('cs_listener'):
+        cs_listener_names = {r.external_id for r in by_type.get('cs_listener', [])}
+        try:
+            all_cdns = CdnDistribution.query.all()
+            for cdn in all_cdns:
+                cdn_id_str = str(cdn.id)
+                if cdn_id_str in seen_cdn_ids:
+                    continue
+                origin = (cdn.origin_host or '').lower()
+                comment = cdn.comment or ''
+                if ((origin and origin in checked_out_names)
+                        or (comment and comment in cs_listener_names)):
+                    seen_cdn_ids.add(cdn_id_str)
+                    result['cdn_distributions'].append({
+                        'id': cdn_id_str,
+                        'label': cdn.comment or cdn.domain or cdn_id_str,
+                        'project_resource_id': None,
+                    })
+        except Exception as exc:
+            warnings.append(f'CDN discovery: {exc}')
+
     # ── Checked-out Domains + DNS Records ─────────────────────────────────────
-    domains = Domain.query.filter_by(checkout_project_id=project_id).order_by(Domain.name).all()
+    domains = sorted(checked_out_domains, key=lambda d: d.name)
     for domain in domains:
         result['domains'].append({
             'id': domain.id,
