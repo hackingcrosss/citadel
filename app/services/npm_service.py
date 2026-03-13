@@ -1,5 +1,8 @@
+import logging
 import requests
-from app.services.credential_service import get_credential
+from app.services.credential_service import get_credential, set_credential
+
+_log = logging.getLogger(__name__)
 
 
 def _base_url():
@@ -19,9 +22,35 @@ def _headers():
     }
 
 
-def _request(method, path, **kwargs):
+def _refresh_token():
+    """Re-authenticate using stored NPM credentials and save the new token.
+
+    Returns True if a new token was obtained, False otherwise.
+    """
+    identity = get_credential('npm', 'identity')
+    secret = get_credential('npm', 'secret')
+    if not identity or not secret:
+        return False
+    try:
+        token = get_token(identity, secret)
+        if token:
+            set_credential('npm', 'api_token', token)
+            _log.info('NPM token auto-refreshed')
+            return True
+    except Exception as exc:
+        _log.warning('NPM token auto-refresh failed: %s', exc)
+    return False
+
+
+def _request(method, path, _retried=False, **kwargs):
     url = f'{_base_url()}{path}'
     resp = requests.request(method, url, headers=_headers(), timeout=15, **kwargs)
+
+    # Auto-refresh token on 401/403 and retry once
+    if resp.status_code in (401, 403) and not _retried:
+        if _refresh_token():
+            return _request(method, path, _retried=True, **kwargs)
+
     if resp.status_code >= 400:
         try:
             err = resp.json().get('error', {}).get('message', resp.text)
@@ -42,8 +71,8 @@ def verify_connection():
 def get_token(identity, secret):
     """Authenticate with NPM and get a JWT token.
 
-    This is used for initial setup — user provides email/password,
-    we get a token and store it.
+    This is used for initial setup and auto-refresh — user provides
+    email/password, we get a token and store it.
     """
     url = f'{_base_url()}/tokens'
     resp = requests.post(url, json={

@@ -193,6 +193,9 @@ def get_npm_token():
         token = npm_service.get_token(data['identity'], data['secret'])
         if token:
             credential_service.set_credential('npm', 'api_token', token)
+            # Store login credentials for automatic token refresh
+            credential_service.set_credential('npm', 'identity', data['identity'])
+            credential_service.set_credential('npm', 'secret', data['secret'])
             return jsonify({'success': True, 'message': 'Token saved'})
         return jsonify({'error': 'No token returned'}), 400
     except Exception as e:
