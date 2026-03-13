@@ -91,7 +91,7 @@ def list_local_domains():
     """
     pool_only = request.args.get('pool') == 'true'
 
-    if current_user.is_admin:
+    if current_user.is_admin or current_user.is_project_admin:
         project_filter = request.args.get('project_id', type=int)
 
         if pool_only:
@@ -306,8 +306,8 @@ def sync_domain(domain_id):
 @api_bp.route('/domains/zones', methods=['GET'])
 @login_required
 def list_zones():
-    # Admins: full list from Cloudflare across all accounts
-    if current_user.is_admin:
+    # Admins and project_admins: full list from Cloudflare across all accounts
+    if current_user.is_admin or current_user.is_project_admin:
         try:
             zones = dns_service.list_zones_all_accounts()
             name_filter = request.args.get('name', '').lower()

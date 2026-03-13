@@ -14,8 +14,10 @@ _log = logging.getLogger(__name__)
 
 @api_bp.route('/users', methods=['GET'])
 @login_required
-@admin_required
 def list_users():
+    # Admins and project_admins can list users (project_admins need this to assign members)
+    if not current_user.can_manage_projects:
+        return jsonify({'error': 'Admin or Project Admin role required'}), 403
     users = User.query.order_by(User.created_at).all()
     return jsonify([_user_dict(u) for u in users])
 

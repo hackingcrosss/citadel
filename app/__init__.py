@@ -87,7 +87,15 @@ def create_app(config_class=Config):
             # auditor sees all companies (via admin company page); no user_companies needed
             if current_user.is_auditor:
                 return {'active_company': None, 'user_companies': []}
-            # project_admin/operator: derive from active project + all memberships
+            # project_admin: see all active companies (needed to create projects)
+            if current_user.is_project_admin:
+                all_companies = Company.query.filter_by(status='active').order_by(Company.name).all()
+                active = get_active_project(current_user)
+                active_company = None
+                if active and active.company_id:
+                    active_company = Company.query.get(active.company_id)
+                return {'active_company': active_company, 'user_companies': all_companies}
+            # operator: derive from active project + all memberships
             active = get_active_project(current_user)
             active_company = None
             if active and active.company_id:
