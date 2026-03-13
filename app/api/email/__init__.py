@@ -22,7 +22,8 @@ def list_mailgun_domains():
             d['project_code'] = tag['project_code'] if tag else None
             d['project_resource_id'] = tag['project_resource_id'] if tag else None
 
-        if not current_user.is_admin and not current_user.is_auditor:
+        _auditor_unscoped = current_user.is_auditor and get_active_project(current_user) is None
+        if not current_user.is_admin and not _auditor_unscoped:
             active_project = get_active_project(current_user)
             if active_project is None:
                 domains = []
