@@ -1,0 +1,398 @@
+{% extends "base.html" %}
+
+{% block title %}Domain Pool - InfraRed{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h4 class="mb-0"><i class="bi bi-collection me-2"></i>Domain Pool Health</h4>
+        <small class="text-muted">Overview of all domains: availability, staleness, and DNS health</small>
+    </div>
+    <button class="btn btn-outline-secondary btn-sm" onclick="loadPoolHealth()">
+        <i class="bi bi-arrow-clockwise me-1"></i>Refresh
+    </button>
+</div>
+
+<!-- Summary cards -->
+<div class="row g-3 mb-4" id="summary-cards">
+    <div class="col-6 col-md-3">
+        <div class="card bg-dark border-secondary text-center">
+            <div class="card-body py-3">
+                <div class="text-muted small">Total Domains</div>
+                <div class="fs-3 fw-bold" id="sum-total">-</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="card bg-dark border-secondary text-center">
+            <div class="card-body py-3">
+                <div class="text-muted small">Available</div>
+                <div class="fs-3 fw-bold text-success" id="sum-available">-</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="card bg-dark border-secondary text-center">
+            <div class="card-body py-3">
+                <div class="text-muted small">Checked Out</div>
+                <div class="fs-3 fw-bold text-info" id="sum-checked-out">-</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="card bg-dark border-secondary text-center">
+            <div class="card-body py-3">
+                <div class="text-muted small">Stale / Never Synced</div>
+                <div class="fs-3 fw-bold text-warning" id="sum-stale">-</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Per-account breakdown -->
+<div class="row g-3 mb-4" id="account-cards"></div>
+
+<!-- Filters -->
+<div class="card bg-dark border-secondary mb-3">
+    <div class="card-body py-2">
+        <div class="row g-2 align-items-center">
+            <div class="col-md-3">
+                <input type="text" class="form-control form-control-sm bg-dark text-light border-secondary"
+                       id="filter-name" placeholder="Search domain name..." oninput="applyFilters()">
+            </div>
+            <div class="col-md-2">
+                <select class="form-select form-select-sm bg-dark text-light border-secondary" id="filter-status" onchange="applyFilters()">
+                    <option value="">All statuses</option>
+                    <option value="available">Available</option>
+                    <option value="checked_out">Checked Out</option>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <select class="form-select form-select-sm bg-dark text-light border-secondary" id="filter-account" onchange="applyFilters()">
+                    <option value="">All accounts</option>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <select class="form-select form-select-sm bg-dark text-light border-secondary" id="filter-health" onchange="applyFilters()">
+                    <option value="">All health</option>
+                    <option value="stale">Stale only</option>
+                    <option value="no-a">Missing A record</option>
+                    <option value="no-spf">Missing SPF</option>
+                    <option value="no-dkim">Missing DKIM</option>
+                    <option value="no-dmarc">Missing DMARC</option>
+                    <option value="no-mx">Missing MX</option>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <select class="form-select form-select-sm bg-dark text-light border-secondary" id="filter-purpose" onchange="applyFilters()">
+                    <option value="">All purposes</option>
+                    <option value="phishing">Phishing</option>
+                    <option value="c2">C2</option>
+                    <option value="redirect">Redirect</option>
+                    <option value="staging">Staging</option>
+                    <option value="none">No purpose set</option>
+                </select>
+            </div>
+            <div class="col-md-1 text-end">
+                <span class="badge bg-secondary" id="filter-count"></span>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Domain table -->
+<div class="card bg-dark border-secondary">
+    <div class="card-body p-0">
+        <table class="table table-dark table-hover mb-0" style="font-size:0.85rem">
+            <thead>
+                <tr>
+                    <th style="cursor:pointer" onclick="sortBy('name')">Domain <i class="bi bi-chevron-expand text-muted"></i></th>
+                    <th>Account</th>
+                    <th>Pool Status</th>
+                    <th>Purpose</th>
+                    <th style="cursor:pointer" onclick="sortBy('record_count')">Records <i class="bi bi-chevron-expand text-muted"></i></th>
+                    <th>DNS Health</th>
+                    <th style="cursor:pointer" onclick="sortBy('last_synced_at')">Last Synced <i class="bi bi-chevron-expand text-muted"></i></th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody id="pool-tbody">
+                <tr><td colspan="8" class="text-center text-muted py-4">Loading...</td></tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Health Check Modal -->
+<div class="modal fade" id="healthModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content bg-dark border-secondary">
+            <div class="modal-header border-secondary">
+                <h5 class="modal-title"><i class="bi bi-heart-pulse me-2"></i>Live Health Check</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <h6 class="text-muted mb-3" id="health-domain-name"></h6>
+                <div id="health-loading" class="text-center text-muted py-3">
+                    <span class="spinner-border spinner-border-sm me-2"></span>Running checks against external services...
+                </div>
+                <div id="health-results" class="d-none"></div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+
+{% block extra_js %}
+<script>
+let _poolData = null;
+let _filtered = [];
+let _sortField = 'name';
+let _sortAsc = true;
+
+function escapeHtml(s) {
+    const d = document.createElement('div');
+    d.textContent = s || '';
+    return d.innerHTML;
+}
+
+async function loadPoolHealth() {
+    try {
+        const res = await fetch('/api/domains/pool/health');
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Failed');
+        _poolData = data;
+        renderSummary(data.summary);
+        renderAccounts(data.accounts);
+        populateAccountFilter(data.accounts);
+        applyFilters();
+    } catch(e) {
+        document.getElementById('pool-tbody').innerHTML =
+            `<tr><td colspan="8" class="text-center text-danger py-3">${escapeHtml(e.message)}</td></tr>`;
+    }
+}
+
+function renderSummary(s) {
+    document.getElementById('sum-total').textContent = s.total;
+    document.getElementById('sum-available').textContent = s.available;
+    document.getElementById('sum-checked-out').textContent = s.checked_out;
+    document.getElementById('sum-stale').textContent = `${s.stale} / ${s.never_synced}`;
+}
+
+function renderAccounts(accounts) {
+    const el = document.getElementById('account-cards');
+    if (!accounts.length) { el.innerHTML = ''; return; }
+    el.innerHTML = accounts.map(a => {
+        const pct = a.total ? Math.round((a.checked_out / a.total) * 100) : 0;
+        return `<div class="col-6 col-md-3">
+            <div class="card bg-dark border-secondary">
+                <div class="card-body py-2" style="font-size:0.85rem">
+                    <div class="d-flex justify-content-between align-items-center mb-1">
+                        <strong>${escapeHtml(a.label)}</strong>
+                        <span class="text-muted">${a.total} domains</span>
+                    </div>
+                    <div class="progress" style="height:6px">
+                        <div class="progress-bar bg-info" style="width:${pct}%"></div>
+                        <div class="progress-bar bg-success" style="width:${100 - pct}%"></div>
+                    </div>
+                    <div class="d-flex justify-content-between mt-1" style="font-size:0.78rem">
+                        <span class="text-success">${a.available} available</span>
+                        <span class="text-info">${a.checked_out} in use</span>
+                    </div>
+                </div>
+            </div>
+        </div>`;
+    }).join('');
+}
+
+function populateAccountFilter(accounts) {
+    const sel = document.getElementById('filter-account');
+    const current = sel.value;
+    sel.innerHTML = '<option value="">All accounts</option>';
+    accounts.forEach(a => {
+        sel.innerHTML += `<option value="${escapeHtml(a.label)}">${escapeHtml(a.label)} (${a.total})</option>`;
+    });
+    sel.value = current;
+}
+
+function applyFilters() {
+    if (!_poolData) return;
+    const nameQ = document.getElementById('filter-name').value.toLowerCase();
+    const statusQ = document.getElementById('filter-status').value;
+    const accountQ = document.getElementById('filter-account').value;
+    const healthQ = document.getElementById('filter-health').value;
+    const purposeQ = document.getElementById('filter-purpose').value;
+
+    _filtered = _poolData.domains.filter(d => {
+        if (nameQ && !d.name.toLowerCase().includes(nameQ)) return false;
+        if (statusQ === 'available' && d.checkout_project_id) return false;
+        if (statusQ === 'checked_out' && !d.checkout_project_id) return false;
+        if (accountQ && d.account_label !== accountQ) return false;
+        if (healthQ === 'stale' && !d.is_stale) return false;
+        if (healthQ === 'no-a' && d.dns_flags.a) return false;
+        if (healthQ === 'no-spf' && d.dns_flags.spf) return false;
+        if (healthQ === 'no-dkim' && d.dns_flags.dkim) return false;
+        if (healthQ === 'no-dmarc' && d.dns_flags.dmarc) return false;
+        if (healthQ === 'no-mx' && d.dns_flags.mx) return false;
+        if (purposeQ === 'none' && d.purpose) return false;
+        if (purposeQ && purposeQ !== 'none' && d.purpose !== purposeQ) return false;
+        return true;
+    });
+
+    sortFiltered();
+    renderTable();
+    document.getElementById('filter-count').textContent = `${_filtered.length} / ${_poolData.domains.length}`;
+}
+
+function sortBy(field) {
+    if (_sortField === field) _sortAsc = !_sortAsc;
+    else { _sortField = field; _sortAsc = true; }
+    sortFiltered();
+    renderTable();
+}
+
+function sortFiltered() {
+    _filtered.sort((a, b) => {
+        let va = a[_sortField], vb = b[_sortField];
+        if (va == null) va = '';
+        if (vb == null) vb = '';
+        if (typeof va === 'string') va = va.toLowerCase();
+        if (typeof vb === 'string') vb = vb.toLowerCase();
+        if (va < vb) return _sortAsc ? -1 : 1;
+        if (va > vb) return _sortAsc ? 1 : -1;
+        return 0;
+    });
+}
+
+function _flag(ok, label) {
+    return ok
+        ? `<span class="badge bg-success bg-opacity-25 text-success me-1" style="font-size:0.7rem">${label}</span>`
+        : `<span class="badge bg-danger bg-opacity-25 text-danger me-1" style="font-size:0.7rem">${label}</span>`;
+}
+
+function _timeAgo(iso) {
+    if (!iso) return '<span class="text-danger">Never</span>';
+    const d = new Date(iso);
+    const diff = (Date.now() - d.getTime()) / 1000;
+    if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+    if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
+    const days = Math.floor(diff / 86400);
+    const cls = days >= 7 ? 'text-warning' : '';
+    return `<span class="${cls}">${days}d ago</span>`;
+}
+
+function renderTable() {
+    const tbody = document.getElementById('pool-tbody');
+    if (!_filtered.length) {
+        tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted py-4">No domains match filters</td></tr>';
+        return;
+    }
+    tbody.innerHTML = _filtered.map(d => {
+        const f = d.dns_flags;
+        const poolBadge = d.checkout_project_id
+            ? `<span class="badge bg-info bg-opacity-25 text-info">${escapeHtml(d.checkout_project_code)}</span>`
+            : '<span class="badge bg-success bg-opacity-25 text-success">Available</span>';
+        const purposeBadge = d.purpose
+            ? `<span class="badge bg-secondary bg-opacity-50">${escapeHtml(d.purpose)}</span>`
+            : '<span class="text-muted">-</span>';
+        const staleIcon = d.is_stale ? ' <i class="bi bi-exclamation-triangle-fill text-warning" title="Stale"></i>' : '';
+
+        return `<tr>
+            <td><strong>${escapeHtml(d.name)}</strong></td>
+            <td><span class="badge bg-dark border border-secondary">${escapeHtml(d.account_label)}</span></td>
+            <td>${poolBadge}</td>
+            <td>${purposeBadge}</td>
+            <td>${d.record_count}</td>
+            <td>${_flag(f.a, 'A')}${_flag(f.spf, 'SPF')}${_flag(f.mx, 'MX')}${_flag(f.dkim, 'DK')}${_flag(f.dmarc, 'DM')}</td>
+            <td>${_timeAgo(d.last_synced_at)}${staleIcon}</td>
+            <td>
+                <button class="btn btn-outline-secondary btn-sm py-0 px-1" onclick="openHealthCheck(${d.id}, '${escapeHtml(d.name)}')" title="Live health check">
+                    <i class="bi bi-heart-pulse"></i>
+                </button>
+                <button class="btn btn-outline-secondary btn-sm py-0 px-1" onclick="syncDomain(${d.id})" title="Sync from Cloudflare">
+                    <i class="bi bi-arrow-repeat"></i>
+                </button>
+            </td>
+        </tr>`;
+    }).join('');
+}
+
+// Live health check modal
+let _healthModal = null;
+
+async function openHealthCheck(domainId, name) {
+    if (!_healthModal) _healthModal = new bootstrap.Modal(document.getElementById('healthModal'));
+    document.getElementById('health-domain-name').textContent = name;
+    document.getElementById('health-loading').classList.remove('d-none');
+    document.getElementById('health-results').classList.add('d-none');
+    _healthModal.show();
+
+    try {
+        const res = await fetch(`/api/domains/${domainId}/health`);
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Failed');
+        renderHealthResults(data);
+    } catch(e) {
+        document.getElementById('health-loading').classList.add('d-none');
+        const el = document.getElementById('health-results');
+        el.innerHTML = `<div class="text-danger"><i class="bi bi-exclamation-triangle me-1"></i>${escapeHtml(e.message)}</div>`;
+        el.classList.remove('d-none');
+    }
+}
+
+function renderHealthResults(data) {
+    document.getElementById('health-loading').classList.add('d-none');
+    const el = document.getElementById('health-results');
+
+    const CHECK_LABELS = {
+        dns_a_record: 'DNS A Record',
+        ssl_strict: 'SSL Full/Strict',
+        spf: 'SPF Record',
+        dkim: 'DKIM Record',
+        dmarc: 'DMARC Record',
+        mailgun_verified: 'Mailgun Verified',
+        npm_proxy_active: 'NPM Proxy Active',
+    };
+
+    const overallCls = data.overall ? 'alert-success' : 'alert-warning';
+    const overallIcon = data.overall ? 'bi-check-circle' : 'bi-exclamation-triangle';
+    let html = `<div class="alert ${overallCls} py-2 small mb-3">
+        <i class="bi ${overallIcon} me-1"></i>
+        ${data.overall ? 'All checks passed' : 'Some checks failed'}
+    </div>`;
+
+    html += '<div class="list-group list-group-flush">';
+    for (const [key, check] of Object.entries(data.checks || {})) {
+        const label = CHECK_LABELS[key] || key;
+        const icon = check.ok ? 'bi-check-circle-fill text-success' : 'bi-x-circle-fill text-danger';
+        html += `<div class="list-group-item bg-dark border-secondary d-flex align-items-start gap-2 py-2">
+            <i class="bi ${icon} mt-1"></i>
+            <div>
+                <div class="small fw-bold">${escapeHtml(label)}</div>
+                <div class="text-muted" style="font-size:0.78rem">${escapeHtml(check.detail || '')}</div>
+            </div>
+        </div>`;
+    }
+    html += '</div>';
+
+    el.innerHTML = html;
+    el.classList.remove('d-none');
+}
+
+async function syncDomain(domainId) {
+    try {
+        const res = await fetch(`/api/domains/${domainId}/sync`, {method: 'POST'});
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Sync failed');
+        showToast(`Synced ${data.synced} records`, 'success');
+        loadPoolHealth();
+    } catch(e) {
+        showToast(e.message, 'danger');
+    }
+}
+
+// Init
+loadPoolHealth();
+</script>
+{% endblock %}
