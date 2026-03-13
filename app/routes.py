@@ -302,6 +302,12 @@ def register_routes(app):
     def admin_audit():
         return render_template('admin_audit.html')
 
+    @app.route('/admin/domain-pool')
+    @login_required
+    @admin_required
+    def admin_domain_pool():
+        return render_template('admin_domain_pool.html')
+
     @app.route('/admin/companies')
     @login_required
     @admin_required

@@ -739,6 +739,10 @@
             </a>
             {% endif %}
 
+            <a class="nav-link {% if request.endpoint == 'admin_domain_pool' %}active{% endif %}" href="{{ url_for('admin_domain_pool') }}">
+                <i class="bi bi-collection"></i> Domain Pool
+            </a>
+
             <a class="nav-link {% if request.endpoint == 'admin_license' %}active{% endif %}" href="{{ url_for('admin_license') }}">
                 <i class="bi bi-patch-check"></i> License
             </a>

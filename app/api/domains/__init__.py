@@ -14,7 +14,7 @@ from app.services.project_service import (
 from app.utils.decorators import admin_required
 from app import db
 from app.models.domain import Domain, DNSRecord
-from datetime import datetime
+from datetime import datetime, timedelta
 
 # RFC-1123 hostname: labels separated by dots, each 1–63 chars [a-z0-9-]
 _DOMAIN_RE = re.compile(
@@ -548,3 +548,89 @@ def set_ssl(zone_id):
         return jsonify({'ssl': result})
     except Exception as e:
         return jsonify({'error': str(e)}), 400
+
+
+# ---------------------------------------------------------------------------
+# Domain Pool Health (admin only)
+# ---------------------------------------------------------------------------
+
+_STALE_DAYS = 7
+
+@api_bp.route('/domains/pool/health', methods=['GET'])
+@login_required
+@admin_required
+def domain_pool_health():
+    """Aggregate pool health: summary, per-account breakdown, per-domain flags."""
+    domains = Domain.query.order_by(Domain.name).all()
+    now = datetime.utcnow()
+    stale_cutoff = now - timedelta(days=_STALE_DAYS)
+
+    summary = {'total': 0, 'available': 0, 'checked_out': 0,
+               'stale': 0, 'never_synced': 0}
+    accounts = {}
+    items = []
+
+    for d in domains:
+        summary['total'] += 1
+        available = d.checkout_project_id is None
+        stale = d.last_synced_at is None or d.last_synced_at < stale_cutoff
+
+        if available:
+            summary['available'] += 1
+        else:
+            summary['checked_out'] += 1
+        if d.last_synced_at is None:
+            summary['never_synced'] += 1
+        if stale:
+            summary['stale'] += 1
+
+        label = d.credential_label or 'default'
+        if label not in accounts:
+            accounts[label] = {'label': label, 'total': 0, 'available': 0, 'checked_out': 0}
+        accounts[label]['total'] += 1
+        if available:
+            accounts[label]['available'] += 1
+        else:
+            accounts[label]['checked_out'] += 1
+
+        # DNS flags from locally synced records (no external API calls)
+        records = list(d.dns_records)
+        has_a = any(r.record_type == 'A' and r.name in (d.name, '@') for r in records)
+        has_spf = any(r.record_type == 'TXT' and 'v=spf1' in (r.content or '') for r in records)
+        has_dkim = any(r.record_type == 'TXT' and ('v=DKIM1' in (r.content or '') or 'k=rsa' in (r.content or '')) for r in records)
+        has_dmarc = any(r.record_type == 'TXT' and 'v=DMARC1' in (r.content or '') for r in records)
+        has_mx = any(r.record_type == 'MX' for r in records)
+
+        items.append({
+            'id': d.id,
+            'name': d.name,
+            'account_label': label,
+            'status': d.status,
+            'purpose': d.purpose,
+            'checkout_project_id': d.checkout_project_id,
+            'checkout_project_code': d.checkout_project.code if d.checkout_project else None,
+            'checked_out_at': d.checked_out_at.isoformat() if d.checked_out_at else None,
+            'record_count': len(records),
+            'last_synced_at': d.last_synced_at.isoformat() if d.last_synced_at else None,
+            'is_stale': stale,
+            'dns_flags': {
+                'a': has_a, 'spf': has_spf, 'dkim': has_dkim,
+                'dmarc': has_dmarc, 'mx': has_mx,
+            },
+        })
+
+    return jsonify({
+        'summary': summary,
+        'accounts': sorted(accounts.values(), key=lambda a: a['label']),
+        'domains': items,
+    })
+
+
+@api_bp.route('/domains/<int:domain_id>/health', methods=['GET'])
+@login_required
+@admin_required
+def domain_health_check(domain_id):
+    """Run live readiness checks against external services for a single domain."""
+    domain = Domain.query.get_or_404(domain_id)
+    from app.services.readiness_service import check_domain_readiness
+    return jsonify(check_domain_readiness(domain))
