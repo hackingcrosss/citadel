@@ -599,10 +599,13 @@
         <div class="brand">
             <h4><i class="bi bi-bullseye"></i> InfraRed</h4>
         </div>
-        {% set infra_pages = ['containers','aws','azure','azure_dns','cdn','npm','domains'] %}
+        {% set compute_pages  = ['containers','aws','azure'] %}
+        {% set dns_pages      = ['domains','azure_dns'] %}
+        {% set net_pages      = ['npm','cdn'] %}
         {% set phishing_pages = ['email','gophish'] %}
-        {% set c2_pages = ['cobaltstrike'] %}
-        {% set ops_pages = ['operations','orchestration_mgmt','infra_map'] %}
+        {% set ops_pages      = ['operations','orchestration_mgmt','infra_map','cobaltstrike'] %}
+        {% set admin_team_pages = ['admin_users','admin_projects','admin_companies'] %}
+        {% set admin_plat_pages = ['admin_domain_pool','admin_license','admin_audit','settings'] %}
         <nav class="nav flex-column">
             <a class="nav-link {% if request.endpoint == 'dashboard' %}active{% endif %}" href="{{ url_for('dashboard') }}">
                 <i class="bi bi-speedometer2"></i> Dashboard
@@ -626,15 +629,15 @@
 
             <div class="nav-divider"></div>
 
-            <!-- Infrastructure section -->
-            <button class="nav-section {% if request.endpoint not in infra_pages %}collapsed{% endif %}" data-bs-toggle="collapse" data-bs-target="#nav-infra">
-                <span><i class="bi bi-server"></i> Infrastructure</span>
+            <!-- Compute section -->
+            <button class="nav-section {% if request.endpoint not in compute_pages %}collapsed{% endif %}" data-bs-toggle="collapse" data-bs-target="#nav-compute">
+                <span><i class="bi bi-hdd-stack"></i> Compute</span>
                 <span class="d-flex align-items-center gap-1">
                     <span class="nav-status-dot" id="nav-dot-infra"></span>
                     <i class="bi bi-chevron-right"></i>
                 </span>
             </button>
-            <div class="collapse nav-collapse {% if request.endpoint in infra_pages %}show{% endif %}" id="nav-infra">
+            <div class="collapse nav-collapse {% if request.endpoint in compute_pages %}show{% endif %}" id="nav-compute">
                 <a class="nav-link {% if request.endpoint == 'containers' %}active{% endif %}" href="{{ url_for('containers') }}">
                     <i class="bi bi-box-seam"></i> Containers
                 </a>
@@ -644,20 +647,36 @@
                 <a class="nav-link {% if request.endpoint == 'azure' %}active{% endif %}" href="{{ url_for('azure') }}">
                     <i class="bi bi-microsoft"></i> Azure VMs
                 </a>
+            </div>
+
+            <!-- DNS section -->
+            <button class="nav-section {% if request.endpoint not in dns_pages %}collapsed{% endif %}" data-bs-toggle="collapse" data-bs-target="#nav-dns">
+                <span><i class="bi bi-globe"></i> DNS</span>
+                <i class="bi bi-chevron-right"></i>
+            </button>
+            <div class="collapse nav-collapse {% if request.endpoint in dns_pages %}show{% endif %}" id="nav-dns">
+                <a class="nav-link {% if request.endpoint == 'domains' %}active{% endif %}" href="{{ url_for('domains') }}">
+                    <i class="bi bi-shield-check"></i> Cloudflare
+                </a>
                 <a class="nav-link {% if request.endpoint == 'azure_dns' %}active{% endif %}" href="{{ url_for('azure_dns') }}">
                     <i class="bi bi-cloud-check"></i> Azure DNS
+                </a>
+            </div>
+
+            <!-- Networking section -->
+            <button class="nav-section {% if request.endpoint not in net_pages %}collapsed{% endif %}" data-bs-toggle="collapse" data-bs-target="#nav-net">
+                <span><i class="bi bi-diagram-2"></i> Networking</span>
+                <i class="bi bi-chevron-right"></i>
+            </button>
+            <div class="collapse nav-collapse {% if request.endpoint in net_pages %}show{% endif %}" id="nav-net">
+                <a class="nav-link {% if request.endpoint == 'npm' %}active{% endif %}" href="{{ url_for('npm') }}">
+                    <i class="bi bi-hdd-network"></i> Reverse Proxy
                 </a>
                 {% if current_plan.is_enabled('cdn') %}
                 <a class="nav-link {% if request.endpoint == 'cdn' %}active{% endif %}" href="{{ url_for('cdn') }}">
                     <i class="bi bi-globe2"></i> CDN
                 </a>
                 {% endif %}
-                <a class="nav-link {% if request.endpoint == 'npm' %}active{% endif %}" href="{{ url_for('npm') }}">
-                    <i class="bi bi-hdd-network"></i> Reverse Proxy
-                </a>
-                <a class="nav-link {% if request.endpoint == 'domains' %}active{% endif %}" href="{{ url_for('domains') }}">
-                    <i class="bi bi-globe"></i> Domains
-                </a>
             </div>
 
             <div class="nav-divider"></div>
@@ -681,35 +700,22 @@
                 {% endif %}
             </div>
 
-            {% if current_plan.is_enabled('cobaltstrike') %}
             <div class="nav-divider"></div>
 
-            <!-- C2 section -->
-            <button class="nav-section {% if request.endpoint not in c2_pages %}collapsed{% endif %}" data-bs-toggle="collapse" data-bs-target="#nav-c2">
-                <span><i class="bi bi-crosshair"></i> C2</span>
-                <span class="d-flex align-items-center gap-1">
-                    <span class="nav-status-dot" id="nav-dot-c2"></span>
-                    <i class="bi bi-chevron-right"></i>
-                </span>
-            </button>
-            <div class="collapse nav-collapse {% if request.endpoint in c2_pages %}show{% endif %}" id="nav-c2">
-                <a class="nav-link {% if request.endpoint == 'cobaltstrike' %}active{% endif %}" href="{{ url_for('cobaltstrike') }}">
-                    <i class="bi bi-crosshair"></i> Listeners
-                </a>
-            </div>
-            {% endif %}
-
-            <div class="nav-divider"></div>
-
-            <!-- Red Team Ops section -->
+            <!-- Operations section -->
             <button class="nav-section {% if request.endpoint not in ops_pages %}collapsed{% endif %}" data-bs-toggle="collapse" data-bs-target="#nav-ops">
-                <span><i class="bi bi-diagram-3"></i> Red Team Ops</span>
+                <span><i class="bi bi-tools"></i> Operations</span>
                 <i class="bi bi-chevron-right"></i>
             </button>
             <div class="collapse nav-collapse {% if request.endpoint in ops_pages %}show{% endif %}" id="nav-ops">
                 {% if current_user.can_write_infra %}
                 <a class="nav-link {% if request.endpoint == 'operations' %}active{% endif %}" href="{{ url_for('operations') }}">
-                    <i class="bi bi-tools"></i> Setup
+                    <i class="bi bi-wrench"></i> Setup
+                </a>
+                {% endif %}
+                {% if current_plan.is_enabled('cobaltstrike') %}
+                <a class="nav-link {% if request.endpoint == 'cobaltstrike' %}active{% endif %}" href="{{ url_for('cobaltstrike') }}">
+                    <i class="bi bi-crosshair"></i> Listeners
                 </a>
                 {% endif %}
                 <a class="nav-link {% if request.endpoint == 'orchestration_mgmt' %}active{% endif %}" href="{{ url_for('orchestration_mgmt') }}">
@@ -717,7 +723,7 @@
                 </a>
                 {% if current_plan.is_enabled('infra_map') %}
                 <a class="nav-link {% if request.endpoint == 'infra_map' %}active{% endif %}" href="{{ url_for('infra_map') }}">
-                    <i class="bi bi-diagram-3"></i> Infra Map
+                    <i class="bi bi-map"></i> Infra Map
                 </a>
                 {% endif %}
             </div>
@@ -725,35 +731,44 @@
             {% if current_user.is_authenticated and current_user.role == 'admin' %}
             <div class="nav-divider"></div>
 
-            <a class="nav-link {% if request.endpoint == 'admin_users' %}active{% endif %}" href="{{ url_for('admin_users') }}">
-                <i class="bi bi-people-fill"></i> Users
-            </a>
+            <!-- Admin: Team section -->
+            <button class="nav-section {% if request.endpoint not in admin_team_pages %}collapsed{% endif %}" data-bs-toggle="collapse" data-bs-target="#nav-admin-team">
+                <span><i class="bi bi-people-fill"></i> Team</span>
+                <i class="bi bi-chevron-right"></i>
+            </button>
+            <div class="collapse nav-collapse {% if request.endpoint in admin_team_pages %}show{% endif %}" id="nav-admin-team">
+                <a class="nav-link {% if request.endpoint == 'admin_users' %}active{% endif %}" href="{{ url_for('admin_users') }}">
+                    <i class="bi bi-person-gear"></i> Users
+                </a>
+                <a class="nav-link {% if request.endpoint == 'admin_projects' %}active{% endif %}" href="{{ url_for('admin_projects') }}">
+                    <i class="bi bi-folder2-open"></i> Projects
+                </a>
+                {% if current_plan.is_enabled('companies') %}
+                <a class="nav-link {% if request.endpoint == 'admin_companies' %}active{% endif %}" href="{{ url_for('admin_companies') }}">
+                    <i class="bi bi-building"></i> Companies
+                </a>
+                {% endif %}
+            </div>
 
-            <a class="nav-link {% if request.endpoint == 'admin_projects' %}active{% endif %}" href="{{ url_for('admin_projects') }}">
-                <i class="bi bi-folder2-open"></i> Projects
-            </a>
-
-            {% if current_plan.is_enabled('companies') %}
-            <a class="nav-link {% if request.endpoint == 'admin_companies' %}active{% endif %}" href="{{ url_for('admin_companies') }}">
-                <i class="bi bi-building"></i> Companies
-            </a>
-            {% endif %}
-
-            <a class="nav-link {% if request.endpoint == 'admin_domain_pool' %}active{% endif %}" href="{{ url_for('admin_domain_pool') }}">
-                <i class="bi bi-collection"></i> Domain Pool
-            </a>
-
-            <a class="nav-link {% if request.endpoint == 'admin_license' %}active{% endif %}" href="{{ url_for('admin_license') }}">
-                <i class="bi bi-patch-check"></i> License
-            </a>
-
-            <a class="nav-link {% if request.endpoint == 'admin_audit' %}active{% endif %}" href="{{ url_for('admin_audit') }}">
-                <i class="bi bi-journal-text"></i> Audit Trail
-            </a>
-
-            <a class="nav-link {% if request.endpoint == 'settings' %}active{% endif %}" href="{{ url_for('settings') }}">
-                <i class="bi bi-gear"></i> Settings
-            </a>
+            <!-- Admin: Platform section -->
+            <button class="nav-section {% if request.endpoint not in admin_plat_pages %}collapsed{% endif %}" data-bs-toggle="collapse" data-bs-target="#nav-admin-platform">
+                <span><i class="bi bi-sliders"></i> Platform</span>
+                <i class="bi bi-chevron-right"></i>
+            </button>
+            <div class="collapse nav-collapse {% if request.endpoint in admin_plat_pages %}show{% endif %}" id="nav-admin-platform">
+                <a class="nav-link {% if request.endpoint == 'admin_domain_pool' %}active{% endif %}" href="{{ url_for('admin_domain_pool') }}">
+                    <i class="bi bi-collection"></i> Domain Pool
+                </a>
+                <a class="nav-link {% if request.endpoint == 'admin_license' %}active{% endif %}" href="{{ url_for('admin_license') }}">
+                    <i class="bi bi-patch-check"></i> License
+                </a>
+                <a class="nav-link {% if request.endpoint == 'admin_audit' %}active{% endif %}" href="{{ url_for('admin_audit') }}">
+                    <i class="bi bi-journal-text"></i> Audit Trail
+                </a>
+                <a class="nav-link {% if request.endpoint == 'settings' %}active{% endif %}" href="{{ url_for('settings') }}">
+                    <i class="bi bi-gear"></i> Settings
+                </a>
+            </div>
             {% endif %}
         </nav>
         
