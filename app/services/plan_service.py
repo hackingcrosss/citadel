@@ -159,18 +159,35 @@ def get_current_plan() -> PlanInfo:
                 g._current_plan = plan
                 return plan
 
+            # project_admin users always get 'projects' and 'companies'
+            # features — they exist specifically to manage these.
+            _project_admin_extras = frozenset({'projects', 'companies'})
+            is_pa = getattr(current_user, 'is_project_admin', False)
+
             override = getattr(current_user, 'plan_override', None)
             if override and override in TIERS:
                 tier_cfg = TIERS[override]
+                features = tier_cfg['features']
+                if is_pa:
+                    features = features | _project_admin_extras
                 plan = PlanInfo(
                     tier=override,
                     max_users=tier_cfg['max_users'],
                     max_domains=tier_cfg['max_domains'],
-                    features=tier_cfg['features'],
+                    features=features,
                     org_name='',
                 )
                 g._current_plan = plan
                 return plan
+    except Exception:
+        pass
+
+    # Determine if project_admin outside the try block (safe fallback)
+    _pa_extras = frozenset()
+    try:
+        from flask_login import current_user as _cu
+        if _cu.is_authenticated and getattr(_cu, 'is_project_admin', False):
+            _pa_extras = frozenset({'projects', 'companies'})
     except Exception:
         pass
 
@@ -186,7 +203,7 @@ def get_current_plan() -> PlanInfo:
             tier='community',
             max_users=1,
             max_domains=3,
-            features=TIERS['community']['features'],
+            features=TIERS['community']['features'] | _pa_extras,
             org_name='',
         )
         g._current_plan = plan
@@ -202,7 +219,7 @@ def get_current_plan() -> PlanInfo:
         tier=tier_key,
         max_users=max_users,
         max_domains=max_domains,
-        features=tier_cfg['features'],
+        features=tier_cfg['features'] | _pa_extras,
         org_name=lic.org_name or '',
     )
     g._current_plan = plan
