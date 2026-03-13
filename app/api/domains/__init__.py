@@ -9,6 +9,7 @@ from app.services.plan_service import get_current_plan
 from app.services.project_service import (
     get_user_project_ids,
     get_user_project_role,
+    get_active_project,
     assert_domain_accessible,
 )
 from app.utils.decorators import admin_required
@@ -91,7 +92,8 @@ def list_local_domains():
     """
     pool_only = request.args.get('pool') == 'true'
 
-    if current_user.is_admin or current_user.is_project_admin or current_user.is_auditor:
+    _auditor_unscoped = current_user.is_auditor and get_active_project(current_user) is None
+    if current_user.is_admin or current_user.is_project_admin or _auditor_unscoped:
         project_filter = request.args.get('project_id', type=int)
 
         if pool_only:
@@ -109,6 +111,15 @@ def list_local_domains():
         domains = Domain.query.filter_by(
             checkout_project_id=None
         ).order_by(Domain.name).all()
+    elif current_user.is_auditor:
+        # Auditor with active project — scope to that project's domains
+        active_project = get_active_project(current_user)
+        if active_project is None:
+            domains = []
+        else:
+            domains = Domain.query.filter_by(
+                checkout_project_id=active_project.id
+            ).order_by(Domain.name).all()
     else:
         project_ids = get_user_project_ids(current_user)
         if not project_ids:
@@ -306,8 +317,9 @@ def sync_domain(domain_id):
 @api_bp.route('/domains/zones', methods=['GET'])
 @login_required
 def list_zones():
-    # Admins, project_admins, and auditors: full list from Cloudflare across all accounts
-    if current_user.is_admin or current_user.is_project_admin or current_user.is_auditor:
+    # Admins, project_admins, and auditors (without active project): full list from Cloudflare
+    _auditor_unscoped = current_user.is_auditor and get_active_project(current_user) is None
+    if current_user.is_admin or current_user.is_project_admin or _auditor_unscoped:
         try:
             zones = dns_service.list_zones_all_accounts()
             name_filter = request.args.get('name', '').lower()
@@ -337,8 +349,7 @@ def list_zones():
         zones = [z for z in all_zones if z.get('id') not in taken_zone_ids]
         return jsonify({'zones': zones, 'page_info': {'total_count': len(zones)}})
 
-    # Operators / white_team (no pool flag): return only zones for the active project
-    from app.services.project_service import get_active_project
+    # Operators / white_team / auditor-with-project (no pool flag): return only zones for the active project
     active_project = get_active_project(current_user)
     if active_project is None:
         return jsonify({'zones': [], 'page_info': {'total_count': 0}})
