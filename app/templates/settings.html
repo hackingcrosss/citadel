@@ -384,7 +384,7 @@
                                 </div>
                                 <div class="col-12 collapse" id="npmAuthCollapse">
                                     <div class="card card-body bg-light">
-                                        <small class="text-muted mb-2">Authenticate with NPM to automatically get and store a token</small>
+                                        <small class="text-muted mb-2">Authenticate with NPM to get a token. Credentials are stored for automatic token refresh.</small>
                                         <div class="row g-2">
                                             <div class="col-md-5">
                                                 <input type="email" class="form-control form-control-sm" id="npm-auth-email" placeholder="NPM email">
@@ -396,6 +396,7 @@
                                                 <button class="btn btn-sm btn-infrared w-100" onclick="npmLogin()">Login</button>
                                             </div>
                                         </div>
+                                        <small class="mt-2" id="npm-auto-refresh-status"></small>
                                     </div>
                                 </div>
                                 <div class="col-12 mt-1">
@@ -1399,6 +1400,13 @@
                     document.getElementById('npm-public-ip').placeholder = creds.public_ip.masked;
                     document.getElementById('npm-public-ip-status').textContent =
                         'Last updated: ' + new Date(creds.public_ip.updated_at).toLocaleString();
+                }
+                // Show auto-refresh status
+                const statusEl = document.getElementById('npm-auto-refresh-status');
+                if (creds.identity && creds.secret) {
+                    statusEl.innerHTML = '<i class="bi bi-check-circle-fill text-success me-1"></i><span class="text-success">Auto-refresh enabled</span> — login credentials stored';
+                } else {
+                    statusEl.innerHTML = '<i class="bi bi-info-circle text-muted me-1"></i><span class="text-muted">Auto-refresh inactive — log in above to enable automatic token renewal</span>';
                 }
             })
             .catch(err => console.error('Failed to load NPM credentials:', err));
