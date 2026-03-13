@@ -165,7 +165,26 @@
             display: flex;
             align-items: center;
             gap: 6px;
+            text-decoration: none;
+            transition: background 0.15s;
         }
+        a.sidebar-footer:hover {
+            background: rgba(255,255,255,0.04);
+            color: var(--ir-text);
+        }
+        .role-badge {
+            font-size: 0.6rem;
+            padding: 0.15em 0.45em;
+            border-radius: 3px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.03em;
+        }
+        .role-badge-admin         { background: var(--ir-red-dim); color: var(--ir-red); }
+        .role-badge-project_admin { background: rgba(217,175,43,0.15); color: #d4a72c; }
+        .role-badge-operator      { background: rgba(88,166,255,0.15); color: var(--ir-blue); }
+        .role-badge-white_team    { background: rgba(63,185,80,0.15); color: var(--ir-green); }
+        .role-badge-auditor       { background: rgba(125,133,144,0.15); color: var(--ir-text-muted); }
 
         /* ── Topbar ──────────────────────────────────────────────────────────── */
         .topbar {
@@ -734,10 +753,18 @@
             {% endif %}
         </nav>
         
+        {% if current_user.is_authenticated %}
+        <a class="sidebar-footer" href="{{ url_for('profile') }}" title="My Profile">
+            <i class="bi bi-person-circle"></i>
+            <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ current_user.display_name or current_user.email }}</span>
+            <span class="role-badge role-badge-{{ current_user.role }}">{{ current_user.role | replace('_', ' ') }}</span>
+        </a>
+        {% else %}
         <div class="sidebar-footer">
             <i class="bi bi-person-circle"></i>
-            <span>{{ current_user.email if current_user.is_authenticated else 'Guest' }}</span>
+            <span>Guest</span>
         </div>
+        {% endif %}
     </div>
 
     <!-- Topbar -->
@@ -772,6 +799,15 @@
                   class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger d-none"
                   style="font-size:0.6rem;">0</span>
         </button>
+        {% if current_user.is_authenticated %}
+        <a href="{{ url_for('profile') }}" class="btn btn-sm btn-outline-secondary d-flex align-items-center gap-1 px-2" title="My Profile" style="font-size:0.75rem;">
+            <i class="bi bi-person-circle"></i>
+            <span class="role-badge role-badge-{{ current_user.role }}">{{ current_user.role | replace('_', ' ') }}</span>
+        </a>
+        <a href="{{ url_for('logout') }}" class="btn btn-sm btn-outline-secondary px-2" title="Logout" style="font-size:0.75rem;">
+            <i class="bi bi-box-arrow-right"></i>
+        </a>
+        {% endif %}
     </div>
 
     <!-- Task Log Offcanvas -->

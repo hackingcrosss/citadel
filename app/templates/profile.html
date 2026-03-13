@@ -1,0 +1,146 @@
+{% extends "base.html" %}
+
+{% block title %}Profile - InfraRed{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h4 class="mb-0"><i class="bi bi-person-circle me-2"></i>My Profile</h4>
+        <small class="text-muted">Update your display name and password</small>
+    </div>
+</div>
+
+<div class="row g-4" style="max-width:700px;">
+    <!-- Profile info card -->
+    <div class="col-12">
+        <div class="card bg-dark border-secondary">
+            <div class="card-header border-secondary d-flex align-items-center gap-2">
+                <i class="bi bi-person-badge"></i> <strong>Account Info</strong>
+            </div>
+            <div class="card-body">
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label class="form-label small text-muted">Email</label>
+                        <input type="text" class="form-control bg-dark text-light border-secondary" value="{{ current_user.email }}" disabled>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label small text-muted">Role</label>
+                        <div class="mt-1" id="profile-role-badge"></div>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label small text-muted">Display Name</label>
+                        <input type="text" class="form-control bg-dark text-light border-secondary" id="profile-display-name"
+                               value="{{ current_user.display_name or '' }}" placeholder="How others see you">
+                    </div>
+                    <div class="col-md-6 d-flex align-items-end">
+                        <button class="btn btn-danger btn-sm" onclick="saveProfile()">
+                            <i class="bi bi-check-lg me-1"></i>Save Name
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Change password card -->
+    <div class="col-12">
+        <div class="card bg-dark border-secondary">
+            <div class="card-header border-secondary d-flex align-items-center gap-2">
+                <i class="bi bi-shield-lock"></i> <strong>Change Password</strong>
+            </div>
+            <div class="card-body">
+                <div class="row g-3">
+                    <div class="col-12">
+                        <label class="form-label small text-muted">Current Password</label>
+                        <input type="password" class="form-control bg-dark text-light border-secondary" id="pw-current" autocomplete="current-password">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label small text-muted">New Password</label>
+                        <input type="password" class="form-control bg-dark text-light border-secondary" id="pw-new" autocomplete="new-password">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label small text-muted">Confirm New Password</label>
+                        <input type="password" class="form-control bg-dark text-light border-secondary" id="pw-confirm" autocomplete="new-password">
+                    </div>
+                    <div class="col-12">
+                        <div class="p-2 rounded" style="background:rgba(255,255,255,0.04);font-size:0.78rem;">
+                            <span class="text-muted">Requirements:</span>
+                            min 12 characters, at least one uppercase, one lowercase, one digit
+                        </div>
+                    </div>
+                    <div class="col-12">
+                        <button class="btn btn-danger btn-sm" onclick="changePassword()">
+                            <i class="bi bi-shield-check me-1"></i>Change Password
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const ROLE_MAP = {
+    admin:         { label: 'Admin',         cls: 'bg-danger' },
+    project_admin: { label: 'Project Admin', cls: 'bg-warning text-dark' },
+    operator:      { label: 'Operator',      cls: 'bg-primary' },
+    white_team:    { label: 'White Team',    cls: 'bg-info text-dark' },
+    auditor:       { label: 'Auditor',       cls: 'bg-secondary' },
+};
+
+(function() {
+    const role = '{{ current_user.role }}';
+    const r = ROLE_MAP[role] || { label: role, cls: 'bg-secondary' };
+    document.getElementById('profile-role-badge').innerHTML =
+        `<span class="badge ${r.cls}" style="font-size:0.82rem;padding:0.35em 0.7em">${r.label}</span>`;
+})();
+
+async function saveProfile() {
+    const displayName = document.getElementById('profile-display-name').value.trim();
+    try {
+        const res = await fetch('/api/users/me', {
+            method: 'PATCH',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({display_name: displayName || null}),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Failed to save');
+        showToast('Display name updated', 'success');
+    } catch(e) {
+        showToast(e.message, 'danger');
+    }
+}
+
+async function changePassword() {
+    const current = document.getElementById('pw-current').value;
+    const newPw   = document.getElementById('pw-new').value;
+    const confirm = document.getElementById('pw-confirm').value;
+
+    if (!current || !newPw || !confirm) {
+        showToast('All password fields are required', 'danger');
+        return;
+    }
+    if (newPw !== confirm) {
+        showToast('New passwords do not match', 'danger');
+        return;
+    }
+    try {
+        const res = await fetch('/api/users/me/password', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({current_password: current, new_password: newPw}),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Failed to change password');
+        showToast('Password changed successfully', 'success');
+        document.getElementById('pw-current').value = '';
+        document.getElementById('pw-new').value = '';
+        document.getElementById('pw-confirm').value = '';
+    } catch(e) {
+        showToast(e.message, 'danger');
+    }
+}
+</script>
+{% endblock %}
