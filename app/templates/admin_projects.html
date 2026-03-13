@@ -434,10 +434,6 @@ function renderProjects() {
                 <button class="btn btn-outline-danger btn-sm me-1" title="Teardown" onclick="openTeardownModal(${p.id},'${escapeHtml(p.code)}')">
                     <i class="bi bi-trash3"></i>
                 </button>` : ''}
-                ${IS_ADMIN ? `
-                <button class="btn btn-outline-danger btn-sm" title="Delete" onclick="deleteProject(${p.id}, '${escapeHtml(p.code)}')">
-                    <i class="bi bi-trash"></i>
-                </button>` : ''}
             </td>
         </tr>
     `).join('');
@@ -520,21 +516,6 @@ async function saveEdit() {
         if (!res.ok) throw new Error(data.error || 'Failed to update project');
         editModal.hide();
         showToast('Project updated', 'success');
-        loadProjects();
-    } catch(e) {
-        showToast(e.message, 'danger');
-    }
-}
-
-// ── Delete project ───────────────────────────────────────────────────────────
-async function deleteProject(id, code) {
-    const confirmed = await showConfirm(`Delete project <strong>${escapeHtml(code)}</strong>? This cannot be undone.`);
-    if (!confirmed) return;
-    try {
-        const res = await fetch(`/api/projects/${id}`, {method: 'DELETE'});
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || 'Failed to delete project');
-        showToast('Project deleted', 'success');
         loadProjects();
     } catch(e) {
         showToast(e.message, 'danger');
