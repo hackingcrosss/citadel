@@ -905,14 +905,15 @@ function _renderTeardownPreview(d) {
     const totalDnsManaged = Object.values(d.dns_records).reduce((s, z) => s + z.managed.length, 0);
 
     const sections = [
-        { label: 'CS Listeners',      icon: 'bi-crosshair',   items: d.cs_listeners,      keyFn: r => r.name           },
-        { label: 'NPM Proxy Hosts',   icon: 'bi-diagram-2',   items: d.npm_hosts,          keyFn: r => r.domain || r.id },
-        { label: 'Website Gen Sites', icon: 'bi-globe2',       items: d.website_gen_sites,  keyFn: r => r.domain || r.folder },
-        { label: 'Containers',        icon: 'bi-box',          items: d.containers,         keyFn: r => r.name           },
-        { label: 'GoPhish Profiles',  icon: 'bi-envelope',     items: d.gophish_senders,    keyFn: r => r.name           },
-        { label: 'Mailgun Domains',   icon: 'bi-envelope-at',  items: d.mailgun_domains,    keyFn: r => r.name           },
-        { label: 'CDN Distributions', icon: 'bi-cloud',        items: d.cdn_distributions,  keyFn: r => r.label || r.id  },
+        { key: 'cs_listeners',      label: 'CS Listeners',      icon: 'bi-crosshair',   items: d.cs_listeners,      keyFn: r => r.name           },
+        { key: 'npm_hosts',         label: 'NPM Proxy Hosts',   icon: 'bi-diagram-2',   items: d.npm_hosts,          keyFn: r => r.domain || r.id },
+        { key: 'website_gen_sites', label: 'Website Gen Sites',  icon: 'bi-globe2',      items: d.website_gen_sites,  keyFn: r => r.domain || r.folder },
+        { key: 'containers',        label: 'Containers',         icon: 'bi-box',         items: d.containers,         keyFn: r => r.name           },
+        { key: 'gophish_senders',   label: 'GoPhish Profiles',   icon: 'bi-envelope',    items: d.gophish_senders,    keyFn: r => r.name           },
+        { key: 'mailgun_domains',   label: 'Mailgun Domains',    icon: 'bi-envelope-at', items: d.mailgun_domains,    keyFn: r => r.name           },
+        { key: 'cdn_distributions', label: 'CDN Distributions',  icon: 'bi-cloud',       items: d.cdn_distributions,  keyFn: r => r.label || r.id  },
     ];
+    const allSections = [...sections, { key: 'domains', label: 'Domains to Release', icon: 'bi-globe', items: d.domains, keyFn: r => r.name }];
 
     // Summary grid
     let html = '<div class="row g-2 mb-3">';
@@ -920,7 +921,7 @@ function _renderTeardownPreview(d) {
         html += `<div class="col-6 col-md-4">
             <div class="p-2 border rounded border-secondary text-center" style="font-size:0.82rem">
                 <i class="bi ${s.icon} me-1 text-danger"></i>
-                <strong>${s.items.length}</strong> <span class="text-muted">${s.label}</span>
+                <strong data-td-count="${s.key}">${s.items.length}</strong> <span class="text-muted">${s.label}</span>
             </div></div>`;
     });
     html += `<div class="col-6 col-md-4">
@@ -931,25 +932,32 @@ function _renderTeardownPreview(d) {
     <div class="col-6 col-md-4">
         <div class="p-2 border rounded border-secondary text-center" style="font-size:0.82rem">
             <i class="bi bi-globe me-1 text-success"></i>
-            <strong>${d.domains.length}</strong> <span class="text-muted">Domains (release)</span>
+            <strong data-td-count="domains">${d.domains.length}</strong> <span class="text-muted">Domains (release)</span>
         </div></div></div>`;
 
-    // Expandable detail sections
-    [...sections, { label: 'Domains to Release', icon: 'bi-globe', items: d.domains, keyFn: r => r.name }]
-        .filter(s => s.items.length)
-        .forEach(s => {
-            html += `<details class="mb-1"><summary class="text-muted small" style="cursor:pointer;user-select:none">
-                <i class="bi ${s.icon} me-1"></i>${s.label} (${s.items.length})
-            </summary><ul class="list-unstyled mt-1 mb-0 ps-3" style="font-size:0.8rem">
-                ${s.items.map(r => `<li class="text-muted">— ${escapeHtml(String(s.keyFn(r) || ''))}</li>`).join('')}
-            </ul></details>`;
-        });
+    // Expandable detail sections with checkboxes
+    html += '<p class="text-muted small mb-2 mt-1"><i class="bi bi-info-circle me-1"></i>Checked items will be <strong>removed</strong>. Uncheck to keep.</p>';
+    allSections.filter(s => s.items.length).forEach(s => {
+        html += `<details class="mb-1"><summary class="text-muted small d-flex align-items-center gap-1" style="cursor:pointer;user-select:none">
+            <i class="bi ${s.icon} me-1"></i>${s.label} (<span id="td-sec-count-${s.key}">${s.items.length}</span>/${s.items.length})
+            <span class="ms-auto me-2" style="font-size:0.75rem">
+                <a href="#" onclick="tdToggleSection('${s.key}',true);return false" class="text-info text-decoration-none">all</a>
+                <span class="text-muted">/</span>
+                <a href="#" onclick="tdToggleSection('${s.key}',false);return false" class="text-info text-decoration-none">none</a>
+            </span>
+        </summary><div class="mt-1 mb-0 ps-3" style="font-size:0.8rem">
+            ${s.items.map((r, i) => `<div class="form-check py-0" style="min-height:1.4rem">
+                <input class="form-check-input td-chk" type="checkbox" id="td-chk-${s.key}-${i}" data-td-section="${s.key}" checked onchange="tdUpdateCounts()">
+                <label class="form-check-label text-muted" for="td-chk-${s.key}-${i}">${escapeHtml(String(s.keyFn(r) || ''))}</label>
+            </div>`).join('')}
+        </div></details>`;
+    });
 
-    // DNS detail
+    // DNS detail (controlled by step-2 radio, not individual checkboxes)
     const dnsEntries = Object.entries(d.dns_records);
     if (dnsEntries.length) {
         html += `<details class="mb-1"><summary class="text-muted small" style="cursor:pointer;user-select:none">
-            <i class="bi bi-hdd-network me-1"></i>DNS Records per Domain
+            <i class="bi bi-hdd-network me-1"></i>DNS Records per Domain <small>(options in step 2)</small>
         </summary>`;
         dnsEntries.forEach(([name, zone]) => {
             html += `<div class="ps-3 mt-1 mb-1 text-muted" style="font-size:0.8rem">
@@ -970,6 +978,31 @@ function _renderTeardownPreview(d) {
             d.warnings.map(w => `<li>${escapeHtml(w)}</li>`).join('') + '</ul>';
         wb.classList.remove('d-none');
     }
+}
+
+function tdToggleSection(key, checked) {
+    document.querySelectorAll(`[data-td-section="${key}"]`).forEach(el => el.checked = checked);
+    tdUpdateCounts();
+}
+
+function tdUpdateCounts() {
+    const keys = ['cs_listeners','npm_hosts','website_gen_sites','containers','gophish_senders','mailgun_domains','cdn_distributions','domains'];
+    keys.forEach(key => {
+        const boxes = document.querySelectorAll(`[data-td-section="${key}"]`);
+        if (!boxes.length) return;
+        const checked = [...boxes].filter(b => b.checked).length;
+        const countEl = document.querySelector(`[data-td-count="${key}"]`);
+        if (countEl) countEl.textContent = checked;
+        const secEl = document.getElementById(`td-sec-count-${key}`);
+        if (secEl) secEl.textContent = checked;
+    });
+}
+
+function _tdCheckedItems(key, items) {
+    return items.filter((_, i) => {
+        const el = document.getElementById(`td-chk-${key}-${i}`);
+        return el && el.checked;
+    });
 }
 
 function tdStartExecute() {
@@ -1001,6 +1034,16 @@ async function _tdExecute() {
     const pid      = _tdProjectId;
     let succeeded  = 0, failed = 0;
 
+    // Filter to only checked (selected for removal) items
+    const cs    = _tdCheckedItems('cs_listeners', d.cs_listeners);
+    const npm   = _tdCheckedItems('npm_hosts', d.npm_hosts);
+    const sites = _tdCheckedItems('website_gen_sites', d.website_gen_sites);
+    const conts = _tdCheckedItems('containers', d.containers);
+    const goph  = _tdCheckedItems('gophish_senders', d.gophish_senders);
+    const mg    = _tdCheckedItems('mailgun_domains', d.mailgun_domains);
+    const cdns  = _tdCheckedItems('cdn_distributions', d.cdn_distributions);
+    const doms  = _tdCheckedItems('domains', d.domains);
+
     async function tdDel(url, label, method = 'DELETE') {
         _tdWarn(escapeHtml(label) + '&hellip;');
         try {
@@ -1020,17 +1063,17 @@ async function _tdExecute() {
     }
 
     // 1. CS Listeners
-    if (d.cs_listeners.length) {
+    if (cs.length) {
         _tdInfo('<strong>CS Listeners</strong>');
-        for (const l of d.cs_listeners)
+        for (const l of cs)
             await tdDel(`/api/cobaltstrike/listeners/${encodeURIComponent(l.name)}`, `CS: ${l.name}`);
     }
 
     // 2. NPM Proxy Hosts
     const deletedNpmIds = new Set();
-    if (d.npm_hosts.length) {
+    if (npm.length) {
         _tdInfo('<strong>NPM Proxy Hosts</strong>');
-        for (const h of d.npm_hosts) {
+        for (const h of npm) {
             const ok = await tdDel(`/api/npm/hosts/${encodeURIComponent(h.id)}`, `NPM: ${h.domain || h.id}`);
             if (ok) deletedNpmIds.add(String(h.id));
         }
@@ -1053,9 +1096,9 @@ async function _tdExecute() {
     }
 
     // 4. Website Gen Sites
-    if (d.website_gen_sites.length) {
+    if (sites.length) {
         _tdInfo('<strong>Website Generator Sites</strong>');
-        for (const site of d.website_gen_sites) {
+        for (const site of sites) {
             await tdDel(`/api/website-generator/deployed-sites/${encodeURIComponent(site.folder)}`,
                         `Website: ${site.domain || site.folder}`);
             if (site.npm_host_id && !deletedNpmIds.has(String(site.npm_host_id))) {
@@ -1067,16 +1110,16 @@ async function _tdExecute() {
     }
 
     // 5. Containers
-    if (d.containers.length) {
+    if (conts.length) {
         _tdInfo('<strong>Containers</strong>');
-        for (const c of d.containers)
+        for (const c of conts)
             await tdDel(`/api/containers/${encodeURIComponent(c.name)}?force=true`, `Container: ${c.name}`);
     }
 
     // 6. GoPhish Profiles + SMTP credentials
-    if (d.gophish_senders.length) {
+    if (goph.length) {
         _tdInfo('<strong>GoPhish Profiles</strong>');
-        for (const s of d.gophish_senders) {
+        for (const s of goph) {
             await tdDel(`/api/gophish/profiles/${encodeURIComponent(s.id)}`, `GoPhish: ${s.name}`);
             if (s.smtp_username) {
                 const atIdx = s.smtp_username.indexOf('@');
@@ -1093,31 +1136,31 @@ async function _tdExecute() {
     }
 
     // 7. Mailgun Domains
-    if (d.mailgun_domains.length) {
+    if (mg.length) {
         _tdInfo('<strong>Mailgun Domains</strong>');
-        for (const m of d.mailgun_domains)
+        for (const m of mg)
             await tdDel(`/api/email/domains/${encodeURIComponent(m.name)}?region=${m.region}`, `Mailgun: ${m.name}`);
     }
 
     // 8. CDN Distributions
-    if (d.cdn_distributions.length) {
+    if (cdns.length) {
         _tdInfo('<strong>CDN Distributions</strong>');
-        for (const c of d.cdn_distributions)
+        for (const c of cdns)
             await tdDel(`/api/cdn/distributions/${encodeURIComponent(c.id)}`, `CDN: ${c.label || c.id}`);
     }
 
     // 9. Release Domains
-    if (d.domains.length) {
+    if (doms.length) {
         _tdInfo('<strong>Releasing Domains</strong>');
-        for (const dom of d.domains)
+        for (const dom of doms)
             await tdDel(`/api/projects/${pid}/domains/${dom.id}/release`, `Release: ${dom.name}`, 'POST');
     }
 
-    // 10. Untag all project resources
+    // 10. Untag project resources for removed items only
     _tdInfo('Cleaning up resource tags&hellip;');
     const allResIds = [
-        ...d.cs_listeners, ...d.npm_hosts, ...d.containers, ...d.website_gen_sites,
-        ...d.gophish_senders, ...d.mailgun_domains, ...d.cdn_distributions,
+        ...cs, ...npm, ...conts, ...sites,
+        ...goph, ...mg, ...cdns,
     ].map(r => r.project_resource_id).filter(id => id != null);
     for (const resId of allResIds) {
         try { await fetch(`/api/projects/${pid}/resources/${resId}`, {method: 'DELETE'}); }
