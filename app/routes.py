@@ -298,8 +298,10 @@ def register_routes(app):
 
     @app.route('/admin/audit')
     @login_required
-    @admin_required
     def admin_audit():
+        if not (current_user.is_admin or current_user.is_auditor):
+            flash('Admin or Auditor access required.', 'danger')
+            return redirect(url_for('dashboard'))
         return render_template('admin_audit.html')
 
     @app.route('/admin/domain-pool')

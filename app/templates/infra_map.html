@@ -6,7 +6,7 @@
 <div class="d-flex justify-content-between align-items-center mb-4">
     <h1 class="h3 mb-0">
         <i class="bi bi-diagram-3"></i> Infrastructure Map
-        {% if not current_user.is_admin %}
+        {% if not current_user.is_admin and not current_user.is_auditor %}
             {% if active_project %}
             <span class="badge bg-danger ms-2" style="font-size:0.6em;vertical-align:middle" title="Scoped to project">{{ active_project.code }}</span>
             {% else %}
@@ -303,7 +303,7 @@
 {% block extra_js %}
 <script src="https://unpkg.com/vis-network@9.1.9/standalone/umd/vis-network.min.js"></script>
 <script>
-    var IS_ADMIN          = {{ 'true' if current_user.is_admin else 'false' }};
+    var IS_ADMIN          = {{ 'true' if current_user.is_admin or current_user.is_auditor else 'false' }};
     var IS_AUDITOR        = {{ 'true' if current_user.role == 'auditor' else 'false' }};
     var IS_WHITE_TEAM     = {{ 'true' if current_user.role == 'white_team' else 'false' }};
     var IS_READONLY       = IS_AUDITOR || IS_WHITE_TEAM;
