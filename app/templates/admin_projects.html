@@ -47,9 +47,9 @@
         <table class="table table-dark table-hover mb-0" id="projects-table">
             <thead>
                 <tr>
-                    <th>Code</th>
-                    <th>Name</th>
                     <th>Company</th>
+                    <th>Codename</th>
+                    <th>Name</th>
                     <th>Status</th>
                     <th>Members</th>
                     <th>Created</th>
@@ -74,20 +74,16 @@
             </div>
             <div class="modal-body">
                 <div class="mb-3">
-                    <label class="form-label">Project Name <span class="text-danger">*</span></label>
-                    <input type="text" class="form-control bg-dark text-light border-secondary" id="create-name" placeholder="Operation Nightfall">
-                </div>
-                <div class="mb-3">
-                    <label class="form-label">Code <span class="text-danger">*</span>
-                        <small class="text-muted">(short slug, unique)</small>
-                    </label>
-                    <input type="text" class="form-control bg-dark text-light border-secondary" id="create-code" placeholder="nightfall" maxlength="32">
-                </div>
-                <div class="mb-3">
-                    <label class="form-label">Company</label>
+                    <label class="form-label">Company <span class="text-danger">*</span></label>
                     <select class="form-select bg-dark text-light border-secondary" id="create-company-id">
-                        <option value="">— None —</option>
+                        <option value="">— Select a company —</option>
                     </select>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Project Name
+                        <small class="text-muted">(optional — a random codename will be assigned)</small>
+                    </label>
+                    <input type="text" class="form-control bg-dark text-light border-secondary" id="create-name" placeholder="e.g. Q1 2026 Pentest">
                 </div>
                 <div class="mb-3">
                     <label class="form-label">Description</label>
@@ -315,11 +311,14 @@
     <div class="modal-dialog">
         <div class="modal-content bg-dark border-secondary">
             <div class="modal-header border-secondary">
-                <h5 class="modal-title">Edit Project</h5>
+                <h5 class="modal-title">Edit Project — <span id="edit-codename-label" class="text-danger"></span></h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
                 <input type="hidden" id="edit-project-id">
+                <div class="mb-2">
+                    <small class="text-muted">Company: <strong id="edit-company-label"></strong></small>
+                </div>
                 <div class="mb-3">
                     <label class="form-label">Name</label>
                     <input type="text" class="form-control bg-dark text-light border-secondary" id="edit-name">
@@ -333,12 +332,6 @@
                     <select class="form-select bg-dark text-light border-secondary" id="edit-status">
                         <option value="active">Active</option>
                         <option value="archived">Archived</option>
-                    </select>
-                </div>
-                <div class="mb-3">
-                    <label class="form-label">Company</label>
-                    <select class="form-select bg-dark text-light border-secondary" id="edit-company-id">
-                        <option value="">— None —</option>
                     </select>
                 </div>
             </div>
@@ -413,9 +406,9 @@ function renderProjects() {
     }
     tbody.innerHTML = _projects.map(p => `
         <tr>
+            <td>${p.company_code ? `<span class="badge bg-danger" style="font-size:0.7rem">${escapeHtml(p.company_code)}</span> <small class="text-muted">${escapeHtml(p.company_name || '')}</small>` : '<span class="text-muted">—</span>'}</td>
             <td><code class="text-danger">${p.code}</code></td>
             <td>${escapeHtml(p.name)}</td>
-            <td>${p.company_code ? `<span class="badge bg-danger" style="font-size:0.7rem">${escapeHtml(p.company_code)}</span>` : '<span class="text-muted">—</span>'}</td>
             <td>${statusBadge(p.status)}</td>
             <td><span class="text-muted">${p.member_count ?? '—'}</span></td>
             <td class="text-muted small">${p.created_at ? p.created_at.substring(0,10) : '—'}</td>
@@ -446,55 +439,43 @@ function escapeHtml(s) {
 // ── Create project ───────────────────────────────────────────────────────────
 function openCreateModal() {
     document.getElementById('create-name').value = '';
-    document.getElementById('create-code').value = '';
     document.getElementById('create-description').value = '';
-    loadCompaniesIntoSelect('create-company-id', null);
+    loadCompaniesIntoSelect('create-company-id', null, false);
     createModal.show();
 }
 
 async function createProject() {
-    const name = document.getElementById('create-name').value.trim();
-    const code = document.getElementById('create-code').value.trim();
-    const description = document.getElementById('create-description').value.trim();
-    if (!name || !code) { showToast('Name and code are required', 'danger'); return; }
-
     const companyId = parseInt(document.getElementById('create-company-id').value) || null;
+    if (!companyId) { showToast('Please select a company', 'danger'); return; }
+
+    const name = document.getElementById('create-name').value.trim();
+    const description = document.getElementById('create-description').value.trim();
     try {
         const res = await fetch('/api/projects', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({name, code, description, company_id: companyId}),
+            body: JSON.stringify({name: name || null, description: description || null, company_id: companyId}),
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || 'Failed to create project');
         createModal.hide();
-        showToast('Project created', 'success');
+        showToast(`Project created — codename: ${data.code}`, 'success');
         loadProjects();
     } catch(e) {
         showToast(e.message, 'danger');
     }
 }
 
-// Auto-slug code from name
-document.getElementById('create-name').addEventListener('input', function() {
-    const codeEl = document.getElementById('create-code');
-    if (!codeEl.dataset.manual) {
-        codeEl.value = this.value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').substring(0, 32);
-    }
-});
-document.getElementById('create-code').addEventListener('input', function() {
-    this.dataset.manual = this.value ? '1' : '';
-});
-
 // ── Edit project ─────────────────────────────────────────────────────────────
 function openEditModal(projectId) {
     const p = _projects.find(x => x.id === projectId);
     if (!p) return;
     document.getElementById('edit-project-id').value = p.id;
+    document.getElementById('edit-codename-label').textContent = p.code;
+    document.getElementById('edit-company-label').textContent = p.company_name || '—';
     document.getElementById('edit-name').value = p.name;
     document.getElementById('edit-description').value = p.description || '';
     document.getElementById('edit-status').value = p.status;
-    loadCompaniesIntoSelect('edit-company-id', p.company_id);
     editModal.show();
 }
 
@@ -503,14 +484,13 @@ async function saveEdit() {
     const name = document.getElementById('edit-name').value.trim();
     const description = document.getElementById('edit-description').value.trim();
     const status = document.getElementById('edit-status').value;
-    const companyId = parseInt(document.getElementById('edit-company-id').value) || null;
     if (!name) { showToast('Name is required', 'danger'); return; }
 
     try {
         const res = await fetch(`/api/projects/${id}`, {
             method: 'PATCH',
             headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({name, description, status, company_id: companyId}),
+            body: JSON.stringify({name, description, status}),
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || 'Failed to update project');
@@ -834,7 +814,7 @@ function _renderReadiness(data) {
 }
 
 // ── Companies dropdown ────────────────────────────────────────────────────────
-async function loadCompaniesIntoSelect(selectId, selectedId) {
+async function loadCompaniesIntoSelect(selectId, selectedId, allowNone = true) {
     if (!_companies.length) {
         try {
             const res = await fetch('/api/companies');
@@ -844,8 +824,9 @@ async function loadCompaniesIntoSelect(selectId, selectedId) {
     }
     const sel = document.getElementById(selectId);
     if (!sel) return;
-    sel.innerHTML = '<option value="">— None —</option>' +
-        _companies.map(c =>
+    const noneOpt = allowNone ? '<option value="">— None —</option>' : '<option value="">— Select a company —</option>';
+    sel.innerHTML = noneOpt +
+        _companies.filter(c => c.status === 'active' || c.id === selectedId).map(c =>
             `<option value="${c.id}" ${c.id === selectedId ? 'selected' : ''}>${escapeHtml(c.code)} — ${escapeHtml(c.name)}</option>`
         ).join('');
 }

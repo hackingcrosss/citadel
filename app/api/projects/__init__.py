@@ -44,25 +44,22 @@ def create_project():
 
     data = request.get_json(silent=True) or {}
 
-    name = (data.get('name') or '').strip()
-    code = (data.get('code') or '').strip().upper()
+    # Company is the driver — every project must belong to one
+    company_id = data.get('company_id')
+    if not company_id:
+        return jsonify({'error': 'A company is required to create a project'}), 400
+    from app.models.company import Company
+    company = Company.query.get(company_id)
+    if not company:
+        return jsonify({'error': 'Company not found'}), 404
+
+    # Auto-generate a random codename for the project code
+    from app.utils.codenames import generate_codename
+    existing_codes = {p.code for p in Project.query.with_entities(Project.code).all()}
+    code = generate_codename(existing_codes)
+
+    name = (data.get('name') or '').strip() or code.replace('-', ' ').title()
     description = (data.get('description') or '').strip() or None
-
-    if not name:
-        return jsonify({'error': 'Project name is required'}), 400
-    if not code:
-        return jsonify({'error': 'Project code is required'}), 400
-    if len(code) > 30:
-        return jsonify({'error': 'Project code must be 30 characters or fewer'}), 400
-
-    if Project.query.filter_by(code=code).first():
-        return jsonify({'error': f'Project code "{code}" is already in use'}), 409
-
-    company_id = data.get('company_id') or None
-    if company_id:
-        from app.models.company import Company
-        if not Company.query.get(company_id):
-            return jsonify({'error': 'Company not found'}), 404
 
     project = Project(
         name=name,
@@ -86,8 +83,9 @@ def create_project():
     db.session.add(member)
     db.session.commit()
 
-    _log.info('User %s created project %s', current_user.email, code)
-    audit_service.log('project.create', 'project', project.id, project.code, {'name': name})
+    _log.info('User %s created project %s for company %s', current_user.email, code, company.code)
+    audit_service.log('project.create', 'project', project.id, project.code,
+                      {'name': name, 'company': company.code})
     return jsonify(project.to_dict(include_members=True)), 201
 
 
@@ -128,14 +126,6 @@ def update_project(project_id):
         if status not in ('active', 'archived'):
             return jsonify({'error': 'Status must be "active" or "archived"'}), 400
         project.status = status
-
-    if 'company_id' in data:
-        cid = data['company_id']
-        if cid is not None:
-            from app.models.company import Company
-            if not Company.query.get(cid):
-                return jsonify({'error': 'Company not found'}), 404
-        project.company_id = cid
 
     db.session.commit()
     _log.info('User %s updated project %s', current_user.email, project.code)
