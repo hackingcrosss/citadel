@@ -408,6 +408,192 @@ def domain_readiness(project_id, domain_id):
 
 
 # ---------------------------------------------------------------------------
+# Teardown Preview
+# ---------------------------------------------------------------------------
+
+@api_bp.route('/projects/<int:project_id>/teardown/preview', methods=['GET'])
+@login_required
+@project_member_required(write=True)
+def teardown_preview(project_id):
+    """Return a structured preview of all resources that would be cleaned up
+    during a project teardown. External service errors are non-fatal and
+    collected into the 'warnings' list rather than aborting."""
+    warnings = []
+    resources = get_resources_by_project(project_id)
+
+    by_type = {}
+    for r in resources:
+        by_type.setdefault(r.resource_type, []).append(r)
+
+    result = {
+        'cs_listeners': [],
+        'npm_hosts': [],
+        'containers': [],
+        'website_gen_sites': [],
+        'gophish_senders': [],
+        'mailgun_domains': [],
+        'cdn_distributions': [],
+        'dns_records': {},
+        'domains': [],
+        'warnings': [],
+    }
+
+    # ── CS Listeners ─────────────────────────────────────────────────────────
+    for r in by_type.get('cs_listener', []):
+        entry = {'name': r.external_id, 'label': r.label, 'project_resource_id': r.id}
+        try:
+            from app.services import cobaltstrike_service
+            details = cobaltstrike_service.get_listener(r.external_id)
+            if details:
+                entry['type'] = details.get('type', '')
+        except Exception as exc:
+            warnings.append(f'CS listener {r.external_id}: {exc}')
+        result['cs_listeners'].append(entry)
+
+    # ── NPM Proxy Hosts ──────────────────────────────────────────────────────
+    npm_host_map = {}
+    if by_type.get('npm_host'):
+        try:
+            from app.services import npm_service
+            npm_host_map = {str(h['id']): h for h in (npm_service.list_proxy_hosts() or [])}
+        except Exception as exc:
+            warnings.append(f'NPM hosts: {exc}')
+    for r in by_type.get('npm_host', []):
+        h = npm_host_map.get(r.external_id)
+        domain_display = (h.get('domain_names') or [''])[0] if h else (r.label or r.external_id)
+        result['npm_hosts'].append({
+            'id': r.external_id,
+            'label': r.label,
+            'domain': domain_display,
+            'project_resource_id': r.id,
+        })
+
+    # ── Containers + Website Gen Sites ────────────────────────────────────────
+    deployed_site_map = {}
+    if by_type.get('container'):
+        try:
+            from app.services import website_generator_service
+            deployed_site_map = {
+                s['folder']: s
+                for s in (website_generator_service.get_deployed_sites() or [])
+            }
+        except Exception as exc:
+            warnings.append(f'Deployed sites: {exc}')
+    for r in by_type.get('container', []):
+        if r.external_id in deployed_site_map:
+            site = deployed_site_map[r.external_id]
+            npm_id = site.get('npm_host_id')
+            result['website_gen_sites'].append({
+                'folder': r.external_id,
+                'label': r.label,
+                'domain': site.get('fqdn', ''),
+                'npm_host_id': str(npm_id) if npm_id is not None else None,
+                'project_resource_id': r.id,
+            })
+        else:
+            result['containers'].append({
+                'name': r.external_id,
+                'label': r.label,
+                'project_resource_id': r.id,
+            })
+
+    # ── GoPhish Senders ──────────────────────────────────────────────────────
+    for r in by_type.get('gophish_sender', []):
+        entry = {
+            'id': r.external_id,
+            'name': r.label or r.external_id,
+            'smtp_username': '',
+            'smtp_host': '',
+            'project_resource_id': r.id,
+        }
+        try:
+            from app.services import gophish_service
+            profile = gophish_service.get_sending_profile(r.external_id)
+            if profile:
+                entry['name'] = profile.get('name', entry['name'])
+                entry['smtp_username'] = profile.get('username', '')
+                entry['smtp_host'] = profile.get('host', '')
+        except Exception as exc:
+            warnings.append(f'GoPhish profile {r.external_id}: {exc}')
+        result['gophish_senders'].append(entry)
+
+    # ── Mailgun Domains ──────────────────────────────────────────────────────
+    for r in by_type.get('mailgun_domain', []):
+        domain_rec = Domain.query.filter_by(name=r.external_id).first()
+        region = domain_rec.mailgun_region if (domain_rec and domain_rec.mailgun_region) else 'us'
+        result['mailgun_domains'].append({
+            'name': r.external_id,
+            'region': region,
+            'project_resource_id': r.id,
+        })
+
+    # ── CDN Distributions ────────────────────────────────────────────────────
+    for r in by_type.get('cdn_dist', []):
+        result['cdn_distributions'].append({
+            'id': r.external_id,
+            'label': r.label,
+            'project_resource_id': r.id,
+        })
+
+    # ── Checked-out Domains + DNS Records ─────────────────────────────────────
+    domains = Domain.query.filter_by(checkout_project_id=project_id).order_by(Domain.name).all()
+    for domain in domains:
+        result['domains'].append({
+            'id': domain.id,
+            'name': domain.name,
+            'zone_id': domain.cloudflare_zone_id,
+        })
+        if not domain.cloudflare_zone_id:
+            continue
+        try:
+            from app.services import dns_service
+            from app.models.domain import DNSRecord
+            records = dns_service.list_dns_records(
+                domain.cloudflare_zone_id, label=domain.credential_label or 'default'
+            )
+            local_managed_by = {
+                lr.cloudflare_record_id: lr.managed_by
+                for lr in DNSRecord.query.filter_by(domain_id=domain.id).all()
+            }
+            managed, manual = [], []
+            for rec in (records or []):
+                if rec.get('type') in ('NS', 'SOA'):
+                    continue
+                rec_id = rec.get('id', '')
+                rec_managed_by = local_managed_by.get(rec_id, 'manual')
+                entry = {
+                    'id': rec_id,
+                    'type': rec.get('type', ''),
+                    'name': rec.get('name', ''),
+                    'content': rec.get('content', ''),
+                    'managed_by': rec_managed_by,
+                }
+                if rec_managed_by in ('infrared', 'mailgun'):
+                    managed.append(entry)
+                else:
+                    manual.append(entry)
+            result['dns_records'][domain.name] = {
+                'zone_id': domain.cloudflare_zone_id,
+                'domain_id': domain.id,
+                'credential_label': domain.credential_label or 'default',
+                'managed': managed,
+                'manual': manual,
+            }
+        except Exception as exc:
+            warnings.append(f'DNS records for {domain.name}: {exc}')
+            result['dns_records'][domain.name] = {
+                'zone_id': domain.cloudflare_zone_id,
+                'domain_id': domain.id,
+                'credential_label': domain.credential_label or 'default',
+                'managed': [],
+                'manual': [],
+            }
+
+    result['warnings'] = warnings
+    return jsonify(result)
+
+
+# ---------------------------------------------------------------------------
 # Project Resources (tagging non-domain infra)
 # ---------------------------------------------------------------------------
 
