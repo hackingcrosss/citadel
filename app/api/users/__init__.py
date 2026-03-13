@@ -156,6 +156,57 @@ def delete_user(user_id):
     return jsonify({'deleted': True})
 
 
+# ---------------------------------------------------------------------------
+# Self-service profile endpoints (any authenticated user)
+# ---------------------------------------------------------------------------
+
+@api_bp.route('/users/me', methods=['GET'])
+@login_required
+def get_me():
+    return jsonify(_user_dict(current_user))
+
+
+@api_bp.route('/users/me', methods=['PATCH'])
+@login_required
+def update_me():
+    data = request.get_json(silent=True) or {}
+    if 'display_name' in data:
+        current_user.display_name = (data['display_name'] or '').strip() or None
+    db.session.commit()
+    return jsonify(_user_dict(current_user))
+
+
+@api_bp.route('/users/me/password', methods=['POST'])
+@login_required
+def change_my_password():
+    import re
+    data = request.get_json(silent=True) or {}
+    current_pw = data.get('current_password', '')
+    new_pw = data.get('new_password', '')
+
+    if not current_user.check_password(current_pw):
+        return jsonify({'error': 'Current password is incorrect'}), 400
+
+    # Complexity checks
+    if len(new_pw) < 12:
+        return jsonify({'error': 'New password must be at least 12 characters long'}), 400
+    if not re.search(r'[A-Z]', new_pw):
+        return jsonify({'error': 'New password must contain at least one uppercase letter'}), 400
+    if not re.search(r'[a-z]', new_pw):
+        return jsonify({'error': 'New password must contain at least one lowercase letter'}), 400
+    if not re.search(r'[0-9]', new_pw):
+        return jsonify({'error': 'New password must contain at least one digit'}), 400
+    if current_user.check_password(new_pw):
+        return jsonify({'error': 'New password must be different from current password'}), 400
+
+    current_user.set_password(new_pw)
+    current_user.must_change_password = False
+    db.session.commit()
+
+    audit_service.log('auth.password_change', 'user', current_user.id, current_user.email)
+    return jsonify({'ok': True})
+
+
 def _user_dict(user):
     return {
         'id': user.id,

@@ -73,10 +73,13 @@ def register_routes(app):
     def check_password_change():
         """Redirect authenticated users who must change their password."""
         if current_user.is_authenticated and current_user.must_change_password:
-            allowed = ('change_password', 'logout', 'static')
+            allowed = ('change_password', 'profile', 'logout', 'static')
             if request.endpoint and request.endpoint not in allowed:
+                # Allow self-service API endpoints so the profile page works
+                if request.path.startswith('/api/users/me'):
+                    return None
                 flash('Please change your password before continuing', 'warning')
-                return redirect(url_for('change_password'))
+                return redirect(url_for('profile'))
 
     @app.route('/')
     def index():
@@ -183,6 +186,11 @@ def register_routes(app):
             return redirect(url_for('dashboard'))
 
         return render_template('change_password.html')
+
+    @app.route('/profile')
+    @login_required
+    def profile():
+        return render_template('profile.html')
 
     @app.route('/domains')
     @login_required
