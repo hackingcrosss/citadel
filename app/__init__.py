@@ -84,9 +84,10 @@ def create_app(config_class=Config):
                 active_company = current_user.company if current_user.company_id else None
                 user_companies = [active_company] if active_company else []
                 return {'active_company': active_company, 'user_companies': user_companies}
-            # auditor sees all companies (via admin company page); no user_companies needed
+            # auditor has global read-only access — see all companies
             if current_user.is_auditor:
-                return {'active_company': None, 'user_companies': []}
+                all_companies = Company.query.filter_by(status='active').order_by(Company.name).all()
+                return {'active_company': None, 'user_companies': all_companies}
             # project_admin: see all active companies (needed to create projects)
             if current_user.is_project_admin:
                 all_companies = Company.query.filter_by(status='active').order_by(Company.name).all()

@@ -728,6 +728,13 @@
                 {% endif %}
             </div>
 
+            {% if current_user.is_authenticated and current_user.is_auditor %}
+            <div class="nav-divider"></div>
+            <a class="nav-link {% if request.endpoint == 'admin_audit' %}active{% endif %}" href="{{ url_for('admin_audit') }}">
+                <i class="bi bi-journal-text"></i> Audit Trail
+            </a>
+            {% endif %}
+
             {% if current_user.is_authenticated and current_user.role == 'admin' %}
             <div class="nav-divider"></div>
 

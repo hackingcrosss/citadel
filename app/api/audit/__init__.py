@@ -1,5 +1,5 @@
 from flask import request, jsonify
-from flask_login import login_required
+from flask_login import login_required, current_user
 from app.api import api_bp
 from app.models.audit_log import AuditLog
 from app.utils.decorators import admin_required
@@ -7,10 +7,16 @@ from datetime import datetime, timedelta
 import sqlalchemy as sa
 
 
+def _admin_or_auditor():
+    """Return True if current user is admin or auditor."""
+    return current_user.is_admin or current_user.is_auditor
+
+
 @api_bp.route('/audit', methods=['GET'])
 @login_required
-@admin_required
 def list_audit_logs():
+    if not _admin_or_auditor():
+        return jsonify({'error': 'Admin or Auditor access required'}), 403
     page       = int(request.args.get('page', 1))
     per_page   = min(int(request.args.get('per_page', 50)), 200)
     action     = request.args.get('action', '').strip()
@@ -64,8 +70,9 @@ def list_audit_logs():
 
 @api_bp.route('/audit/meta', methods=['GET'])
 @login_required
-@admin_required
 def audit_meta():
+    if not _admin_or_auditor():
+        return jsonify({'error': 'Admin or Auditor access required'}), 403
     """Return distinct action and entity_type values for filter dropdowns."""
     from app import db
     actions      = [r[0] for r in db.session.query(AuditLog.action).distinct().order_by(AuditLog.action).all()]

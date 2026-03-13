@@ -67,7 +67,7 @@ def cdn_list_distributions():
                     'updated_at': None,
                 })
 
-        if not current_user.is_admin:
+        if not current_user.is_admin and not current_user.is_auditor:
             active_project = get_active_project(current_user)
             if active_project is None:
                 result = []

@@ -159,6 +159,18 @@ def get_current_plan() -> PlanInfo:
                 g._current_plan = plan
                 return plan
 
+            # Auditors get all features (read-only global access)
+            if current_user.is_auditor:
+                plan = PlanInfo(
+                    tier='enterprise',
+                    max_users=-1,
+                    max_domains=-1,
+                    features=ALL_FEATURES,
+                    org_name='',
+                )
+                g._current_plan = plan
+                return plan
+
             # project_admin users always get 'projects' and 'companies'
             # features — they exist specifically to manage these.
             _project_admin_extras = frozenset({'projects', 'companies'})
