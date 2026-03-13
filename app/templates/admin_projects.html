@@ -119,7 +119,8 @@
                             <div class="col-auto">
                                 <label class="form-label mb-1 small">Role</label>
                                 <select class="form-select form-select-sm bg-dark text-light border-secondary" id="add-member-role">
-                                    <option value="operator">Operator</option>
+                                    <option value="project_admin">Project Admin</option>
+                                    <option value="operator" selected>Operator</option>
                                     <option value="white_team">White Team</option>
                                 </select>
                             </div>
@@ -530,6 +531,7 @@ async function loadMembers() {
                 <td class="text-end">
                     <select class="form-select form-select-sm bg-dark text-light border-secondary d-inline-block w-auto me-2"
                             onchange="updateMemberRole(${m.user_id}, this.value)">
+                        <option value="project_admin" ${m.project_role==='project_admin' ? 'selected':''}>Project Admin</option>
                         <option value="operator"   ${m.project_role==='operator'   ? 'selected':''}>Operator</option>
                         <option value="white_team" ${m.project_role==='white_team' ? 'selected':''}>White Team</option>
                     </select>
@@ -557,7 +559,15 @@ async function loadUsersForSelect() {
 function populateUserSelect() {
     const sel = document.getElementById('add-member-user');
     sel.innerHTML = '<option value="">Select user…</option>' +
-        _allUsers.map(u => `<option value="${u.id}">${escapeHtml(u.email)}</option>`).join('');
+        _allUsers.map(u => `<option value="${u.id}" data-role="${u.role || 'operator'}">${escapeHtml(u.email)}</option>`).join('');
+    sel.onchange = function() {
+        const opt = sel.selectedOptions[0];
+        if (!opt || !opt.dataset.role) return;
+        const roleMap = {admin:'project_admin', project_admin:'project_admin', operator:'operator', white_team:'white_team'};
+        const roleSel = document.getElementById('add-member-role');
+        const mapped = roleMap[opt.dataset.role] || 'operator';
+        if (roleSel.querySelector(`option[value="${mapped}"]`)) roleSel.value = mapped;
+    };
 }
 
 async function addMember() {

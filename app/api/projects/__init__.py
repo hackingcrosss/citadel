@@ -186,14 +186,24 @@ def add_member(project_id):
     data = request.get_json(silent=True) or {}
 
     user_id = data.get('user_id')
-    project_role = (data.get('project_role') or 'operator').strip()
 
     if not user_id:
         return jsonify({'error': 'user_id is required'}), 400
-    if project_role not in PROJECT_ROLES:
-        return jsonify({'error': f'project_role must be one of: {", ".join(PROJECT_ROLES)}'}), 400
 
     user = User.query.get_or_404(user_id)
+
+    # Default project_role to match the user's system role when not provided
+    _ROLE_TO_PROJECT_ROLE = {
+        'admin': 'project_admin',
+        'project_admin': 'project_admin',
+        'operator': 'operator',
+        'white_team': 'white_team',
+    }
+    default_role = _ROLE_TO_PROJECT_ROLE.get(user.role, 'operator')
+    project_role = (data.get('project_role') or default_role).strip()
+
+    if project_role not in PROJECT_ROLES:
+        return jsonify({'error': f'project_role must be one of: {", ".join(PROJECT_ROLES)}'}), 400
 
     # Auditors don't need project membership — they already see everything
     if user.is_auditor:
