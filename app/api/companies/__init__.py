@@ -41,7 +41,7 @@ def list_companies():
     Operators / white_team: only companies linked to their active projects,
     enriched with per-company role and project list.
     """
-    if current_user.is_admin or current_user.is_auditor:
+    if current_user.is_admin or current_user.is_auditor or current_user.is_project_admin:
         companies = Company.query.order_by(Company.name).all()
         return jsonify({'companies': [c.to_dict() for c in companies]})
 

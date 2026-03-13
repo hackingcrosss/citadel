@@ -227,7 +227,7 @@ def assert_resource_writable(resource_type, external_id, user):
     if user.is_admin:
         return
 
-    if not user.can_write_infra:
+    if not user.can_write_infra and not user.is_project_admin:
         abort(403)
 
     from app.models.project import ProjectMember

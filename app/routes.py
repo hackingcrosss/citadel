@@ -318,6 +318,6 @@ def register_routes(app):
     @login_required
     @feature_required('companies')
     def company_detail():
-        if current_user.can_manage_projects:
+        if current_user.is_admin:
             return redirect(url_for('admin_companies'))
         return render_template('company.html')

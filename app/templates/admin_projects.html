@@ -707,26 +707,29 @@ async function checkoutDomain() {
     const zoneName = selected.substring(sepIdx + 1);
 
     try {
-        // Step 1: Ensure a local domain record exists for this CF zone
+        // Find or create a local domain record for this CF zone
         let localDomain = _zoneToLocalDomain[zoneId];
         if (!localDomain) {
+            // Try creating via admin endpoint first; fall back gracefully
             const createRes = await fetch('/api/domains', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify({name: zoneName, cloudflare_zone_id: zoneId}),
             });
-            const createData = await createRes.json();
-            if (createRes.status === 409 && createData.domain) {
-                localDomain = createData.domain;  // already tracked, use existing
-            } else if (!createRes.ok) {
-                throw new Error(createData.error || 'Failed to register domain');
-            } else {
-                localDomain = createData.domain;
+            if (createRes.ok) {
+                localDomain = (await createRes.json()).domain;
+            } else if (createRes.status === 409) {
+                const createData = await createRes.json();
+                if (createData.domain) localDomain = createData.domain;
             }
+            // If admin-only endpoint failed (403), the checkout endpoint will auto-create
         }
 
-        // Step 2: Checkout the local domain record to this project
-        const res = await fetch(`/api/projects/${_activeProjectId}/domains/${localDomain.id}/checkout`, {method: 'POST'});
+        // Checkout — pass zone info so the endpoint can auto-create the domain if needed
+        const checkoutOpts = {method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({name: zoneName, cloudflare_zone_id: zoneId})};
+        const domainIdParam = localDomain ? localDomain.id : 0;
+        const res = await fetch(`/api/projects/${_activeProjectId}/domains/${domainIdParam}/checkout`, checkoutOpts);
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || 'Checkout failed');
         showToast('Domain checked out', 'success');
