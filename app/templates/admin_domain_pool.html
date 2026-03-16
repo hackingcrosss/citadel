@@ -93,6 +93,14 @@
                     <option value="none">No purpose set</option>
                 </select>
             </div>
+        </div>
+        <div class="row g-2 align-items-center mt-1">
+            <div class="col-md-11">
+                <div id="tag-filter-bar" class="d-flex flex-wrap gap-1 align-items-center">
+                    <span class="text-muted small me-1">Tags:</span>
+                    <!-- populated dynamically -->
+                </div>
+            </div>
             <div class="col-md-1 text-end">
                 <span class="badge bg-secondary" id="filter-count"></span>
             </div>
@@ -110,6 +118,7 @@
                     <th>Account</th>
                     <th>Pool Status</th>
                     <th>Purpose</th>
+                    <th>Tags</th>
                     <th style="cursor:pointer" onclick="sortBy('record_count')">Records <i class="bi bi-chevron-expand text-muted"></i></th>
                     <th>DNS Health</th>
                     <th style="cursor:pointer" onclick="sortBy('last_synced_at')">Last Synced <i class="bi bi-chevron-expand text-muted"></i></th>
@@ -117,9 +126,34 @@
                 </tr>
             </thead>
             <tbody id="pool-tbody">
-                <tr><td colspan="8" class="text-center text-muted py-4">Loading...</td></tr>
+                <tr><td colspan="9" class="text-center text-muted py-4">Loading...</td></tr>
             </tbody>
         </table>
+    </div>
+</div>
+
+<!-- Tags Modal -->
+<div class="modal fade" id="tagsModal" tabindex="-1">
+    <div class="modal-dialog modal-sm">
+        <div class="modal-content bg-dark border-secondary">
+            <div class="modal-header border-secondary py-2">
+                <h6 class="modal-title"><i class="bi bi-tags me-2"></i>Grooming Tags</h6>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <h6 class="text-muted small mb-2" id="tags-domain-name"></h6>
+                <div id="tags-current" class="d-flex flex-wrap gap-1 mb-3"></div>
+                <div class="input-group input-group-sm">
+                    <input type="text" class="form-control bg-dark text-light border-secondary"
+                           id="tags-new-input" placeholder="Add tag..." list="tags-suggestions"
+                           onkeydown="if(event.key==='Enter'){event.preventDefault();addTagFromInput()}">
+                    <datalist id="tags-suggestions"></datalist>
+                    <button class="btn btn-outline-danger btn-sm" onclick="addTagFromInput()">
+                        <i class="bi bi-plus"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
     </div>
 </div>
 
@@ -150,6 +184,9 @@ let _poolData = null;
 let _filtered = [];
 let _sortField = 'name';
 let _sortAsc = true;
+let _allTags = [];
+let _suggestedTags = [];
+let _selectedFilterTags = new Set();
 
 function escapeHtml(s) {
     const d = document.createElement('div');
@@ -159,17 +196,28 @@ function escapeHtml(s) {
 
 async function loadPoolHealth() {
     try {
-        const res = await fetch('/api/domains/pool/health');
+        const [res, tagsRes] = await Promise.all([
+            fetch('/api/domains/pool/health'),
+            fetch('/api/domains/tags'),
+        ]);
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || 'Failed');
         _poolData = data;
+
+        if (tagsRes.ok) {
+            const td = await tagsRes.json();
+            _allTags = td.tags || [];
+            _suggestedTags = td.suggested || [];
+        }
+
         renderSummary(data.summary);
         renderAccounts(data.accounts);
         populateAccountFilter(data.accounts);
+        renderTagFilterBar();
         applyFilters();
     } catch(e) {
         document.getElementById('pool-tbody').innerHTML =
-            `<tr><td colspan="8" class="text-center text-danger py-3">${escapeHtml(e.message)}</td></tr>`;
+            `<tr><td colspan="9" class="text-center text-danger py-3">${escapeHtml(e.message)}</td></tr>`;
     }
 }
 
@@ -237,6 +285,12 @@ function applyFilters() {
         if (healthQ === 'no-mx' && d.dns_flags.mx) return false;
         if (purposeQ === 'none' && d.purpose) return false;
         if (purposeQ && purposeQ !== 'none' && d.purpose !== purposeQ) return false;
+        if (_selectedFilterTags.size > 0) {
+            const domainTags = new Set(d.grooming_tags || []);
+            for (const t of _selectedFilterTags) {
+                if (!domainTags.has(t)) return false;
+            }
+        }
         return true;
     });
 
@@ -285,7 +339,7 @@ function _timeAgo(iso) {
 function renderTable() {
     const tbody = document.getElementById('pool-tbody');
     if (!_filtered.length) {
-        tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted py-4">No domains match filters</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="9" class="text-center text-muted py-4">No domains match filters</td></tr>';
         return;
     }
     tbody.innerHTML = _filtered.map(d => {
@@ -297,12 +351,20 @@ function renderTable() {
             ? `<span class="badge bg-secondary bg-opacity-50">${escapeHtml(d.purpose)}</span>`
             : '<span class="text-muted">-</span>';
         const staleIcon = d.is_stale ? ' <i class="bi bi-exclamation-triangle-fill text-warning" title="Stale"></i>' : '';
+        const tagBadges = (d.grooming_tags || []).map(t =>
+            `<span class="badge bg-danger bg-opacity-25 text-danger me-1" style="font-size:0.7rem">${escapeHtml(t)}</span>`
+        ).join('') || '<span class="text-muted">-</span>';
 
         return `<tr>
             <td><strong>${escapeHtml(d.name)}</strong></td>
             <td><span class="badge bg-dark border border-secondary">${escapeHtml(d.account_label)}</span></td>
             <td>${poolBadge}</td>
             <td>${purposeBadge}</td>
+            <td class="tag-cell">${tagBadges}
+                <button class="btn btn-link btn-sm text-muted py-0 px-1" onclick="openTagsModal(${d.id}, '${escapeHtml(d.name)}')" title="Manage tags">
+                    <i class="bi bi-pencil" style="font-size:0.7rem"></i>
+                </button>
+            </td>
             <td>${d.record_count}</td>
             <td>${_flag(f.a, 'A')}${_flag(f.spf, 'SPF')}${_flag(f.mx, 'MX')}${_flag(f.dkim, 'DK')}${_flag(f.dmarc, 'DM')}</td>
             <td>${_timeAgo(d.last_synced_at)}${staleIcon}</td>
@@ -390,6 +452,131 @@ async function syncDomain(domainId) {
     } catch(e) {
         showToast(e.message, 'danger');
     }
+}
+
+// ── Tag filter bar ───────────────────────────────────────────────────────
+function renderTagFilterBar() {
+    const bar = document.getElementById('tag-filter-bar');
+    // Collect all tags actually used across domains
+    const usedTags = new Set();
+    (_poolData?.domains || []).forEach(d => (d.grooming_tags || []).forEach(t => usedTags.add(t)));
+    // Merge with suggested for completeness
+    _suggestedTags.forEach(t => usedTags.add(t));
+    const tags = [...usedTags].sort();
+
+    if (!tags.length) {
+        bar.innerHTML = '<span class="text-muted small">No tags yet</span>';
+        return;
+    }
+    bar.innerHTML = '<span class="text-muted small me-1">Tags:</span>' +
+        tags.map(t => {
+            const active = _selectedFilterTags.has(t);
+            const cls = active ? 'btn-danger' : 'btn-outline-secondary';
+            return `<button class="btn ${cls} btn-sm py-0 px-1" style="font-size:0.73rem"
+                        onclick="toggleTagFilter('${escapeHtml(t)}')">${escapeHtml(t)}</button>`;
+        }).join('') +
+        (_selectedFilterTags.size ? `<button class="btn btn-link btn-sm text-muted py-0" onclick="clearTagFilters()">clear</button>` : '');
+}
+
+function toggleTagFilter(tag) {
+    if (_selectedFilterTags.has(tag)) _selectedFilterTags.delete(tag);
+    else _selectedFilterTags.add(tag);
+    renderTagFilterBar();
+    applyFilters();
+}
+
+function clearTagFilters() {
+    _selectedFilterTags.clear();
+    renderTagFilterBar();
+    applyFilters();
+}
+
+// ── Tags modal ──────────────────────────────────────────────────────────
+let _tagsModal = null;
+let _tagsDomainId = null;
+
+function openTagsModal(domainId, name) {
+    _tagsDomainId = domainId;
+    if (!_tagsModal) _tagsModal = new bootstrap.Modal(document.getElementById('tagsModal'));
+    document.getElementById('tags-domain-name').textContent = name;
+    document.getElementById('tags-new-input').value = '';
+    renderTagsModalCurrent();
+    populateTagSuggestions();
+    _tagsModal.show();
+}
+
+function renderTagsModalCurrent() {
+    const d = (_poolData?.domains || []).find(x => x.id === _tagsDomainId);
+    const tags = d ? (d.grooming_tags || []) : [];
+    const el = document.getElementById('tags-current');
+    if (!tags.length) {
+        el.innerHTML = '<span class="text-muted small">No tags</span>';
+        return;
+    }
+    el.innerHTML = tags.map(t =>
+        `<span class="badge bg-danger bg-opacity-25 text-danger d-inline-flex align-items-center gap-1">
+            ${escapeHtml(t)}
+            <i class="bi bi-x-circle" style="cursor:pointer;font-size:0.7rem" onclick="removeTag('${escapeHtml(t)}')"></i>
+        </span>`
+    ).join('');
+}
+
+function populateTagSuggestions() {
+    const dl = document.getElementById('tags-suggestions');
+    const d = (_poolData?.domains || []).find(x => x.id === _tagsDomainId);
+    const current = new Set(d ? (d.grooming_tags || []) : []);
+    dl.innerHTML = _allTags
+        .filter(t => !current.has(t))
+        .map(t => `<option value="${escapeHtml(t)}">`)
+        .join('');
+}
+
+async function addTagFromInput() {
+    const input = document.getElementById('tags-new-input');
+    const tag = input.value.trim().toLowerCase();
+    if (!tag) return;
+    input.value = '';
+
+    try {
+        const res = await fetch(`/api/domains/${_tagsDomainId}/tags`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({tag}),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Failed');
+        updateDomainTags(_tagsDomainId, data.grooming_tags);
+        renderTagsModalCurrent();
+        populateTagSuggestions();
+        renderTagFilterBar();
+        renderTable();
+    } catch(e) {
+        showToast(e.message, 'danger');
+    }
+}
+
+async function removeTag(tag) {
+    try {
+        const res = await fetch(`/api/domains/${_tagsDomainId}/tags/${encodeURIComponent(tag)}`, {method: 'DELETE'});
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Failed');
+        updateDomainTags(_tagsDomainId, data.grooming_tags);
+        renderTagsModalCurrent();
+        populateTagSuggestions();
+        renderTagFilterBar();
+        renderTable();
+    } catch(e) {
+        showToast(e.message, 'danger');
+    }
+}
+
+function updateDomainTags(domainId, tags) {
+    const d = (_poolData?.domains || []).find(x => x.id === domainId);
+    if (d) d.grooming_tags = tags;
+    // Also update _allTags
+    const all = new Set(_allTags);
+    tags.forEach(t => all.add(t));
+    _allTags = [...all].sort();
 }
 
 // Init

@@ -170,6 +170,7 @@
 
                 <!-- Available pool -->
                 <h6 class="text-muted mb-2">Checkout from Pool</h6>
+                <div id="pool-tag-filter" class="d-flex flex-wrap gap-1 mb-2" style="display:none!important;"></div>
                 <div class="row g-2 align-items-end mb-2">
                     <div class="col">
                         <select class="form-select form-select-sm bg-dark text-light border-secondary" id="pool-domain-select">
@@ -632,6 +633,9 @@ async function openDomainsModal(projectId) {
     await loadDomainsPanels();
 }
 
+let _poolZones = [];         // available CF zones (enriched with tags)
+let _poolTagFilter = new Set();
+
 async function loadDomainsPanels() {
     try {
         // Fetch checked-out domains for this project, all local domains (for checkout state),
@@ -679,22 +683,80 @@ async function loadDomainsPanels() {
             }
         });
 
-        // Pool = CF zones minus those already checked out
+        // Pool = CF zones minus those already checked out, enriched with grooming tags from local DB
         const zones = Array.isArray(zonesData) ? zonesData : (zonesData.zones || []);
-        const pool  = zones.filter(z => !takenZoneIds.has(z.id));
+        _poolZones = zones.filter(z => !takenZoneIds.has(z.id)).map(z => {
+            const local = _zoneToLocalDomain[z.id];
+            return { ...z, grooming_tags: local ? (local.grooming_tags || []) : [] };
+        });
 
-        const sel      = document.getElementById('pool-domain-select');
-        const emptyMsg = document.getElementById('pool-empty-msg');
-        if (!pool.length) {
-            sel.innerHTML = '<option value="">No available domains</option>';
-            emptyMsg.style.display = '';
-        } else {
-            emptyMsg.style.display = 'none';
-            sel.innerHTML = '<option value="">Select domain…</option>' +
-                pool.map(z => `<option value="${escapeHtml(z.id)}|${escapeHtml(z.name)}">${escapeHtml(z.name)}</option>`).join('');
-        }
+        renderPoolTagFilter();
+        renderPoolSelect();
     } catch(e) {
         showToast('Failed to load domain data: ' + e.message, 'danger');
+    }
+}
+
+function renderPoolTagFilter() {
+    const container = document.getElementById('pool-tag-filter');
+    // Collect all tags across available pool domains
+    const allTags = new Set();
+    _poolZones.forEach(z => (z.grooming_tags || []).forEach(t => allTags.add(t)));
+
+    if (!allTags.size) {
+        container.style.setProperty('display', 'none', 'important');
+        return;
+    }
+    container.style.removeProperty('display');
+    container.innerHTML = '<span class="text-muted small me-1">Filter by tag:</span>' +
+        [...allTags].sort().map(t => {
+            const active = _poolTagFilter.has(t);
+            const cls = active ? 'btn-danger' : 'btn-outline-secondary';
+            return `<button class="btn ${cls} btn-sm py-0 px-1" style="font-size:0.73rem"
+                        onclick="togglePoolTagFilter('${escapeHtml(t)}')">${escapeHtml(t)}</button>`;
+        }).join('') +
+        (_poolTagFilter.size ? `<button class="btn btn-link btn-sm text-muted py-0" onclick="clearPoolTagFilter()">clear</button>` : '');
+}
+
+function togglePoolTagFilter(tag) {
+    if (_poolTagFilter.has(tag)) _poolTagFilter.delete(tag);
+    else _poolTagFilter.add(tag);
+    renderPoolTagFilter();
+    renderPoolSelect();
+}
+
+function clearPoolTagFilter() {
+    _poolTagFilter.clear();
+    renderPoolTagFilter();
+    renderPoolSelect();
+}
+
+function renderPoolSelect() {
+    let filtered = _poolZones;
+    if (_poolTagFilter.size) {
+        filtered = _poolZones.filter(z => {
+            const zt = new Set(z.grooming_tags || []);
+            for (const t of _poolTagFilter) {
+                if (!zt.has(t)) return false;
+            }
+            return true;
+        });
+    }
+
+    const sel      = document.getElementById('pool-domain-select');
+    const emptyMsg = document.getElementById('pool-empty-msg');
+    if (!filtered.length) {
+        sel.innerHTML = '<option value="">No available domains</option>';
+        emptyMsg.style.display = '';
+    } else {
+        emptyMsg.style.display = 'none';
+        sel.innerHTML = '<option value="">Select domain…</option>' +
+            filtered.map(z => {
+                const tagStr = (z.grooming_tags || []).length
+                    ? ` [${z.grooming_tags.join(', ')}]`
+                    : '';
+                return `<option value="${escapeHtml(z.id)}|${escapeHtml(z.name)}">${escapeHtml(z.name)}${escapeHtml(tagStr)}</option>`;
+            }).join('');
     }
 }
 

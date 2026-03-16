@@ -15,7 +15,14 @@ from app.services.project_service import (
 from app.utils.decorators import admin_required
 from app import db
 from app.models.domain import Domain, DNSRecord
+from app.models.domain_tag import DomainGroomingTag
 from datetime import datetime, timedelta
+
+# Well-known grooming tags (suggested in the UI, but free-form tags are allowed)
+SUGGESTED_TAGS = [
+    'phishing', 'c2-redirect', 'c2-direct',
+    'mailgun_ready', 'ssl_ok', 'aged_90d',
+]
 
 # RFC-1123 hostname: labels separated by dots, each 1–63 chars [a-z0-9-]
 _DOMAIN_RE = re.compile(
@@ -516,6 +523,74 @@ def delete_dns_record(zone_id, record_id):
 
 
 # ---------------------------------------------------------------------------
+# Grooming Tags
+# ---------------------------------------------------------------------------
+
+@api_bp.route('/domains/tags', methods=['GET'])
+@login_required
+def list_all_grooming_tags():
+    """Return all distinct tags in use plus the suggested defaults."""
+    used = {r[0] for r in db.session.query(DomainGroomingTag.tag).distinct().all()}
+    all_tags = sorted(used | set(SUGGESTED_TAGS))
+    return jsonify({'tags': all_tags, 'suggested': SUGGESTED_TAGS})
+
+
+@api_bp.route('/domains/<int:domain_id>/tags', methods=['POST'])
+@login_required
+@admin_required
+def add_grooming_tag(domain_id):
+    """Add one or more grooming tags to a domain."""
+    domain = Domain.query.get_or_404(domain_id)
+    data = request.get_json()
+    if not data:
+        return jsonify({'error': 'No data provided'}), 400
+
+    tags = data.get('tags') or ([data['tag']] if data.get('tag') else [])
+    if not tags:
+        return jsonify({'error': 'Provide "tag" or "tags"'}), 400
+
+    added = []
+    for raw in tags:
+        tag = str(raw).strip().lower()[:50]
+        if not tag:
+            continue
+        existing = DomainGroomingTag.query.filter_by(
+            domain_id=domain_id, tag=tag
+        ).first()
+        if not existing:
+            db.session.add(DomainGroomingTag(domain_id=domain_id, tag=tag))
+            added.append(tag)
+
+    db.session.commit()
+    return jsonify({
+        'added': added,
+        'grooming_tags': sorted(t.tag for t in domain.grooming_tags_rel),
+    }), 201 if added else 200
+
+
+@api_bp.route('/domains/<int:domain_id>/tags/<tag>', methods=['DELETE'])
+@login_required
+@admin_required
+def remove_grooming_tag(domain_id, tag):
+    """Remove a grooming tag from a domain."""
+    Domain.query.get_or_404(domain_id)
+    record = DomainGroomingTag.query.filter_by(
+        domain_id=domain_id, tag=tag
+    ).first()
+    if not record:
+        return jsonify({'error': 'Tag not found on this domain'}), 404
+
+    db.session.delete(record)
+    db.session.commit()
+
+    domain = Domain.query.get(domain_id)
+    return jsonify({
+        'deleted': True,
+        'grooming_tags': sorted(t.tag for t in domain.grooming_tags_rel),
+    })
+
+
+# ---------------------------------------------------------------------------
 # SSL
 # ---------------------------------------------------------------------------
 
@@ -624,6 +699,7 @@ def domain_pool_health():
             'record_count': len(records),
             'last_synced_at': d.last_synced_at.isoformat() if d.last_synced_at else None,
             'is_stale': stale,
+            'grooming_tags': sorted(t.tag for t in d.grooming_tags_rel),
             'dns_flags': {
                 'a': has_a, 'spf': has_spf, 'dkim': has_dkim,
                 'dmarc': has_dmarc, 'mx': has_mx,

@@ -25,6 +25,8 @@ class Domain(db.Model):
 
     dns_records = db.relationship('DNSRecord', backref='domain', lazy='dynamic',
                                   cascade='all, delete-orphan')
+    grooming_tags_rel = db.relationship('DomainGroomingTag', back_populates='domain',
+                                        cascade='all, delete-orphan', lazy='selectin')
     checkout_project = db.relationship('Project', foreign_keys=[checkout_project_id])
     checked_out_by = db.relationship('User', foreign_keys=[checked_out_by_id])
 
@@ -51,6 +53,7 @@ class Domain(db.Model):
             'checked_out_at': self.checked_out_at.isoformat() if self.checked_out_at else None,
             'checked_out_by_id': self.checked_out_by_id,
             'checked_out_by_email': self.checked_out_by.email if self.checked_out_by else None,
+            'grooming_tags': sorted(t.tag for t in self.grooming_tags_rel),
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None,
             'last_synced_at': self.last_synced_at.isoformat() if self.last_synced_at else None,
