@@ -61,8 +61,9 @@ def create_app(config_class=Config):
                     role = 'auditor'
                 else:
                     role = get_user_project_role(current_user.id, active.id)
+            all_projects = get_projects_for_user(current_user)
             return {
-                'user_projects': get_projects_for_user(current_user),
+                'user_projects': [p for p in all_projects if p.status == 'active'],
                 'active_project': active,
                 'active_project_role': role,
             }

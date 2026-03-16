@@ -53,12 +53,19 @@ def create_project():
     if not company:
         return jsonify({'error': 'Company not found'}), 404
 
-    # Auto-generate a random codename for the project code
-    from app.utils.codenames import generate_codename
-    existing_codes = {p.code for p in Project.query.with_entities(Project.code).all()}
-    code = generate_codename(existing_codes)
+    # Use user-supplied codename or auto-generate one
+    user_code = (data.get('name') or '').strip().upper()
+    if user_code:
+        existing = Project.query.filter_by(code=user_code).first()
+        if existing:
+            return jsonify({'error': f'Codename "{user_code}" is already in use'}), 409
+        code = user_code
+    else:
+        from app.utils.codenames import generate_codename
+        existing_codes = {p.code for p in Project.query.with_entities(Project.code).all()}
+        code = generate_codename(existing_codes)
 
-    name = (data.get('name') or '').strip() or code.replace('-', ' ').title()
+    name = code
     description = (data.get('description') or '').strip() or None
 
     project = Project(
@@ -112,7 +119,19 @@ def update_project(project_id):
 
     data = request.get_json(silent=True) or {}
 
-    if 'name' in data:
+    if 'code' in data:
+        code = (data['code'] or '').strip().upper()
+        if not code:
+            return jsonify({'error': 'Codename cannot be empty'}), 400
+        if len(code) > 40:
+            return jsonify({'error': 'Codename too long (max 40 characters)'}), 400
+        existing = Project.query.filter(Project.code == code, Project.id != project_id).first()
+        if existing:
+            return jsonify({'error': f'Codename "{code}" is already in use'}), 409
+        project.code = code
+        project.name = code
+
+    if 'name' in data and 'code' not in data:
         name = (data['name'] or '').strip()
         if not name:
             return jsonify({'error': 'Project name cannot be empty'}), 400

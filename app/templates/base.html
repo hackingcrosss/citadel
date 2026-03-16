@@ -604,27 +604,43 @@
         {% set net_pages      = ['npm','cdn'] %}
         {% set phishing_pages = ['email','gophish'] %}
         {% set ops_pages      = ['operations','orchestration_mgmt','infra_map','cobaltstrike'] %}
-        {% set admin_team_pages = ['admin_users','admin_projects','admin_companies'] %}
-        {% set admin_plat_pages = ['admin_domain_pool','admin_license','admin_audit','settings'] %}
+        {% set admin_plat_pages = ['admin_users','admin_domain_pool','admin_license','admin_audit','settings'] %}
         <nav class="nav flex-column">
             <a class="nav-link {% if request.endpoint == 'dashboard' %}active{% endif %}" href="{{ url_for('dashboard') }}">
                 <i class="bi bi-speedometer2"></i> Dashboard
             </a>
 
-            {% if current_user.is_authenticated and current_user.can_manage_projects and current_plan.is_enabled('projects') %}
-            <a class="nav-link {% if request.endpoint == 'admin_projects' %}active{% endif %}" href="{{ url_for('admin_projects') }}">
-                <i class="bi bi-folder2-open"></i> Projects
-            </a>
-            {% elif current_user.is_authenticated and user_projects and current_plan.is_enabled('projects') %}
-            <a class="nav-link {% if request.endpoint == 'projects' %}active{% endif %}" href="{{ url_for('projects') }}">
-                <i class="bi bi-folder2-open"></i> My Projects
-            </a>
-            {% endif %}
-
-            {% if current_user.is_authenticated and user_companies and current_plan.is_enabled('companies') %}
-            <a class="nav-link {% if request.endpoint == 'company_detail' %}active{% endif %}" href="{{ url_for('company_detail') }}">
-                <i class="bi bi-building"></i> Companies
-            </a>
+            {% set has_team_items = (current_user.can_manage_projects and current_plan.is_enabled('projects')) or (user_projects and current_plan.is_enabled('projects')) or (user_companies and current_plan.is_enabled('companies')) or (current_user.role == 'admin' and current_plan.is_enabled('companies')) %}
+            {% set team_pages = ['admin_projects','projects','company_detail','admin_companies'] %}
+            {% if current_user.is_authenticated and has_team_items %}
+            <button class="nav-section {% if request.endpoint not in team_pages %}collapsed{% endif %}" data-bs-toggle="collapse" data-bs-target="#nav-team">
+                <span><i class="bi bi-people-fill"></i> Team</span>
+                <i class="bi bi-chevron-right"></i>
+            </button>
+            <div class="collapse nav-collapse {% if request.endpoint in team_pages %}show{% endif %}" id="nav-team">
+                {% if current_plan.is_enabled('projects') %}
+                {% if current_user.can_manage_projects %}
+                <a class="nav-link {% if request.endpoint == 'admin_projects' %}active{% endif %}" href="{{ url_for('admin_projects') }}">
+                    <i class="bi bi-folder2-open"></i> Projects
+                </a>
+                {% elif user_projects %}
+                <a class="nav-link {% if request.endpoint == 'projects' %}active{% endif %}" href="{{ url_for('projects') }}">
+                    <i class="bi bi-folder2-open"></i> My Projects
+                </a>
+                {% endif %}
+                {% endif %}
+                {% if current_plan.is_enabled('companies') and (user_companies or current_user.role == 'admin') %}
+                {% if current_user.role == 'admin' %}
+                <a class="nav-link {% if request.endpoint == 'admin_companies' %}active{% endif %}" href="{{ url_for('admin_companies') }}">
+                    <i class="bi bi-building"></i> Companies
+                </a>
+                {% else %}
+                <a class="nav-link {% if request.endpoint == 'company_detail' %}active{% endif %}" href="{{ url_for('company_detail') }}">
+                    <i class="bi bi-building"></i> Companies
+                </a>
+                {% endif %}
+                {% endif %}
+            </div>
             {% endif %}
 
             <div class="nav-divider"></div>
@@ -738,31 +754,15 @@
             {% if current_user.is_authenticated and current_user.role == 'admin' %}
             <div class="nav-divider"></div>
 
-            <!-- Admin: Team section -->
-            <button class="nav-section {% if request.endpoint not in admin_team_pages %}collapsed{% endif %}" data-bs-toggle="collapse" data-bs-target="#nav-admin-team">
-                <span><i class="bi bi-people-fill"></i> Team</span>
-                <i class="bi bi-chevron-right"></i>
-            </button>
-            <div class="collapse nav-collapse {% if request.endpoint in admin_team_pages %}show{% endif %}" id="nav-admin-team">
-                <a class="nav-link {% if request.endpoint == 'admin_users' %}active{% endif %}" href="{{ url_for('admin_users') }}">
-                    <i class="bi bi-person-gear"></i> Users
-                </a>
-                <a class="nav-link {% if request.endpoint == 'admin_projects' %}active{% endif %}" href="{{ url_for('admin_projects') }}">
-                    <i class="bi bi-folder2-open"></i> Projects
-                </a>
-                {% if current_plan.is_enabled('companies') %}
-                <a class="nav-link {% if request.endpoint == 'admin_companies' %}active{% endif %}" href="{{ url_for('admin_companies') }}">
-                    <i class="bi bi-building"></i> Companies
-                </a>
-                {% endif %}
-            </div>
-
             <!-- Admin: Platform section -->
             <button class="nav-section {% if request.endpoint not in admin_plat_pages %}collapsed{% endif %}" data-bs-toggle="collapse" data-bs-target="#nav-admin-platform">
                 <span><i class="bi bi-sliders"></i> Platform</span>
                 <i class="bi bi-chevron-right"></i>
             </button>
             <div class="collapse nav-collapse {% if request.endpoint in admin_plat_pages %}show{% endif %}" id="nav-admin-platform">
+                <a class="nav-link {% if request.endpoint == 'admin_users' %}active{% endif %}" href="{{ url_for('admin_users') }}">
+                    <i class="bi bi-person-gear"></i> Users
+                </a>
                 <a class="nav-link {% if request.endpoint == 'admin_domain_pool' %}active{% endif %}" href="{{ url_for('admin_domain_pool') }}">
                     <i class="bi bi-collection"></i> Domain Pool
                 </a>
