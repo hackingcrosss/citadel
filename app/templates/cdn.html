@@ -380,13 +380,16 @@
                     : '—';
             } else {
                 const viewBtn = `<button class="btn btn-sm btn-outline-secondary me-1" title="View details" onclick="openDetailModal(${d.id})"><i class="bi bi-eye"></i></button>`;
+                const forceBtn = (!IS_READONLY && d.status === 'creating')
+                    ? `<button class="btn btn-sm btn-outline-warning me-1" title="Force refresh from cloud" onclick="forceRefresh(${d.id})"><i class="bi bi-arrow-repeat"></i></button>`
+                    : '';
                 const editBtn = (!IS_READONLY && d.status !== 'creating')
                     ? `<button class="btn btn-sm btn-outline-secondary me-1" title="Edit origin" onclick="openEditModal(${d.id})"><i class="bi bi-pencil"></i></button>`
                     : '';
                 const delBtn = !IS_READONLY
                     ? `<button class="btn btn-sm btn-outline-danger" title="Delete" onclick="confirmDelete(${d.id},'${escapeAttr(d.domain || '(creating)')}','${escapeAttr(origin)}','${d.provider}',${d.status === 'creating'})"><i class="bi bi-trash"></i></button>`
                     : '';
-                actions = viewBtn + editBtn + delBtn;
+                actions = viewBtn + forceBtn + editBtn + delBtn;
             }
 
             const untrackedBadge = d.tracked === false
@@ -648,6 +651,26 @@
                 }
             })
             .catch(() => {});
+    }
+
+    // ─────────────────────────────────────────
+    // Force refresh stuck distribution
+    // ─────────────────────────────────────────
+
+    function forceRefresh(id) {
+        showToast('Looking up live cloud resource…', 'info');
+        fetch(`/api/cdn/distributions/${id}/force-refresh`, {method: 'POST'})
+            .then(r => r.json())
+            .then(data => {
+                if (data.error) {
+                    showToast(data.error, 'danger');
+                    return;
+                }
+                showToast('Distribution recovered — status: ' + (data.distribution?.status || 'updated'), 'success');
+                stopStatusPoll(id);
+                loadDistributions();
+            })
+            .catch(err => showToast('Error: ' + err, 'danger'));
     }
 
     // ─────────────────────────────────────────
