@@ -209,11 +209,16 @@ def cdn_get_distribution_status(dist_id):
             return jsonify({'status': 'creating', 'id': dist_id, 'task_state': ar.state})
         return jsonify({'status': 'creating', 'id': dist_id, 'task_state': 'UNKNOWN'})
 
-    # Task failed — error message stored in external_id
+    # Task failed — error message may be stored in external_id or it may be a
+    # real external_id (if the task partially succeeded before failing).
     if dist.status == 'error':
         ext = dist.external_id or ''
-        error_msg = ext[6:] if ext.startswith('error:') else 'Unknown error'
-        return jsonify({'status': 'error', 'id': dist_id, 'error': error_msg})
+        if ext.startswith('error:'):
+            error_msg = ext[6:]
+        else:
+            error_msg = 'Creation partially failed — some cloud resources may exist. Check your cloud account.'
+        return jsonify({'status': 'error', 'id': dist_id, 'error': error_msg,
+                        'domain': dist.domain or ''})
 
     # Normal case — poll live status from cloud provider
     try:
