@@ -286,15 +286,27 @@
     </div>
     <!-- Legend -->
     <div class="card-custom">
-        <div class="card-body py-2 d-flex flex-wrap gap-3">
-            <span class="small"><span style="display:inline-block;width:12px;height:12px;background:#1d4ed8;border-radius:2px;vertical-align:middle;" class="me-1"></span>Zone</span>
-            <span class="small"><span style="display:inline-block;width:12px;height:12px;background:#0e7490;border-radius:2px;vertical-align:middle;" class="me-1"></span>DNS Record</span>
-            <span class="small"><span style="display:inline-block;width:12px;height:12px;background:#c2410c;border-radius:2px;vertical-align:middle;" class="me-1"></span>EC2</span>
-            <span class="small"><span style="display:inline-block;width:12px;height:12px;background:#15803d;border-radius:2px;vertical-align:middle;" class="me-1"></span>NPM Proxy</span>
-            <span class="small"><span style="display:inline-block;width:12px;height:12px;background:#374151;border-radius:2px;vertical-align:middle;" class="me-1"></span>Container</span>
-            <span class="small"><span style="display:inline-block;width:12px;height:12px;background:#991b1b;border-radius:2px;vertical-align:middle;" class="me-1"></span>CS Listener</span>
-            <span class="small"><span style="display:inline-block;width:12px;height:12px;background:#6b21a8;border-radius:2px;vertical-align:middle;" class="me-1"></span>Unknown Backend</span>
-            <span class="small"><span style="display:inline-block;width:12px;height:12px;background:#075985;border:1px solid #38bdf8;border-radius:2px;vertical-align:middle;" class="me-1"></span>CDN</span>
+        <div class="card-body py-2">
+            <div class="d-flex flex-wrap gap-3 mb-2">
+                <span class="small fw-bold text-muted">Node types:</span>
+                <span class="small"><span style="display:inline-block;width:12px;height:12px;background:#1e3a8a;border:1px solid #3b82f6;border-radius:2px;vertical-align:middle;" class="me-1"></span> 🌐 Zone (TLD)</span>
+                <span class="small"><span style="display:inline-block;width:12px;height:12px;background:#164e63;border:1px solid #22d3ee;border-radius:2px;vertical-align:middle;" class="me-1"></span> DNS Record (FQDN)</span>
+                <span class="small"><span style="display:inline-block;width:12px;height:12px;background:#7c2d12;border:1px solid #fb923c;border-radius:2px;vertical-align:middle;" class="me-1"></span> EC2 Instance</span>
+                <span class="small"><span style="display:inline-block;width:12px;height:12px;background:#14532d;border:1px solid #4ade80;border-radius:2px;vertical-align:middle;" class="me-1"></span> NPM Reverse Proxy</span>
+                <span class="small"><span style="display:inline-block;width:12px;height:12px;background:#1f2937;border:1px solid #9ca3af;border-radius:2px;vertical-align:middle;" class="me-1"></span> 📦 Container</span>
+                <span class="small"><span style="display:inline-block;width:12px;height:12px;background:#7f1d1d;border:1px solid #f87171;border-radius:2px;vertical-align:middle;" class="me-1"></span> 🎯 CS Listener</span>
+                <span class="small"><span style="display:inline-block;width:12px;height:12px;background:#3b0764;border:1px solid #c084fc;border-radius:2px;vertical-align:middle;" class="me-1"></span> Backend (unresolved)</span>
+                <span class="small"><span style="display:inline-block;width:12px;height:12px;background:#0c4a6e;border:1px solid #38bdf8;border-radius:2px;vertical-align:middle;" class="me-1"></span> ☁ CDN Distribution</span>
+            </div>
+            <div class="d-flex flex-wrap gap-3">
+                <span class="small fw-bold text-muted">Indicators:</span>
+                <span class="small">🟠 CF = Cloudflare proxied</span>
+                <span class="small"><span style="color:#3b82f6;">━━</span> Zone → FQDN</span>
+                <span class="small"><span style="color:#fb923c;">━━</span> FQDN → EC2</span>
+                <span class="small"><span style="color:#4ade80;">━━</span> EC2 → NPM</span>
+                <span class="small"><span style="color:#c084fc;">━━</span> NPM → Backend</span>
+                <span class="small"><span style="color:#38bdf8;">━━</span> CDN link</span>
+            </div>
         </div>
     </div>
 </div><!-- /pane-diagram -->
@@ -381,9 +393,9 @@
             });
 
             document.getElementById('count-domains').textContent    = allDomains.length;
-            document.getElementById('count-ec2').textContent        = allInstances.length;
+            document.getElementById('count-ec2').textContent        = '—';
             document.getElementById('count-npm').textContent        = allNpmHosts.length;
-            document.getElementById('count-containers').textContent = allContainers.length;
+            document.getElementById('count-containers').textContent = '—';
             document.getElementById('count-cdn').textContent        = allCdnDistributions.length;
 
             buildLookupMaps();
@@ -413,9 +425,9 @@
             allDomains = localDomains.filter(function(d) { return d.cloudflare_zone_id; });
 
             document.getElementById('count-domains').textContent    = allDomains.length;
-            document.getElementById('count-ec2').textContent        = allInstances.length;
+            document.getElementById('count-ec2').textContent        = '—';
             document.getElementById('count-npm').textContent        = allNpmHosts.length;
-            document.getElementById('count-containers').textContent = allContainers.length;
+            document.getElementById('count-containers').textContent = '—';
             document.getElementById('count-cdn').textContent        = allCdnDistributions.length;
 
             buildLookupMaps();
@@ -571,13 +583,23 @@
     // ── Rendering ─────────────────────────────────────────────────────────────
 
     function renderAll() {
-        var usedNpmIds      = {};
-        var usedInstanceIds = {};
+        var usedNpmIds        = {};
+        var usedInstanceIds   = {};
         renderChainTable(usedNpmIds, usedInstanceIds);
         renderOrphanEc2(usedInstanceIds);
         renderOrphanNpm(usedNpmIds);
         renderDnsWithoutNpm();
         renderCdnTable();
+
+        // Update summary counts — only show assets actively used by this project
+        var usedContainerIds = {};
+        allNpmHosts.forEach(function(npm) {
+            if (!usedNpmIds[npm.id]) return;
+            var c = findContainerForHost(npm.forward_host || '');
+            if (c) usedContainerIds[c.id || c.name] = true;
+        });
+        document.getElementById('count-ec2').textContent        = Object.keys(usedInstanceIds).length;
+        document.getElementById('count-containers').textContent = Object.keys(usedContainerIds).length;
     }
 
     function renderCdnTable() {
@@ -1185,6 +1207,17 @@
         return visited;
     }
 
+    // Briefly enable physics to resolve overlaps, then disable again.
+    function settleLayout() {
+        if (!diagramNetwork) return;
+        diagramNetwork.setOptions({ physics: { enabled: true } });
+        diagramNetwork.once('stabilizationIterationsDone', function() {
+            diagramNetwork.setOptions({ physics: { enabled: false } });
+        });
+        diagramNetwork.stabilize(100);
+        setTimeout(function() { fitDiagram(); }, 200);
+    }
+
     function highlightDiagramPath(nodeId) {
         if (!diagramVisData) return;
 
@@ -1221,7 +1254,7 @@
 
         diagramVisData.nodes.update(nodeUpdates);
         diagramVisData.edges.update(edgeUpdates);
-        setTimeout(function() { fitDiagram(); }, 50);
+        settleLayout();
     }
 
     function resetDiagramHighlight() {
@@ -1247,7 +1280,7 @@
 
         diagramVisData.nodes.update(nodeUpdates);
         diagramVisData.edges.update(edgeUpdates);
-        setTimeout(function() { fitDiagram(); }, 50);
+        settleLayout();
     }
 
     // ── Diagram rendering (vis-network) ───────────────────────────────────────
@@ -1273,14 +1306,14 @@
         function uid() { return ++nodeIdCounter; }
 
         var GROUP_COLORS = {
-            zone:      { background: '#1e3a8a', border: '#3b82f6', hover: { background: '#1d4ed8' } },
-            fqdn:      { background: '#164e63', border: '#22d3ee', hover: { background: '#0e7490' } },
-            ec2:       { background: '#7c2d12', border: '#fb923c', hover: { background: '#c2410c' } },
-            npm:       { background: '#14532d', border: '#4ade80', hover: { background: '#15803d' } },
-            container: { background: '#1f2937', border: '#9ca3af', hover: { background: '#374151' } },
-            listener:  { background: '#7f1d1d', border: '#f87171', hover: { background: '#991b1b' } },
-            backend:   { background: '#3b0764', border: '#c084fc', hover: { background: '#6b21a8' } },
-            cdn:       { background: '#0c4a6e', border: '#38bdf8', hover: { background: '#075985' } }
+            zone:      { background: '#1e3a8a', border: '#3b82f6', hover: { background: '#1d4ed8', border: '#60a5fa' }, highlight: { background: '#1d4ed8', border: '#93bbfd' } },
+            fqdn:      { background: '#164e63', border: '#22d3ee', hover: { background: '#0e7490', border: '#67e8f9' }, highlight: { background: '#0e7490', border: '#a5f3fc' } },
+            ec2:       { background: '#7c2d12', border: '#fb923c', hover: { background: '#c2410c', border: '#fdba74' }, highlight: { background: '#c2410c', border: '#fed7aa' } },
+            npm:       { background: '#14532d', border: '#4ade80', hover: { background: '#15803d', border: '#86efac' }, highlight: { background: '#15803d', border: '#bbf7d0' } },
+            container: { background: '#1f2937', border: '#9ca3af', hover: { background: '#374151', border: '#d1d5db' }, highlight: { background: '#374151', border: '#e5e7eb' } },
+            listener:  { background: '#7f1d1d', border: '#f87171', hover: { background: '#991b1b', border: '#fca5a5' }, highlight: { background: '#991b1b', border: '#fecaca' } },
+            backend:   { background: '#3b0764', border: '#c084fc', hover: { background: '#6b21a8', border: '#d8b4fe' }, highlight: { background: '#6b21a8', border: '#e9d5ff' } },
+            cdn:       { background: '#0c4a6e', border: '#38bdf8', hover: { background: '#075985', border: '#7dd3fc' }, highlight: { background: '#075985', border: '#bae6fd' } }
         };
 
         var fontBase = { color: '#f9fafb', size: 13, face: 'monospace' };
@@ -1312,7 +1345,7 @@
                 var fqdnLabel = entry.fqdn;
                 if (entry.dnsRec) {
                     fqdnLabel += '\n' + entry.dnsRec.type + ' → ' + entry.dnsRec.content;
-                    if (entry.dnsRec.proxied) fqdnLabel += ' 🟠';
+                    if (entry.dnsRec.proxied) fqdnLabel += ' 🟠 CF';
                 }
                 nodes.push(makeNode(fqdnId, fqdnLabel, 'fqdn', { level: 1 }));
                 edges.push({ from: zoneId, to: fqdnId, color: { color: '#3b82f6', opacity: 0.7 }, dashes: false });
@@ -1355,20 +1388,11 @@
                     }
                 }
 
-                // CDN node (Cloudflare proxy — A/AAAA record with proxied=true)
-                if (!cdnId && entry.dnsRec && entry.dnsRec.proxied) {
-                    var cfKey = 'cf-proxy:' + (entry.dnsRec.content || domain.name);
-                    if (cdnNodes[cfKey]) {
-                        cdnId = cdnNodes[cfKey];
-                    } else {
-                        cdnId = uid();
-                        cdnNodes[cfKey] = cdnId;
-                        nodes.push(makeNode(cdnId, '☁ Cloudflare Proxy\n' + (entry.dnsRec.content || ''), 'cdn', { level: 2 }));
-                    }
-                    edges.push({ from: fqdnId, to: cdnId, label: 'proxied', color: { color: '#38bdf8', opacity: 0.8 }, font: { color: '#38bdf8', size: 10 } });
-                }
+                // Cloudflare proxied A/AAAA records: no separate node —
+                // the 🟠 on the FQDN label (added above) is sufficient.
 
-                // EC2 edge — route through CDN/CF-proxy node when the record is proxied
+                // EC2 edge — goes from real CDN node (CloudFront/AFD via CNAME)
+                // or directly from FQDN (including CF-proxied A records)
                 if (ec2Id) {
                     var ec2From = cdnId || fqdnId;
                     edges.push({ from: ec2From, to: ec2Id, label: entry.dnsRec.content, color: { color: '#fb923c', opacity: 0.8 }, font: { color: '#fb923c', size: 10 } });
@@ -1388,8 +1412,9 @@
                         nodes.push(makeNode(npmId, npmLabel, 'npm', { level: 3 }));
                     }
 
-                    // Visual edge: CDN → NPM → backend, or EC2 → NPM → backend if no CDN
-                    var npmVisFrom = cdnId || ec2Id || fqdnId;
+                    // Visual edge: EC2 → NPM (NPM runs on the server), or
+                    // CDN → NPM if no EC2, or FQDN → NPM as fallback
+                    var npmVisFrom = ec2Id || cdnId || fqdnId;
                     edges.push({ from: npmVisFrom, to: npmId, color: { color: '#4ade80', opacity: 0.8 } });
 
                     // Record the owning FQDN for this NPM proxy node so the backward BFS
@@ -1503,20 +1528,49 @@
                     shakeTowards: 'leaves'
                 }
             },
-            nodes: { shape: 'box' },
+            nodes: {
+                shape: 'box',
+                font: { color: '#f9fafb' },
+                chosen: {
+                    node: function(values) {
+                        // Keep white text on selection — vis-network defaults to dark
+                        values.color = values.color;
+                    },
+                    label: function(values) {
+                        values.color = '#f9fafb';
+                    }
+                }
+            },
             edges: {
                 arrows: { to: { enabled: true, scaleFactor: 0.7 } },
                 smooth: { type: 'cubicBezier', forceDirection: 'horizontal', roundness: 0.4 },
                 color: { inherit: false }
             },
-            physics: { enabled: false },
+            physics: {
+                enabled: true,
+                hierarchicalRepulsion: {
+                    centralGravity: 0.0,
+                    springLength: 200,
+                    springConstant: 0.01,
+                    nodeDistance: 150,
+                    damping: 0.09,
+                    avoidOverlap: 1
+                },
+                solver: 'hierarchicalRepulsion',
+                stabilization: {
+                    enabled: true,
+                    iterations: 150,
+                    fit: true
+                }
+            },
             interaction: {
                 hover: true,
                 tooltipDelay: 200,
                 navigationButtons: false,
                 keyboard: false,
                 zoomView: true,
-                dragView: true
+                dragView: true,
+                dragNodes: true
             }
         };
 
@@ -1525,6 +1579,12 @@
             diagramNetwork.setOptions(options);
         } else {
             diagramNetwork = new vis.Network(container, visData, options);
+
+            // After initial layout stabilizes, disable physics so dragged nodes
+            // stay where you put them and the diagram doesn't keep jiggling.
+            diagramNetwork.on('stabilizationIterationsDone', function() {
+                diagramNetwork.setOptions({ physics: { enabled: false } });
+            });
 
             // Click handler: filter path on node click, reset on background click
             diagramNetwork.on('click', function(params) {
@@ -1546,11 +1606,157 @@
 
     function exportDiagramPNG() {
         if (!diagramNetwork) return;
-        var canvas = diagramNetwork.canvas.frame.canvas;
-        var link = document.createElement('a');
-        link.download = 'infra-map.png';
-        link.href = canvas.toDataURL('image/png');
-        link.click();
+
+        // ── Render the diagram at high resolution ──
+        // Temporarily resize the vis-network container to a large offscreen size,
+        // re-render, capture the canvas, then restore the original size.
+        var container = document.getElementById('diagram-container');
+        var origW = container.style.width;
+        var origH = container.style.height;
+
+        // Export dimensions: 4K-ish for crisp text
+        var exportW = 3840;
+        var exportH = 2160;
+
+        container.style.width  = exportW + 'px';
+        container.style.height = exportH + 'px';
+        diagramNetwork.setSize(exportW + 'px', exportH + 'px');
+        diagramNetwork.redraw();
+        diagramNetwork.fit();
+
+        // Let vis-network re-render at the new size, then capture
+        setTimeout(function() {
+            var srcCanvas = diagramNetwork.canvas.frame.canvas;
+            var srcW = srcCanvas.width;
+            var srcH = srcCanvas.height;
+
+            // Build subtitle text
+            var now = new Date();
+            var dateStr = now.toISOString().replace('T', ' ').substring(0, 19) + ' UTC';
+            var title = 'InfraRed  —  Infrastructure Map';
+            var subtitle = dateStr;
+            {% if active_project %}
+            subtitle += '  |  Project: {{ active_project.code }}';
+            {% endif %}
+            var domainCount = allDomains.length;
+            var ec2Text  = document.getElementById('count-ec2').textContent;
+            var contText = document.getElementById('count-containers').textContent;
+            var npmCount = parseInt(document.getElementById('count-npm').textContent) || 0;
+            var cdnCount = parseInt(document.getElementById('count-cdn').textContent) || 0;
+            var stats = domainCount + ' domains  ·  EC2: ' + ec2Text + '  ·  ' + npmCount + ' NPM  ·  Containers: ' + contText + '  ·  ' + cdnCount + ' CDN';
+
+            var legendNodes = [
+                { color: '#1e3a8a', border: '#3b82f6', label: 'Zone (TLD)' },
+                { color: '#164e63', border: '#22d3ee', label: 'DNS Record' },
+                { color: '#7c2d12', border: '#fb923c', label: 'EC2 Instance' },
+                { color: '#14532d', border: '#4ade80', label: 'NPM Proxy' },
+                { color: '#1f2937', border: '#9ca3af', label: 'Container' },
+                { color: '#7f1d1d', border: '#f87171', label: 'CS Listener' },
+                { color: '#3b0764', border: '#c084fc', label: 'Backend' },
+                { color: '#0c4a6e', border: '#38bdf8', label: 'CDN' },
+            ];
+            var legendEdges = [
+                { color: '#3b82f6', label: 'Zone→FQDN' },
+                { color: '#fb923c', label: 'FQDN→EC2' },
+                { color: '#4ade80', label: 'EC2→NPM' },
+                { color: '#c084fc', label: 'NPM→Backend' },
+                { color: '#38bdf8', label: 'CDN link' },
+            ];
+
+            var headerH = 100;
+            var legendH = 110;
+            var out = document.createElement('canvas');
+            out.width  = srcW;
+            out.height = srcH + headerH + legendH;
+            var ctx = out.getContext('2d');
+
+            // Background
+            ctx.fillStyle = '#111827';
+            ctx.fillRect(0, 0, out.width, out.height);
+
+            // Header
+            ctx.fillStyle = '#f9fafb';
+            ctx.font = 'bold 36px monospace';
+            ctx.fillText(title, 30, 42);
+            ctx.fillStyle = '#9ca3af';
+            ctx.font = '22px monospace';
+            ctx.fillText(subtitle, 30, 76);
+            ctx.textAlign = 'right';
+            ctx.fillText(stats, out.width - 30, 76);
+            ctx.textAlign = 'left';
+
+            // Diagram — draw the high-res source canvas at native size (no upscaling)
+            ctx.drawImage(srcCanvas, 0, headerH);
+
+            // Legend bar
+            var legY = headerH + srcH;
+            ctx.fillStyle = '#1f2937';
+            ctx.fillRect(0, legY, out.width, legendH);
+
+            // Node legend
+            var lx = 30;
+            var ly = legY + 36;
+            ctx.fillStyle = '#6b7280';
+            ctx.font = 'bold 18px monospace';
+            ctx.fillText('NODES:', lx, ly);
+            lx += 100;
+            ctx.font = '18px monospace';
+            legendNodes.forEach(function(item) {
+                ctx.fillStyle = item.color;
+                ctx.strokeStyle = item.border;
+                ctx.lineWidth = 2;
+                var boxS = 16;
+                ctx.fillRect(lx, ly - boxS + 4, boxS, boxS);
+                ctx.strokeRect(lx, ly - boxS + 4, boxS, boxS);
+                lx += boxS + 8;
+                ctx.fillStyle = '#d1d5db';
+                ctx.fillText(item.label, lx, ly);
+                lx += ctx.measureText(item.label).width + 28;
+            });
+
+            // Edge legend (second row)
+            lx = 30;
+            ly = legY + 70;
+            ctx.fillStyle = '#6b7280';
+            ctx.font = 'bold 18px monospace';
+            ctx.fillText('EDGES:', lx, ly);
+            lx += 100;
+            ctx.font = '18px monospace';
+            legendEdges.forEach(function(item) {
+                ctx.strokeStyle = item.color;
+                ctx.lineWidth = 3;
+                ctx.beginPath();
+                ctx.moveTo(lx, ly - 6);
+                ctx.lineTo(lx + 30, ly - 6);
+                ctx.stroke();
+                lx += 36;
+                ctx.fillStyle = '#d1d5db';
+                ctx.fillText(item.label, lx, ly);
+                lx += ctx.measureText(item.label).width + 28;
+            });
+            ctx.fillStyle = '#d1d5db';
+            ctx.fillText('🟠 CF = Cloudflare proxied', lx + 16, ly);
+
+            // Attribution
+            ctx.fillStyle = '#4b5563';
+            ctx.font = '16px monospace';
+            ctx.textAlign = 'right';
+            ctx.fillText('Generated by InfraRed', out.width - 30, legY + legendH - 14);
+            ctx.textAlign = 'left';
+
+            // Download
+            var link = document.createElement('a');
+            link.download = 'infra-map.png';
+            link.href = out.toDataURL('image/png');
+            link.click();
+
+            // Restore original container size
+            container.style.width  = origW || '';
+            container.style.height = origH || '650px';
+            diagramNetwork.setSize(container.clientWidth + 'px', '650px');
+            diagramNetwork.redraw();
+            diagramNetwork.fit();
+        }, 300);
     }
 </script>
 {% endblock %}
