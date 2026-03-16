@@ -39,8 +39,28 @@ def list_email_grooming():
     total_sent = sum(c.emails_sent for c in configs)
     active_count = sum(1 for c in configs if c.status == 'active')
 
+    # Enrich with GoPhish profile from_address for pinned profiles
+    profile_map = {}
+    pinned_ids = {c.gophish_profile_id for c in configs if c.gophish_profile_id}
+    if pinned_ids:
+        try:
+            from app.services import gophish_service
+            all_profiles = gophish_service.list_sending_profiles()
+            if isinstance(all_profiles, list):
+                for p in all_profiles:
+                    if p.get('id') in pinned_ids:
+                        profile_map[p['id']] = p.get('from_address', '')
+        except Exception:
+            pass
+
+    result = []
+    for c in configs:
+        d = c.to_dict()
+        d['gophish_profile_from'] = profile_map.get(c.gophish_profile_id, '')
+        result.append(d)
+
     return jsonify({
-        'configs': [c.to_dict() for c in configs],
+        'configs': result,
         'stats': {
             'total_configs': total_configs,
             'active_configs': active_count,
@@ -218,8 +238,8 @@ def send_email_grooming_now(config_id):
 @login_required
 def run_email_grooming_cycle():
     try:
-        from app.tasks.email_grooming_tasks import process_email_grooming
-        task = process_email_grooming.delay()
+        from app.tasks.email_grooming_tasks import run_full_grooming_cycle
+        task = run_full_grooming_cycle.delay()
         return jsonify({'task_id': task.id, 'status': 'queued'})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
