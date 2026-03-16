@@ -427,6 +427,13 @@
                     <label class="form-label">Emails per Day (per target)</label>
                     <input type="number" class="form-control" id="eg-epd" value="10" min="1" max="50">
                 </div>
+                <div class="col-md-5">
+                    <label class="form-label">Sending Profile</label>
+                    <select class="form-select" id="eg-profile">
+                        <option value="">Rotate all profiles for this domain</option>
+                    </select>
+                    <small class="text-muted">Leave on "Rotate" to cycle across all matching profiles.</small>
+                </div>
             </div>
 
             <div class="mb-3">
@@ -617,6 +624,7 @@
         document.getElementById('btn-verify-email').disabled = true;
         document.getElementById('btn-add-gophish').disabled = true;
         checkMailgunDomain();
+        loadEgProfiles();
     }
 
     // --- Load EC2 Instances ---
@@ -2283,6 +2291,32 @@
 
     // ── Email Grooming ──────────────────────────────────────────────────────
 
+    function loadEgProfiles() {
+        var sel = document.getElementById('eg-profile');
+        sel.innerHTML = '<option value="">Rotate all profiles for this domain</option>';
+        if (!selectedZoneName) return;
+        fetch('/api/gophish/profiles')
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (data.error || !data.profiles) return;
+                var domainLower = selectedZoneName.toLowerCase();
+                data.profiles.forEach(function(p) {
+                    var from = (p.from_address || '').toLowerCase();
+                    var user = (p.username || '').toLowerCase();
+                    var fromDomain = from.indexOf('@') !== -1 ? from.split('@').pop() : '';
+                    var userDomain = user.indexOf('@') !== -1 ? user.split('@').pop() : '';
+                    if (fromDomain === domainLower || fromDomain.endsWith('.' + domainLower) ||
+                        userDomain === domainLower || userDomain.endsWith('.' + domainLower)) {
+                        var opt = document.createElement('option');
+                        opt.value = p.id;
+                        opt.textContent = p.name + ' (' + (p.from_address || p.username) + ')';
+                        sel.appendChild(opt);
+                    }
+                });
+            })
+            .catch(function() {});
+    }
+
     var _egTargets = [];
     var _EG_OUTLOOK_DOMAINS = ['outlook.com','hotmail.com','live.com','msn.com',
         'outlook.fr','outlook.de','outlook.co.uk','hotmail.co.uk',
@@ -2351,6 +2385,7 @@
         if (!_egTargets.length) { logErr('eg-log', 'Add at least one target email'); return; }
 
         var epd = parseInt(document.getElementById('eg-epd').value) || 10;
+        var profileId = document.getElementById('eg-profile').value || null;
         // Find the local domain for this zone
         var domainObj = null;
         fetch('/api/domains')
@@ -2366,6 +2401,12 @@
                 clearLog('eg-log');
                 logWarn('eg-log', 'Saving email grooming config for <strong>' + escapeHtml(selectedZoneName) + '</strong>...');
                 logInfo('eg-log', _egTargets.length + ' target(s), ' + epd + ' emails/day each');
+                if (profileId) {
+                    var profileText = document.getElementById('eg-profile').selectedOptions[0].textContent;
+                    logInfo('eg-log', 'Pinned profile: ' + escapeHtml(profileText));
+                } else {
+                    logInfo('eg-log', 'Profile: rotating across all matching profiles');
+                }
 
                 return fetch('/api/email-grooming', {
                     method: 'POST',
@@ -2374,6 +2415,7 @@
                         domain_id: domainObj.id,
                         targets: _egTargets,
                         emails_per_day: epd,
+                        gophish_profile_id: profileId ? parseInt(profileId) : null,
                     })
                 });
             })
@@ -2396,7 +2438,7 @@
                     });
                 }
 
-                logOk('eg-log', 'Configuration saved. Sending functionality will be enabled in a future update.');
+                logOk('eg-log', 'Configuration saved. Grooming emails will be sent automatically every 30 minutes.');
                 _egTargets = [];
                 renderEgTargets();
             })

@@ -10,6 +10,7 @@ class EmailGroomingConfig(db.Model):
                           nullable=False, index=True)
     target_email = db.Column(db.String(255), nullable=False)
     emails_per_day = db.Column(db.Integer, nullable=False, default=10)
+    gophish_profile_id = db.Column(db.Integer, nullable=True)  # NULL = rotate across all matching profiles
     status = db.Column(db.String(20), nullable=False, default='active')  # active, paused, completed
     emails_sent = db.Column(db.Integer, nullable=False, default=0)
     last_sent_at = db.Column(db.DateTime, nullable=True)
@@ -29,6 +30,7 @@ class EmailGroomingConfig(db.Model):
             'domain_name': self.domain.name if self.domain else None,
             'target_email': self.target_email,
             'emails_per_day': self.emails_per_day,
+            'gophish_profile_id': self.gophish_profile_id,
             'status': self.status,
             'emails_sent': self.emails_sent,
             'last_sent_at': self.last_sent_at.isoformat() if self.last_sent_at else None,

@@ -1,10 +1,12 @@
 import re
+from datetime import datetime, timedelta
 from flask import request, jsonify
 from flask_login import login_required, current_user
 from app.api import api_bp
 from app import db
 from app.models.domain import Domain
 from app.models.email_grooming import EmailGroomingConfig
+from app.models.email_grooming_log import EmailGroomingLog
 
 _EMAIL_RE = re.compile(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$')
 _OUTLOOK_DOMAINS = {
@@ -74,6 +76,11 @@ def create_email_grooming():
     if not isinstance(emails_per_day, int) or emails_per_day < 1 or emails_per_day > 50:
         return jsonify({'error': 'emails_per_day must be between 1 and 50'}), 400
 
+    # Optional: pin to a specific GoPhish sending profile (null = rotate all)
+    gophish_profile_id = data.get('gophish_profile_id')
+    if gophish_profile_id is not None:
+        gophish_profile_id = int(gophish_profile_id) if gophish_profile_id else None
+
     created = []
     skipped = []
     warnings = []
@@ -98,6 +105,7 @@ def create_email_grooming():
             domain_id=domain_id,
             target_email=email,
             emails_per_day=emails_per_day,
+            gophish_profile_id=gophish_profile_id,
             status='active',
         )
         db.session.add(config)
@@ -120,7 +128,9 @@ def create_email_grooming():
 @api_bp.route('/email-grooming/<int:config_id>', methods=['PATCH'])
 @login_required
 def update_email_grooming(config_id):
-    config = EmailGroomingConfig.query.get_or_404(config_id)
+    config = EmailGroomingConfig.query.get(config_id)
+    if not config:
+        return jsonify({'error': 'Config not found'}), 404
     data = request.get_json(silent=True) or {}
 
     if 'status' in data:
@@ -134,6 +144,10 @@ def update_email_grooming(config_id):
             return jsonify({'error': 'emails_per_day must be between 1 and 50'}), 400
         config.emails_per_day = epd
 
+    if 'gophish_profile_id' in data:
+        val = data['gophish_profile_id']
+        config.gophish_profile_id = int(val) if val else None
+
     db.session.commit()
     return jsonify(config.to_dict())
 
@@ -145,10 +159,18 @@ def update_email_grooming(config_id):
 @api_bp.route('/email-grooming/<int:config_id>', methods=['DELETE'])
 @login_required
 def delete_email_grooming(config_id):
-    config = EmailGroomingConfig.query.get_or_404(config_id)
-    db.session.delete(config)
-    db.session.commit()
-    return jsonify({'deleted': True})
+    config = EmailGroomingConfig.query.get(config_id)
+    if not config:
+        return jsonify({'error': 'Config not found'}), 404
+    try:
+        # Delete associated logs first (in case CASCADE isn't set at DB level)
+        EmailGroomingLog.query.filter_by(config_id=config_id).delete()
+        db.session.delete(config)
+        db.session.commit()
+        return jsonify({'deleted': True})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
 
 
 # ---------------------------------------------------------------------------
@@ -158,6 +180,79 @@ def delete_email_grooming(config_id):
 @api_bp.route('/email-grooming/domain/<int:domain_id>', methods=['DELETE'])
 @login_required
 def delete_email_grooming_by_domain(domain_id):
-    count = EmailGroomingConfig.query.filter_by(domain_id=domain_id).delete()
-    db.session.commit()
-    return jsonify({'deleted': count})
+    try:
+        config_ids = [c.id for c in EmailGroomingConfig.query.filter_by(domain_id=domain_id).all()]
+        if config_ids:
+            EmailGroomingLog.query.filter(EmailGroomingLog.config_id.in_(config_ids)).delete(synchronize_session=False)
+        count = EmailGroomingConfig.query.filter_by(domain_id=domain_id).delete()
+        db.session.commit()
+        return jsonify({'deleted': count})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+
+# ---------------------------------------------------------------------------
+# Send now (manual trigger for a single config)
+# ---------------------------------------------------------------------------
+
+@api_bp.route('/email-grooming/<int:config_id>/send', methods=['POST'])
+@login_required
+def send_email_grooming_now(config_id):
+    config = EmailGroomingConfig.query.get(config_id)
+    if not config:
+        return jsonify({'error': 'Config not found'}), 404
+    try:
+        from app.tasks.email_grooming_tasks import send_grooming_email_now
+        task = send_grooming_email_now.delay(config.id)
+        return jsonify({'task_id': task.id, 'status': 'queued'})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+# ---------------------------------------------------------------------------
+# Trigger full grooming cycle (all active configs)
+# ---------------------------------------------------------------------------
+
+@api_bp.route('/email-grooming/run-cycle', methods=['POST'])
+@login_required
+def run_email_grooming_cycle():
+    try:
+        from app.tasks.email_grooming_tasks import process_email_grooming
+        task = process_email_grooming.delay()
+        return jsonify({'task_id': task.id, 'status': 'queued'})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+# ---------------------------------------------------------------------------
+# Send logs (recent history)
+# ---------------------------------------------------------------------------
+
+@api_bp.route('/email-grooming/logs', methods=['GET'])
+@login_required
+def list_email_grooming_logs():
+    config_id = request.args.get('config_id', type=int)
+    limit = request.args.get('limit', 50, type=int)
+    limit = min(limit, 200)
+
+    q = EmailGroomingLog.query
+    if config_id:
+        q = q.filter_by(config_id=config_id)
+    logs = q.order_by(EmailGroomingLog.sent_at.desc()).limit(limit).all()
+
+    # Also compute today's stats
+    today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+    today_q = EmailGroomingLog.query.filter(EmailGroomingLog.sent_at >= today_start)
+    if config_id:
+        today_q = today_q.filter_by(config_id=config_id)
+    today_sent = today_q.filter_by(success=True).count()
+    today_failed = today_q.filter_by(success=False).count()
+
+    return jsonify({
+        'logs': [l.to_dict() for l in logs],
+        'today': {
+            'sent': today_sent,
+            'failed': today_failed,
+        },
+    })
