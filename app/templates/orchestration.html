@@ -144,8 +144,9 @@
 
     <!-- Action buttons -->
     <div class="d-flex gap-2 mb-3">
-        <button class="btn btn-outline-success btn-sm" onclick="runGroomingCycle()" id="btn-run-cycle">
-            <i class="bi bi-play-circle"></i> Run Cycle Now
+        <button class="btn btn-outline-success btn-sm" onclick="runGroomingCycle()" id="btn-run-cycle"
+                title="Send all remaining daily emails for every active config">
+            <i class="bi bi-play-circle"></i> Send All Now
         </button>
         <button class="btn btn-outline-info btn-sm" onclick="toggleSendLogs()">
             <i class="bi bi-journal-text"></i> Send Logs
@@ -932,7 +933,7 @@
             var statusIcon = c.status === 'active' ? 'bi-circle-fill' : 'bi-pause-circle-fill';
             var lastSent = c.last_sent_at ? timeAgo(c.last_sent_at) : '<span class="text-muted">Never</span>';
             var profileLabel = c.gophish_profile_id
-                ? '<span class="badge bg-info" style="font-size:0.7rem">Profile #' + c.gophish_profile_id + '</span>'
+                ? '<span class="badge bg-info" style="font-size:0.7rem" title="Profile #' + c.gophish_profile_id + '">' + (c.gophish_profile_from || 'Profile #' + c.gophish_profile_id) + '</span>'
                 : '<span class="badge bg-secondary" style="font-size:0.7rem">Rotate</span>';
             var sendBtn = '<button class="btn btn-outline-primary btn-sm py-0 px-1" onclick="sendEgNow(' + c.id + ',this)" title="Send one now"><i class="bi bi-send"></i></button>';
             var toggleBtn = c.status === 'active'
@@ -1006,7 +1007,7 @@
     function runGroomingCycle() {
         var btn = document.getElementById('btn-run-cycle');
         btn.disabled = true;
-        btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Running...';
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Sending all remaining emails...';
         fetch('/api/email-grooming/run-cycle', { method: 'POST' })
             .then(_jsonOrError)
             .then(function(data) {
@@ -1014,15 +1015,29 @@
                     alert('Cycle failed: ' + data.error);
                     return;
                 }
-                // Refresh after delay to let the cycle complete
-                setTimeout(function() { loadEmailGrooming(); loadSendLogs(); }, 5000);
+                // Poll logs every 10s while task runs — task sends all remaining daily emails
+                var pollCount = 0;
+                var pollInterval = setInterval(function() {
+                    loadEmailGrooming();
+                    loadSendLogs();
+                    pollCount++;
+                    if (pollCount >= 30) clearInterval(pollInterval); // stop after 5 min
+                }, 10000);
+                // Re-enable button after 15s
+                setTimeout(function() {
+                    btn.disabled = false;
+                    btn.innerHTML = '<i class="bi bi-play-circle"></i> Send All Now';
+                    clearInterval(pollInterval);
+                    loadEmailGrooming();
+                    loadSendLogs();
+                }, 15000);
             })
             .catch(function(err) { alert('Failed: ' + err.message); })
             .finally(function() {
                 setTimeout(function() {
                     btn.disabled = false;
-                    btn.innerHTML = '<i class="bi bi-play-circle"></i> Run Cycle Now';
-                }, 5000);
+                    btn.innerHTML = '<i class="bi bi-play-circle"></i> Send All Now';
+                }, 15000);
             });
     }
 

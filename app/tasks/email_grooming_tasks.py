@@ -1,5 +1,6 @@
 import logging
 import random
+import time
 from datetime import datetime, timedelta
 
 from app.tasks.celery_app import celery
@@ -480,6 +481,126 @@ def process_email_grooming(self):
 
     db.session.commit()
     _log.info('Email grooming cycle complete: processed=%d sent=%d errors=%d',
+              processed, sent_count, error_count)
+    return {'processed': processed, 'sent': sent_count, 'errors': error_count}
+
+
+@celery.task(bind=True, max_retries=0, time_limit=1800, soft_time_limit=1700)
+def run_full_grooming_cycle(self):
+    """Send ALL remaining daily emails for every active config (manual trigger).
+
+    Unlike process_email_grooming (which sends 1 per config per 30-min beat),
+    this sends up to emails_per_day for each config with a short delay between
+    sends to avoid bursting.
+    """
+    from app import db
+    from app.models.email_grooming import EmailGroomingConfig
+    from app.models.email_grooming_log import EmailGroomingLog
+    from app.services import gophish_service
+
+    configs = EmailGroomingConfig.query.filter_by(status='active').all()
+    if not configs:
+        return {'processed': 0, 'sent': 0, 'errors': 0}
+
+    today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+    sent_count = 0
+    error_count = 0
+    processed = 0
+    _profiles_cache = {}
+
+    for config in configs:
+        processed += 1
+        domain = config.domain
+        if not domain:
+            _log.warning('Grooming config %d has no domain, skipping', config.id)
+            continue
+
+        today_sent = EmailGroomingLog.query.filter(
+            EmailGroomingLog.config_id == config.id,
+            EmailGroomingLog.sent_at >= today_start,
+            EmailGroomingLog.success == True,  # noqa: E712
+        ).count()
+
+        remaining = config.emails_per_day - today_sent
+        if remaining <= 0:
+            _log.debug('Config %d: already sent %d/%d today, skipping',
+                       config.id, today_sent, config.emails_per_day)
+            continue
+
+        domain_name = domain.name
+        if domain_name not in _profiles_cache:
+            try:
+                _profiles_cache[domain_name] = gophish_service.find_all_profiles_for_domain(domain_name)
+            except Exception as exc:
+                _log.error('Failed to fetch GoPhish profiles for %s: %s', domain_name, exc)
+                _profiles_cache[domain_name] = []
+
+        all_profiles = _profiles_cache[domain_name]
+        profile = _pick_profile(config, all_profiles, gophish_service)
+
+        if not profile:
+            _log.warning('No GoPhish sending profile for domain %s (config %d)', domain_name, config.id)
+            log_entry = EmailGroomingLog(
+                config_id=config.id, from_address='?', to_address=config.target_email,
+                subject='(no profile)', success=False,
+                error_message=f'No GoPhish sending profile found for domain {domain_name}',
+            )
+            db.session.add(log_entry)
+            error_count += 1
+            continue
+
+        from_address = profile.get('from_address', f'noreply@{domain_name}')
+
+        for i in range(remaining):
+            used_subjects = _get_recent_subjects(config.id, EmailGroomingLog)
+            subject, html_body, text_body, first_name, last_name = _generate_email_content(used_subjects, from_address)
+            envelope_sender = f'{first_name} {last_name} <{from_address}>'
+
+            try:
+                gophish_service.send_test_email(
+                    smtp_profile=profile,
+                    to_email=config.target_email,
+                    subject=subject,
+                    html_body=html_body,
+                    text_body=text_body,
+                    from_first=first_name,
+                    from_last=last_name,
+                    envelope_sender=envelope_sender,
+                )
+                log_entry = EmailGroomingLog(
+                    config_id=config.id, from_address=from_address,
+                    to_address=config.target_email, subject=subject,
+                    success=True, gophish_profile_id=profile.get('id'),
+                )
+                db.session.add(log_entry)
+                config.emails_sent = (config.emails_sent or 0) + 1
+                config.last_sent_at = datetime.utcnow()
+                db.session.commit()
+                sent_count += 1
+                _log.info('Full cycle: sent %s -> %s [%s] (%d/%d)',
+                          from_address, config.target_email, subject, i + 1, remaining)
+            except Exception as exc:
+                _log.error('Full cycle: failed config %d email %d: %s', config.id, i + 1, exc)
+                log_entry = EmailGroomingLog(
+                    config_id=config.id, from_address=from_address,
+                    to_address=config.target_email, subject=subject,
+                    success=False, error_message=str(exc)[:500],
+                    gophish_profile_id=profile.get('id'),
+                )
+                db.session.add(log_entry)
+                db.session.commit()
+                error_count += 1
+
+            # Re-pick profile for next email (advances rotation)
+            profile = _pick_profile(config, all_profiles, gophish_service)
+            if not profile:
+                break
+
+            # Small delay between sends to avoid bursting
+            if i < remaining - 1:
+                time.sleep(3)
+
+    _log.info('Full grooming cycle complete: processed=%d sent=%d errors=%d',
               processed, sent_count, error_count)
     return {'processed': processed, 'sent': sent_count, 'errors': error_count}
 
