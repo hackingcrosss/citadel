@@ -12,6 +12,32 @@ from app.services.project_service import build_project_tag_map, get_active_proje
 _log = logging.getLogger(__name__)
 
 
+def _try_recover_creating_dist(dist):
+    """Try to find a 'creating' distribution in the live cloud provider and
+    recover its external_id, domain, and status.  Returns True if recovered."""
+    try:
+        if dist.provider == 'azure_front_door':
+            live_dists = cdn_service.list_afd_all_accounts()
+        elif dist.provider == 'cloudfront':
+            live_dists = cdn_service.list_cf_all_accounts()
+        else:
+            return False
+
+        # Match by origin_host (the only reliable link between local and cloud)
+        for live in live_dists:
+            if live.get('origin_host', '') == dist.origin_host and \
+               live.get('account_label', 'default') == dist.account_label:
+                dist.external_id = live['external_id']
+                dist.domain = live.get('domain', '')
+                dist.status = live.get('status', 'deployed')
+                _log.info("Recovered stuck CDN dist id=%s → ext_id=%s domain=%s status=%s",
+                          dist.id, dist.external_id, dist.domain, dist.status)
+                return True
+    except Exception as exc:
+        _log.debug("Recovery lookup failed for dist id=%s: %s", dist.id, exc)
+    return False
+
+
 @api_bp.route('/cdn/distributions', methods=['GET'])
 @login_required
 @feature_required('cdn')
@@ -206,6 +232,16 @@ def cdn_get_distribution_status(dist_id):
                 dist.external_id = f'error:{str(ar.result)[:400]}'
                 db.session.commit()
                 return jsonify({'status': 'error', 'id': dist_id, 'error': str(ar.result)})
+
+            # Task is PENDING/STARTED/UNKNOWN — try to discover the live resource
+            # from the cloud provider in case the task completed the cloud creation
+            # but failed to update the DB (timeout, Redis restart, etc.)
+            recovered = _try_recover_creating_dist(dist)
+            if recovered:
+                db.session.commit()
+                return jsonify({'status': dist.status, 'id': dist_id,
+                                'domain': dist.domain or '', 'recovered': True})
+
             return jsonify({'status': 'creating', 'id': dist_id, 'task_state': ar.state})
         return jsonify({'status': 'creating', 'id': dist_id, 'task_state': 'UNKNOWN'})
 
@@ -246,6 +282,21 @@ def cdn_get_distribution_status(dist_id):
         return jsonify({'status': new_status, 'id': dist_id})
     except Exception as e:
         return jsonify({'error': str(e)}), 400
+
+
+@api_bp.route('/cdn/distributions/<int:dist_id>/force-refresh', methods=['POST'])
+@login_required
+@feature_required('cdn')
+def cdn_force_refresh(dist_id):
+    """Force-recover a stuck distribution by looking up the live cloud resource."""
+    dist = CdnDistribution.query.get_or_404(dist_id)
+
+    if _try_recover_creating_dist(dist):
+        db.session.commit()
+        return jsonify({'distribution': dist.to_dict(), 'recovered': True})
+
+    return jsonify({'error': 'Could not find matching live distribution. '
+                    'Verify cloud credentials and that the resource still exists.'}), 404
 
 
 @api_bp.route('/cdn/distributions/<int:dist_id>/probe', methods=['GET'])
