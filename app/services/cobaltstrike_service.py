@@ -134,30 +134,41 @@ def delete_listener(listener_name):
     return _request('DELETE', f'/api/v1/listeners/{listener_name}')
 
 
-# Payload string → REST API type slug mapping
-_PAYLOAD_TYPE_MAP = {
-    'beacon_https': 'https',
-    'beacon_http': 'http',
-    'beacon_dns': 'dns',
-    'bind_pipe': 'smb',
-    'bind_tcp': 'tcp',
-    'foreign_reverse_https': 'foreignHttps',
-    'foreign_reverse_http': 'foreignHttp',
-    'external_c2': 'externalC2',
+# Payload string → REST API type slug mapping (ordered: longer keys first to
+# avoid 'beacon_http' matching before 'beacon_https')
+_PAYLOAD_TYPE_MAP = [
+    ('beacon_https',          'https'),
+    ('beacon_http',           'http'),
+    ('beacon_dns',            'dns'),
+    ('bind_pipe',             'smb'),
+    ('bind_tcp',              'tcp'),
+    ('foreign_reverse_https', 'foreignHttps'),
+    ('foreign_reverse_http',  'foreignHttp'),
+    ('external_c2',           'externalC2'),
+]
+
+# Valid POST fields per listener type (from CS REST API docs / schemas.txt).
+# Only these are sent on recreate — everything else is read-only.
+_TYPE_VALID_FIELDS = {
+    'http':  {'name', 'color', 'hosts', 'host', 'httpPort', 'httpBindPort',
+              'httpHostHeader', 'hostRotationStrategy', 'maxRetryStrategy',
+              'profile', 'ignoreProxySettings', 'httpProxy', 'guardRails'},
+    'https': {'name', 'color', 'hosts', 'host', 'httpPort', 'httpBindPort',
+              'httpHostHeader', 'hostRotationStrategy', 'maxRetryStrategy',
+              'profile', 'ignoreProxySettings', 'httpProxy', 'guardRails'},
+    'dns':   {'name', 'color', 'hosts', 'host', 'dnsBindPort',
+              'hostRotationStrategy', 'maxRetryStrategy', 'profile',
+              'dnsResolver', 'guardRails'},
 }
 
 
 def _detect_type(listener):
     """Detect the listener type slug from the payload string."""
     payload = listener.get('payload', '')
-    for key, slug in _PAYLOAD_TYPE_MAP.items():
+    for key, slug in _PAYLOAD_TYPE_MAP:
         if key in payload:
             return slug
     return None
-
-
-# Fields to strip before recreating (CS adds these, not user-set)
-_INTERNAL_FIELDS = {'id', 'payload', 'status', 'project_id', 'project_code', 'project_resource_id'}
 
 
 def update_listener_hosts(listener_name, new_hosts):
@@ -174,10 +185,21 @@ def update_listener_hosts(listener_name, new_hosts):
     if listener_type not in ('http', 'https', 'dns'):
         raise Exception(f'Listener type "{listener_type}" does not support callback hosts')
 
-    # Build the recreation body from the current config
-    body = {k: v for k, v in current.items() if k not in _INTERNAL_FIELDS}
+    # Build the recreation body using ONLY valid POST fields for this type
+    valid = _TYPE_VALID_FIELDS.get(listener_type, set())
+    body = {k: v for k, v in current.items() if k in valid}
     body['hosts'] = new_hosts
 
-    # Delete then recreate
+    # Delete then recreate — if recreate fails, attempt to restore original config
     delete_listener(listener_name)
-    return create_listener(listener_type, body)
+    try:
+        return create_listener(listener_type, body)
+    except Exception as exc:
+        # Attempt to restore the original listener
+        restore_body = {k: v for k, v in current.items() if k in valid}
+        try:
+            create_listener(listener_type, restore_body)
+        except Exception:
+            pass  # restore is best-effort
+        raise Exception(f'Failed to recreate listener with new hosts: {exc}. '
+                        f'Attempted to restore original config.')
