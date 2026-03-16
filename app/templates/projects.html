@@ -46,6 +46,16 @@
     {% endif %}
 </div>
 
+<!-- Status filter -->
+<div class="mb-3">
+    <select class="form-select form-select-sm bg-dark text-light border-secondary" id="filter-status" onchange="applyProjectFilter()" style="width:auto;display:inline-block">
+        <option value="active" selected>Active</option>
+        <option value="archived">Archived</option>
+        <option value="">All</option>
+    </select>
+    <span class="badge bg-secondary ms-1" id="filter-count"></span>
+</div>
+
 <div id="projects-container">
     <div class="text-center text-muted py-5">
         <div class="spinner-border spinner-border-sm me-2"></div> Loading projects…
@@ -226,6 +236,15 @@ function escapeHtml(s) {
 }
 
 // ── Load all projects ─────────────────────────────────────────────────────────
+let _allProjects = [];
+
+function applyProjectFilter() {
+    const status = document.getElementById('filter-status').value;
+    const filtered = status ? _allProjects.filter(p => p.status === status) : _allProjects;
+    document.getElementById('filter-count').textContent = `${filtered.length} / ${_allProjects.length}`;
+    renderProjects(filtered);
+}
+
 async function loadProjects() {
     const container = document.getElementById('projects-container');
     try {
@@ -239,7 +258,8 @@ async function loadProjects() {
         }
         // Load details for each project in parallel
         const details = await Promise.all(projects.map(p => loadProjectDetail(p.id)));
-        renderProjects(details.filter(Boolean));
+        _allProjects = details.filter(Boolean);
+        applyProjectFilter();
     } catch(e) {
         container.innerHTML = `<div class="text-danger py-3"><i class="bi bi-exclamation-triangle me-1"></i>${escapeHtml(e.message)}</div>`;
     }
@@ -303,7 +323,7 @@ function renderProjects(projects) {
                 <div class="d-flex justify-content-between align-items-start mb-2">
                     <div>
                         <span class="badge bg-danger me-2" style="font-size:0.8rem">${escapeHtml(p.code)}</span>
-                        <strong>${escapeHtml(p.name)}</strong>
+                        ${p.description ? `<span class="text-muted">${escapeHtml(p.description)}</span>` : ''}
                         ${isActive ? '<span class="badge bg-success ms-1" style="font-size:0.65rem">ACTIVE</span>' : ''}
                     </div>
                     <div class="d-flex align-items-center gap-2">

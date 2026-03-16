@@ -42,6 +42,24 @@
     {% endif %}
 </div>
 
+<!-- Status filter -->
+<div class="card bg-dark border-secondary mb-3">
+    <div class="card-body py-2">
+        <div class="row g-2 align-items-center">
+            <div class="col-md-2">
+                <select class="form-select form-select-sm bg-dark text-light border-secondary" id="filter-status" onchange="renderProjects()">
+                    <option value="active" selected>Active</option>
+                    <option value="archived">Archived</option>
+                    <option value="">All</option>
+                </select>
+            </div>
+            <div class="col-auto">
+                <span class="badge bg-secondary" id="filter-count"></span>
+            </div>
+        </div>
+    </div>
+</div>
+
 <div class="card bg-dark border-secondary">
     <div class="card-body p-0">
         <table class="table table-dark table-hover mb-0" id="projects-table">
@@ -49,7 +67,6 @@
                 <tr>
                     <th>Company</th>
                     <th>Codename</th>
-                    <th>Name</th>
                     <th>Status</th>
                     <th>Members</th>
                     <th>Created</th>
@@ -57,7 +74,7 @@
                 </tr>
             </thead>
             <tbody id="projects-tbody">
-                <tr><td colspan="7" class="text-center text-muted py-4">Loading...</td></tr>
+                <tr><td colspan="6" class="text-center text-muted py-4">Loading...</td></tr>
             </tbody>
         </table>
     </div>
@@ -80,10 +97,10 @@
                     </select>
                 </div>
                 <div class="mb-3">
-                    <label class="form-label">Project Name
-                        <small class="text-muted">(optional — a random codename will be assigned)</small>
+                    <label class="form-label">Codename
+                        <small class="text-muted">(optional — a random one will be assigned)</small>
                     </label>
-                    <input type="text" class="form-control bg-dark text-light border-secondary" id="create-name" placeholder="e.g. Q1 2026 Pentest">
+                    <input type="text" class="form-control bg-dark text-light border-secondary text-uppercase" id="create-name" placeholder="e.g. CRIMSON-TIDE" style="letter-spacing:0.05em">
                 </div>
                 <div class="mb-3">
                     <label class="form-label">Description</label>
@@ -322,8 +339,8 @@
                     <small class="text-muted">Company: <strong id="edit-company-label"></strong></small>
                 </div>
                 <div class="mb-3">
-                    <label class="form-label">Name</label>
-                    <input type="text" class="form-control bg-dark text-light border-secondary" id="edit-name">
+                    <label class="form-label">Codename</label>
+                    <input type="text" class="form-control bg-dark text-light border-secondary text-uppercase" id="edit-code" style="letter-spacing:0.05em">
                 </div>
                 <div class="mb-3">
                     <label class="form-label">Description</label>
@@ -396,21 +413,27 @@ async function loadProjects() {
         _projects = Array.isArray(data) ? data : (data.projects || []);
         renderProjects();
     } catch(e) {
-        tbody.innerHTML = `<tr><td colspan="7" class="text-danger text-center py-3">${e.message}</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="6" class="text-danger text-center py-3">${e.message}</td></tr>`;
     }
 }
 
 function renderProjects() {
     const tbody = document.getElementById('projects-tbody');
-    if (!_projects.length) {
-        tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted py-4">No projects yet</td></tr>';
+    const statusFilter = document.getElementById('filter-status').value;
+    const filtered = statusFilter
+        ? _projects.filter(p => p.status === statusFilter)
+        : _projects;
+
+    document.getElementById('filter-count').textContent = `${filtered.length} / ${_projects.length}`;
+
+    if (!filtered.length) {
+        tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-4">No projects match filter</td></tr>';
         return;
     }
-    tbody.innerHTML = _projects.map(p => `
+    tbody.innerHTML = filtered.map(p => `
         <tr>
-            <td>${p.company_code ? `<span class="badge bg-danger" style="font-size:0.7rem">${escapeHtml(p.company_code)}</span> <small class="text-muted">${escapeHtml(p.company_name || '')}</small>` : '<span class="text-muted">—</span>'}</td>
-            <td><code class="text-danger">${p.code}</code></td>
-            <td>${escapeHtml(p.name)}</td>
+            <td>${p.company_code ? `<span class="badge bg-danger" style="font-size:0.7rem">${escapeHtml(p.company_code)}</span>` : '<span class="text-muted">—</span>'}</td>
+            <td><code class="text-danger">${escapeHtml(p.code)}</code>${p.description ? ` <small class="text-muted">${escapeHtml(p.description)}</small>` : ''}</td>
             <td>${statusBadge(p.status)}</td>
             <td><span class="text-muted">${p.member_count ?? '—'}</span></td>
             <td class="text-muted small">${p.created_at ? p.created_at.substring(0,10) : '—'}</td>
@@ -475,7 +498,7 @@ function openEditModal(projectId) {
     document.getElementById('edit-project-id').value = p.id;
     document.getElementById('edit-codename-label').textContent = p.code;
     document.getElementById('edit-company-label').textContent = p.company_name || '—';
-    document.getElementById('edit-name').value = p.name;
+    document.getElementById('edit-code').value = p.code;
     document.getElementById('edit-description').value = p.description || '';
     document.getElementById('edit-status').value = p.status;
     editModal.show();
@@ -483,16 +506,16 @@ function openEditModal(projectId) {
 
 async function saveEdit() {
     const id = document.getElementById('edit-project-id').value;
-    const name = document.getElementById('edit-name').value.trim();
+    const code = document.getElementById('edit-code').value.trim();
     const description = document.getElementById('edit-description').value.trim();
     const status = document.getElementById('edit-status').value;
-    if (!name) { showToast('Name is required', 'danger'); return; }
+    if (!code) { showToast('Codename is required', 'danger'); return; }
 
     try {
         const res = await fetch(`/api/projects/${id}`, {
             method: 'PATCH',
             headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({name, description, status}),
+            body: JSON.stringify({code, description, status}),
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || 'Failed to update project');
@@ -508,7 +531,7 @@ async function saveEdit() {
 async function openMembersModal(projectId) {
     _activeProjectId = projectId;
     const p = _projects.find(x => x.id === projectId);
-    document.getElementById('members-project-name').textContent = p ? p.name : '';
+    document.getElementById('members-project-name').textContent = p ? p.code : '';
     document.getElementById('members-tbody').innerHTML = '<tr><td colspan="3" class="text-muted text-center">Loading…</td></tr>';
     membersModal.show();
     await Promise.all([loadMembers(), loadUsersForSelect()]);
@@ -626,7 +649,7 @@ async function removeMember(userId) {
 async function openDomainsModal(projectId) {
     _activeProjectId = projectId;
     const p = _projects.find(x => x.id === projectId);
-    document.getElementById('domains-project-name').textContent = p ? p.name : '';
+    document.getElementById('domains-project-name').textContent = p ? p.code : '';
     document.getElementById('checked-out-domains').innerHTML = '<span class="text-muted small">Loading…</span>';
     document.getElementById('pool-domain-select').innerHTML = '<option value="">Loading…</option>';
     domainsModal.show();
