@@ -15,6 +15,7 @@ from app.models.project import Project, ProjectMember
 from app.models.project_resource import ProjectResource
 from app.models.cdn_distribution import CdnDistribution
 from app.models.domain_tag import DomainGroomingTag
+from app.models.email_grooming import EmailGroomingConfig
 
 def init_database():
     app = create_app()

@@ -413,6 +413,48 @@
     </div>
     {% endif %}
 
+
+    <!-- 5. Email Grooming (Domain Reputation Warming) -->
+    <div class="card-custom mb-4">
+        <div class="card-header">
+            <i class="bi bi-mailbox2"></i> Email Grooming
+        </div>
+        <div class="card-body">
+            <p class="text-muted small">Warm up domain email reputation by scheduling daily emails to target inboxes. The domain must be added to Mailgun and have GoPhish credentials configured.</p>
+
+            <div class="row g-3 mb-3">
+                <div class="col-md-4">
+                    <label class="form-label">Emails per Day (per target)</label>
+                    <input type="number" class="form-control" id="eg-epd" value="10" min="1" max="50">
+                </div>
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label">Target Email Addresses</label>
+                <div id="eg-targets" class="mb-2"></div>
+                <div class="input-group input-group-sm" style="max-width:400px">
+                    <input type="email" class="form-control" id="eg-new-target" placeholder="user@outlook.com"
+                           onkeydown="if(event.key==='Enter'){event.preventDefault();addEgTarget()}">
+                    <button class="btn btn-outline-secondary" onclick="addEgTarget()"><i class="bi bi-plus"></i></button>
+                </div>
+                <div id="eg-target-warning" class="small text-warning mt-1 d-none">
+                    <i class="bi bi-exclamation-triangle"></i> <span></span>
+                </div>
+                <small class="text-muted">Outlook/Hotmail addresses recommended for best deliverability warming results.</small>
+            </div>
+
+            {% if current_user.role != 'viewer' and active_project_role != 'white_team' %}
+            <button class="btn btn-infrared" id="btn-eg-save" onclick="saveEmailGrooming()">
+                <i class="bi bi-save"></i> Save Configuration
+            </button>
+            {% endif %}
+
+            <div id="eg-log" class="border rounded p-2 mt-3" style="max-height: 200px; overflow-y: auto; background: #0d1117; border-color: #374151 !important; color: #e2e8f0; min-height: 40px; font-family: monospace; font-size: 0.82rem;">
+                <small class="text-muted">Configure target emails and save to begin grooming.</small>
+            </div>
+        </div>
+    </div>
+
 </div>
 
 {% endblock %}
@@ -2237,6 +2279,130 @@
         a.download = name + '.html';
         a.click();
         URL.revokeObjectURL(a.href);
+    }
+
+    // ── Email Grooming ──────────────────────────────────────────────────────
+
+    var _egTargets = [];
+    var _EG_OUTLOOK_DOMAINS = ['outlook.com','hotmail.com','live.com','msn.com',
+        'outlook.fr','outlook.de','outlook.co.uk','hotmail.co.uk',
+        'hotmail.fr','hotmail.de','live.co.uk','live.fr'];
+
+    function _isOutlook(email) {
+        var domain = email.split('@').pop().toLowerCase();
+        return _EG_OUTLOOK_DOMAINS.indexOf(domain) !== -1;
+    }
+
+    function addEgTarget() {
+        var input = document.getElementById('eg-new-target');
+        var email = input.value.trim().toLowerCase();
+        if (!email) return;
+        var emailRe = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+        if (!emailRe.test(email)) {
+            showWarn('eg-target-warning', 'Invalid email format');
+            return;
+        }
+        if (_egTargets.indexOf(email) !== -1) {
+            showWarn('eg-target-warning', email + ' is already added');
+            return;
+        }
+
+        _egTargets.push(email);
+        input.value = '';
+        renderEgTargets();
+
+        if (!_isOutlook(email)) {
+            showWarn('eg-target-warning', email + ' is not an Outlook/Hotmail address — deliverability warming may be less effective for non-Microsoft inboxes.');
+        } else {
+            hideWarn('eg-target-warning');
+        }
+    }
+
+    function removeEgTarget(idx) {
+        _egTargets.splice(idx, 1);
+        renderEgTargets();
+        hideWarn('eg-target-warning');
+    }
+
+    function renderEgTargets() {
+        var el = document.getElementById('eg-targets');
+        if (!_egTargets.length) { el.innerHTML = ''; return; }
+        el.innerHTML = _egTargets.map(function(t, i) {
+            var cls = _isOutlook(t) ? 'bg-success bg-opacity-25 text-success' : 'bg-warning bg-opacity-25 text-warning';
+            return '<span class="badge ' + cls + ' me-1 mb-1 d-inline-flex align-items-center gap-1">'
+                + escapeHtml(t)
+                + ' <i class="bi bi-x-circle" style="cursor:pointer;font-size:0.7rem" onclick="removeEgTarget(' + i + ')"></i>'
+                + '</span>';
+        }).join('');
+    }
+
+    function showWarn(id, msg) {
+        var el = document.getElementById(id);
+        el.querySelector('span').textContent = msg;
+        el.classList.remove('d-none');
+    }
+
+    function hideWarn(id) {
+        document.getElementById(id).classList.add('d-none');
+    }
+
+    function saveEmailGrooming() {
+        if (!selectedZoneId) { logErr('eg-log', 'Select a domain zone first'); return; }
+        if (!_egTargets.length) { logErr('eg-log', 'Add at least one target email'); return; }
+
+        var epd = parseInt(document.getElementById('eg-epd').value) || 10;
+        // Find the local domain for this zone
+        var domainObj = null;
+        fetch('/api/domains')
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                var domains = data.domains || [];
+                domainObj = domains.find(function(d) { return d.cloudflare_zone_id === selectedZoneId; });
+                if (!domainObj) {
+                    logErr('eg-log', 'Domain not found in local database. Sync the domain first.');
+                    return;
+                }
+
+                clearLog('eg-log');
+                logWarn('eg-log', 'Saving email grooming config for <strong>' + escapeHtml(selectedZoneName) + '</strong>...');
+                logInfo('eg-log', _egTargets.length + ' target(s), ' + epd + ' emails/day each');
+
+                return fetch('/api/email-grooming', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        domain_id: domainObj.id,
+                        targets: _egTargets,
+                        emails_per_day: epd,
+                    })
+                });
+            })
+            .then(function(r) { if (r) return r.json(); })
+            .then(function(data) {
+                if (!data) return;
+                if (data.error) { logErr('eg-log', data.error); return; }
+
+                if (data.created && data.created.length) {
+                    logOk('eg-log', data.created.length + ' target(s) configured: ' + data.created.join(', '));
+                }
+                if (data.skipped && data.skipped.length) {
+                    data.skipped.forEach(function(s) {
+                        logWarn('eg-log', 'Skipped ' + s.email + ': ' + s.reason);
+                    });
+                }
+                if (data.warnings && data.warnings.length) {
+                    data.warnings.forEach(function(w) {
+                        logInfo('eg-log', '<i class="bi bi-exclamation-triangle text-warning"></i> ' + w);
+                    });
+                }
+
+                logOk('eg-log', 'Configuration saved. Sending functionality will be enabled in a future update.');
+                _egTargets = [];
+                renderEgTargets();
+            })
+            .catch(function(err) {
+                logErr('eg-log', 'Request failed: ' + err);
+            });
     }
 </script>
 {% endblock %}

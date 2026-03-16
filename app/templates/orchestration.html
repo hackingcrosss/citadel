@@ -25,6 +25,12 @@
             <span id="groomed-badge" class="badge bg-secondary ms-1 d-none">0</span>
         </button>
     </li>
+    <li class="nav-item">
+        <button class="nav-link" id="tab-email-grooming" onclick="switchTab('email-grooming')">
+            <i class="bi bi-mailbox2"></i> Email Grooming
+            <span id="email-grooming-badge" class="badge bg-secondary ms-1 d-none">0</span>
+        </button>
+    </li>
 </ul>
 
 <!-- C2 Deployments tab -->
@@ -73,6 +79,71 @@
                 <tbody id="groomed-table">
                     <tr>
                         <td colspan="4" class="text-center text-muted py-4">
+                            <span class="spinner-border spinner-border-sm"></span> Loading...
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Email Grooming tab -->
+<div id="pane-email-grooming" class="d-none">
+    <!-- Summary cards -->
+    <div class="row g-3 mb-3">
+        <div class="col-md-3">
+            <div class="card-custom text-center">
+                <div class="card-body py-3">
+                    <div class="text-muted small">Configured Targets</div>
+                    <div class="fs-3 fw-bold" id="eg-stat-configs">-</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card-custom text-center">
+                <div class="card-body py-3">
+                    <div class="text-muted small">Active</div>
+                    <div class="fs-3 fw-bold text-success" id="eg-stat-active">-</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card-custom text-center">
+                <div class="card-body py-3">
+                    <div class="text-muted small">Total Emails Sent</div>
+                    <div class="fs-3 fw-bold text-info" id="eg-stat-sent">-</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card-custom text-center">
+                <div class="card-body py-3">
+                    <div class="text-muted small">Emails / Day</div>
+                    <div class="fs-3 fw-bold text-warning" id="eg-stat-daily">-</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Config table -->
+    <div class="card-custom">
+        <div class="card-body p-0">
+            <table class="table table-hover mb-0">
+                <thead>
+                    <tr>
+                        <th>Domain</th>
+                        <th>Target Email</th>
+                        <th>Emails/Day</th>
+                        <th>Sent</th>
+                        <th>Status</th>
+                        <th>Last Sent</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="eg-table">
+                    <tr>
+                        <td colspan="7" class="text-center text-muted py-4">
                             <span class="spinner-border spinner-border-sm"></span> Loading...
                         </td>
                     </tr>
@@ -181,6 +252,7 @@
     function loadAll() {
         loadDeployments();
         loadGroomedSites();
+        loadEmailGrooming();
     }
 
     function loadCdnDists() {
@@ -205,6 +277,8 @@
         if (tabC2)  tabC2.classList.toggle('active', name === 'c2');
         document.getElementById('pane-groomed').classList.toggle('d-none', name !== 'groomed');
         document.getElementById('tab-groomed').classList.toggle('active', name === 'groomed');
+        document.getElementById('pane-email-grooming').classList.toggle('d-none', name !== 'email-grooming');
+        document.getElementById('tab-email-grooming').classList.toggle('active', name === 'email-grooming');
     }
 
     // --- Helpers ---
@@ -746,6 +820,98 @@
             .catch(function(err) {
                 logErr(LOG, 'Unexpected error: ' + err);
             });
+    }
+
+    // ── Email Grooming tab ──────────────────────────────────────────────────
+
+    function loadEmailGrooming() {
+        fetch('/api/email-grooming')
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                var configs = data.configs || [];
+                var stats = data.stats || {};
+
+                // Update summary cards
+                document.getElementById('eg-stat-configs').textContent = stats.total_configs || 0;
+                document.getElementById('eg-stat-active').textContent = stats.active_configs || 0;
+                document.getElementById('eg-stat-sent').textContent = stats.total_emails_sent || 0;
+
+                // Calculate total daily rate
+                var dailyRate = 0;
+                configs.forEach(function(c) { if (c.status === 'active') dailyRate += c.emails_per_day; });
+                document.getElementById('eg-stat-daily').textContent = dailyRate;
+
+                // Badge
+                var badge = document.getElementById('email-grooming-badge');
+                if (configs.length) {
+                    badge.textContent = configs.length;
+                    badge.classList.remove('d-none');
+                } else {
+                    badge.classList.add('d-none');
+                }
+
+                renderEmailGroomingTable(configs);
+            })
+            .catch(function(err) {
+                document.getElementById('eg-table').innerHTML =
+                    '<tr><td colspan="7" class="text-center text-danger py-3">' + escapeHtml(String(err)) + '</td></tr>';
+            });
+    }
+
+    function renderEmailGroomingTable(configs) {
+        var tbody = document.getElementById('eg-table');
+        if (!configs.length) {
+            tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted py-4">No email grooming configs. Set them up on the <a href="/operations">Setup</a> page.</td></tr>';
+            return;
+        }
+
+        tbody.innerHTML = configs.map(function(c) {
+            var statusCls = c.status === 'active' ? 'text-success' : 'text-warning';
+            var statusIcon = c.status === 'active' ? 'bi-circle-fill' : 'bi-pause-circle-fill';
+            var lastSent = c.last_sent_at ? timeAgo(c.last_sent_at) : '<span class="text-muted">Never</span>';
+            var toggleBtn = c.status === 'active'
+                ? '<button class="btn btn-outline-warning btn-sm py-0 px-1" onclick="toggleEgStatus(' + c.id + ',\'paused\')" title="Pause"><i class="bi bi-pause-fill"></i></button>'
+                : '<button class="btn btn-outline-success btn-sm py-0 px-1" onclick="toggleEgStatus(' + c.id + ',\'active\')" title="Resume"><i class="bi bi-play-fill"></i></button>';
+            var deleteBtn = '<button class="btn btn-outline-danger btn-sm py-0 px-1 ms-1" onclick="deleteEgConfig(' + c.id + ')" title="Delete"><i class="bi bi-trash"></i></button>';
+
+            return '<tr>'
+                + '<td>' + escapeHtml(c.domain_name || '?') + '</td>'
+                + '<td>' + escapeHtml(c.target_email) + '</td>'
+                + '<td>' + c.emails_per_day + '</td>'
+                + '<td>' + c.emails_sent + '</td>'
+                + '<td><i class="bi ' + statusIcon + ' ' + statusCls + '" style="font-size:0.5rem"></i> ' + c.status + '</td>'
+                + '<td>' + lastSent + '</td>'
+                + '<td>' + (IS_READONLY ? '' : toggleBtn + deleteBtn) + '</td>'
+                + '</tr>';
+        }).join('');
+    }
+
+    function timeAgo(iso) {
+        if (!iso) return 'Never';
+        var d = new Date(iso);
+        var diff = (Date.now() - d.getTime()) / 1000;
+        if (diff < 3600) return Math.floor(diff / 60) + 'm ago';
+        if (diff < 86400) return Math.floor(diff / 3600) + 'h ago';
+        return Math.floor(diff / 86400) + 'd ago';
+    }
+
+    function toggleEgStatus(configId, newStatus) {
+        fetch('/api/email-grooming/' + configId, {
+            method: 'PATCH',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({status: newStatus})
+        })
+        .then(function(r) { return r.json(); })
+        .then(function() { loadEmailGrooming(); })
+        .catch(function(err) { alert('Failed: ' + err); });
+    }
+
+    function deleteEgConfig(configId) {
+        if (!confirm('Delete this email grooming config?')) return;
+        fetch('/api/email-grooming/' + configId, {method: 'DELETE'})
+            .then(function(r) { return r.json(); })
+            .then(function() { loadEmailGrooming(); })
+            .catch(function(err) { alert('Failed: ' + err); });
     }
 </script>
 {% endblock %}
