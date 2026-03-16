@@ -127,6 +127,34 @@ def create_cs_listener():
         return jsonify({'error': str(e)}), 400
 
 
+@api_bp.route('/cobaltstrike/listeners/<path:listener_name>/hosts', methods=['PATCH'])
+@login_required
+@feature_required('cobaltstrike')
+def update_cs_listener_hosts(listener_name):
+    """Update a listener's callback hosts (delete + recreate under the hood)."""
+    assert_resource_writable('cs_listener', listener_name, current_user)
+    data = request.get_json()
+    if not data:
+        return jsonify({'error': 'No data provided'}), 400
+
+    hosts = data.get('hosts')
+    if not isinstance(hosts, list) or not hosts:
+        return jsonify({'error': 'hosts must be a non-empty list of strings'}), 400
+
+    # Validate each host is a non-empty string
+    hosts = [h.strip() for h in hosts if isinstance(h, str) and h.strip()]
+    if not hosts:
+        return jsonify({'error': 'hosts must contain at least one valid hostname'}), 400
+
+    try:
+        result = cobaltstrike_service.update_listener_hosts(listener_name, hosts)
+        audit_service.log('cs_listener.update_hosts', 'cs_listener', listener_name, listener_name,
+                          {'hosts': hosts})
+        return jsonify({'listener': result})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 400
+
+
 @api_bp.route('/cobaltstrike/listeners/<path:listener_name>', methods=['DELETE'])
 @login_required
 @feature_required('cobaltstrike')
