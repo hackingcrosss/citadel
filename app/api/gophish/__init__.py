@@ -102,3 +102,105 @@ def delete_gophish_profile(profile_id):
         return jsonify({'deleted': True})
     except Exception as e:
         return jsonify({'error': str(e)}), 400
+
+
+# ---------------------------------------------------------------------------
+# Email Templates
+# ---------------------------------------------------------------------------
+
+@api_bp.route('/gophish/templates', methods=['GET'])
+@login_required
+@feature_required('gophish')
+def list_gophish_templates():
+    try:
+        templates = gophish_service.list_templates()
+        return jsonify({'templates': templates if isinstance(templates, list) else []})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 400
+
+
+@api_bp.route('/gophish/templates/<int:template_id>', methods=['GET'])
+@login_required
+@feature_required('gophish')
+def get_gophish_template(template_id):
+    try:
+        template = gophish_service.get_template(template_id)
+        return jsonify({'template': template})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 400
+
+
+@api_bp.route('/gophish/templates', methods=['POST'])
+@login_required
+@feature_required('gophish')
+def create_gophish_template():
+    data = request.get_json()
+    if not data:
+        return jsonify({'error': 'No data provided'}), 400
+    if not data.get('name'):
+        return jsonify({'error': 'Template name is required'}), 400
+    if not data.get('html') and not data.get('text'):
+        return jsonify({'error': 'Template must have html or text content'}), 400
+
+    template_data = {
+        'name': data['name'],
+        'subject': data.get('subject', ''),
+        'html': data.get('html', ''),
+        'text': data.get('text', ''),
+    }
+    try:
+        result = gophish_service.create_template(template_data)
+        return jsonify({'template': result}), 201
+    except Exception as e:
+        return jsonify({'error': str(e)}), 400
+
+
+@api_bp.route('/gophish/templates/<int:template_id>', methods=['PUT'])
+@login_required
+@feature_required('gophish')
+def update_gophish_template(template_id):
+    data = request.get_json()
+    if not data:
+        return jsonify({'error': 'No data provided'}), 400
+
+    try:
+        existing = gophish_service.get_template(template_id)
+        updated = {
+            'id': template_id,
+            'name': data.get('name', existing.get('name', '')),
+            'subject': data.get('subject', existing.get('subject', '')),
+            'html': data.get('html', existing.get('html', '')),
+            'text': data.get('text', existing.get('text', '')),
+        }
+        result = gophish_service.update_template(template_id, updated)
+        return jsonify({'template': result})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 400
+
+
+@api_bp.route('/gophish/templates/<int:template_id>', methods=['DELETE'])
+@login_required
+@feature_required('gophish')
+def delete_gophish_template(template_id):
+    try:
+        gophish_service.delete_template(template_id)
+        return jsonify({'deleted': True})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 400
+
+
+@api_bp.route('/gophish/templates/import', methods=['POST'])
+@login_required
+@feature_required('gophish')
+def import_gophish_template():
+    data = request.get_json()
+    if not data or not data.get('content'):
+        return jsonify({'error': 'Raw email content is required'}), 400
+    try:
+        result = gophish_service.import_email_template({
+            'content': data['content'],
+            'convert_links': data.get('convert_links', True),
+        })
+        return jsonify({'template': result}), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 400

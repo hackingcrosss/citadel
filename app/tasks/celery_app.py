@@ -3,12 +3,18 @@ from app import create_app
 
 flask_app = create_app()
 
-celery = Celery(
-    flask_app.import_name,
-    broker=flask_app.config['CELERY_BROKER_URL'],
-    backend=flask_app.config['CELERY_RESULT_BACKEND'],
+celery = Celery(flask_app.import_name)
+celery.conf.update(
+    broker_url=flask_app.config['CELERY_BROKER_URL'],
+    result_backend=flask_app.config['CELERY_RESULT_BACKEND'],
+    beat_schedule={
+        'email-grooming-cycle': {
+            'task': 'app.tasks.email_grooming_tasks.process_email_grooming',
+            'schedule': 1800.0,  # every 30 minutes
+        },
+    },
+    timezone='UTC',
 )
-celery.conf.update(flask_app.config)
 
 
 class ContextTask(celery.Task):
@@ -25,3 +31,4 @@ import app.tasks.dns_tasks               # noqa: F401, E402
 import app.tasks.container_tasks          # noqa: F401, E402
 import app.tasks.website_generator_tasks  # noqa: F401, E402
 import app.tasks.cdn_tasks                # noqa: F401, E402
+import app.tasks.email_grooming_tasks     # noqa: F401, E402

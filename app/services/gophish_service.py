@@ -53,3 +53,136 @@ def create_sending_profile(data):
 
 def delete_sending_profile(profile_id):
     return _request('DELETE', f'/api/smtp/{profile_id}')
+
+
+def list_templates():
+    return _request('GET', '/api/templates/')
+
+
+def get_template(template_id):
+    return _request('GET', f'/api/templates/{template_id}')
+
+
+def create_template(data):
+    return _request('POST', '/api/templates/', json=data)
+
+
+def update_template(template_id, data):
+    return _request('PUT', f'/api/templates/{template_id}', json=data)
+
+
+def delete_template(template_id):
+    return _request('DELETE', f'/api/templates/{template_id}')
+
+
+def import_email_template(data):
+    """Import an email (raw source) as a GoPhish template.
+    data should have: content (raw email text), convert_links (bool).
+    """
+    return _request('POST', '/api/import/email', json=data)
+
+
+def find_profile_for_domain(domain_name):
+    """Find the first GoPhish sending profile whose from_address matches the given domain."""
+    matches = find_all_profiles_for_domain(domain_name)
+    return matches[0] if matches else None
+
+
+def find_all_profiles_for_domain(domain_name):
+    """Return all GoPhish sending profiles whose from_address matches the given domain."""
+    profiles = list_sending_profiles()
+    if not isinstance(profiles, list):
+        return []
+    domain_lower = domain_name.lower()
+    matches = []
+    for p in profiles:
+        from_addr = (p.get('from_address') or '').lower()
+        if '@' in from_addr and from_addr.rsplit('@', 1)[1] == domain_lower:
+            matches.append(p)
+            continue
+        username = (p.get('username') or '').lower()
+        if '@' in username and username.rsplit('@', 1)[1] == domain_lower:
+            matches.append(p)
+    return matches
+
+
+_GROOMING_TEMPLATE_NAME = 'InfraRed Grooming'
+
+
+def _ensure_grooming_template(subject, html_body, text_body=''):
+    """Create or update the grooming template in GoPhish so send_test_email can reference it."""
+    templates = list_templates()
+    existing = None
+    if isinstance(templates, list):
+        for t in templates:
+            if t.get('name') == _GROOMING_TEMPLATE_NAME:
+                existing = t
+                break
+
+    tpl_data = {
+        'name': _GROOMING_TEMPLATE_NAME,
+        'subject': subject,
+        'html': html_body,
+        'text': text_body,
+    }
+
+    if existing:
+        tpl_data['id'] = existing['id']
+        return update_template(existing['id'], tpl_data)
+    else:
+        return create_template(tpl_data)
+
+
+def send_test_email(smtp_profile, to_email, subject, html_body, text_body='',
+                    from_first='', from_last='', envelope_sender=None):
+    """Send a single email via GoPhish's send_test_email utility endpoint.
+
+    Args:
+        smtp_profile: Full GoPhish SMTP profile dict (as returned by list/get).
+        to_email: Recipient email address.
+        subject: Email subject line.
+        html_body: HTML body content.
+        text_body: Plain text body (optional fallback).
+        from_first: First name for the template context.
+        from_last: Last name for the template context.
+        envelope_sender: Override the profile's from_address (e.g. "Name <user@domain>").
+
+    Returns:
+        API response dict (empty on success, GoPhish returns 200 with empty body).
+    """
+    # GoPhish requires the template to exist in its DB — create/update it first
+    tpl = _ensure_grooming_template(subject, html_body, text_body)
+
+    # Build SMTP profile with proper envelope sender if provided
+    smtp = dict(smtp_profile)
+    if envelope_sender:
+        smtp['from_address'] = envelope_sender
+
+    payload = {
+        'template': {
+            'name': _GROOMING_TEMPLATE_NAME,
+        },
+        'first_name': from_first,
+        'last_name': from_last,
+        'email': to_email,
+        'position': '',
+        'url': '',
+        'page': {
+            'name': 'Blank',
+            'html': '<html><body></body></html>',
+        },
+        'smtp': smtp,
+    }
+    url = _base_url() + '/api/util/send_test_email'
+    resp = requests.post(url, headers=_headers(), json=payload, verify=False, timeout=30)
+    if resp.status_code >= 400:
+        error = resp.text
+        try:
+            error = resp.json().get('message', resp.text)
+        except Exception:
+            pass
+        raise Exception(f'GoPhish send_test_email error ({resp.status_code}): {error}')
+    try:
+        return resp.json()
+    except Exception:
+        return {'success': True}

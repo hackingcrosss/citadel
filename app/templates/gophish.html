@@ -4,14 +4,17 @@
 
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-4">
-    <h1 class="h3 mb-0">GoPhish Sending Profiles</h1>
-    <div>
-        <button class="btn btn-sm btn-outline-secondary" onclick="loadProfiles()">
+    <h1 class="h3 mb-0">GoPhish</h1>
+    <div id="tab-actions">
+        <button class="btn btn-sm btn-outline-secondary" onclick="refreshCurrentTab()">
             <i class="bi bi-arrow-clockwise"></i> Refresh
         </button>
         {% if current_user.role != 'viewer' and active_project_role != 'white_team' %}
-        <button class="btn btn-sm btn-infrared" data-bs-toggle="modal" data-bs-target="#createModal">
+        <button class="btn btn-sm btn-infrared d-none" id="btn-new-profile" data-bs-toggle="modal" data-bs-target="#createProfileModal">
             <i class="bi bi-plus-circle"></i> New Profile
+        </button>
+        <button class="btn btn-sm btn-infrared d-none" id="btn-new-template" data-bs-toggle="modal" data-bs-target="#createTemplateModal">
+            <i class="bi bi-plus-circle"></i> New Template
         </button>
         {% endif %}
     </div>
@@ -22,26 +25,68 @@
     <p class="mt-2">GoPhish credentials not configured. <a href="/settings#credentials">Configure in Settings</a></p>
 </div>
 
-<div id="profiles-content">
+<!-- Tabs -->
+<ul class="nav nav-tabs mb-3" id="gophish-tabs">
+    <li class="nav-item">
+        <button class="nav-link active" onclick="switchGpTab('profiles')">
+            <i class="bi bi-envelope"></i> Sending Profiles
+            <span id="profiles-badge" class="badge bg-secondary ms-1 d-none">0</span>
+        </button>
+    </li>
+    <li class="nav-item">
+        <button class="nav-link" onclick="switchGpTab('templates')">
+            <i class="bi bi-file-earmark-text"></i> Email Templates
+            <span id="templates-badge" class="badge bg-secondary ms-1 d-none">0</span>
+        </button>
+    </li>
+</ul>
+
+<!-- Profiles Tab -->
+<div id="pane-profiles">
     <div class="card-custom">
         <div class="card-body p-0">
             <table class="table table-hover mb-0">
                 <thead>
                     <tr>
-                        <th>Provider</th>
                         <th>ID</th>
                         <th>Name</th>
                         <th>From Address</th>
                         <th>Host</th>
                         <th>Username</th>
-                        <th>Ignore Cert Errors</th>
+                        <th>Ignore Cert</th>
                         <th style="width:100px">Project</th>
                         <th>Actions</th>
                     </tr>
                 </thead>
                 <tbody id="profiles-table">
                     <tr>
-                        <td colspan="9" class="text-center text-muted py-4">
+                        <td colspan="8" class="text-center text-muted py-4">
+                            <span class="spinner-border spinner-border-sm"></span> Loading...
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Templates Tab -->
+<div id="pane-templates" class="d-none">
+    <div class="card-custom">
+        <div class="card-body p-0">
+            <table class="table table-hover mb-0">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Name</th>
+                        <th>Subject</th>
+                        <th>Modified</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="templates-table">
+                    <tr>
+                        <td colspan="5" class="text-center text-muted py-4">
                             <span class="spinner-border spinner-border-sm"></span> Loading...
                         </td>
                     </tr>
@@ -52,7 +97,7 @@
 </div>
 
 <!-- Create Profile Modal -->
-<div class="modal fade" id="createModal" tabindex="-1">
+<div class="modal fade" id="createProfileModal" tabindex="-1">
     <div class="modal-dialog">
         <div class="modal-content">
             <div class="modal-header">
@@ -93,9 +138,87 @@
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                <button type="button" class="btn btn-infrared" id="btn-create" onclick="createProfile()">
+                <button type="button" class="btn btn-infrared" id="btn-create-profile" onclick="createProfile()">
                     <i class="bi bi-plus-circle"></i> Create Profile
                 </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Create/Edit Template Modal -->
+<div class="modal fade" id="createTemplateModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="tpl-modal-title"><i class="bi bi-plus-circle"></i> New Email Template</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="tpl-edit-id" value="">
+                <div class="mb-3">
+                    <label class="form-label">Template Name</label>
+                    <input type="text" class="form-control" id="tpl-name" placeholder="e.g. Password Reset">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Subject</label>
+                    <input type="text" class="form-control" id="tpl-subject" placeholder="e.g. Action Required: Reset Your Password">
+                </div>
+                <ul class="nav nav-tabs mb-2" style="font-size:0.85rem">
+                    <li class="nav-item">
+                        <button class="nav-link active" onclick="switchTplEditor('html')" id="tpl-tab-html">HTML</button>
+                    </li>
+                    <li class="nav-item">
+                        <button class="nav-link" onclick="switchTplEditor('text')" id="tpl-tab-text">Plain Text</button>
+                    </li>
+                    <li class="nav-item">
+                        <button class="nav-link" onclick="switchTplEditor('import')" id="tpl-tab-import">Import Email</button>
+                    </li>
+                    <li class="nav-item">
+                        <button class="nav-link" onclick="switchTplEditor('preview')" id="tpl-tab-preview">Preview</button>
+                    </li>
+                </ul>
+                <div id="tpl-editor-html">
+                    <textarea class="form-control" id="tpl-html" rows="12" placeholder="<html>...</html>" style="font-family:monospace;font-size:0.85rem"></textarea>
+                </div>
+                <div id="tpl-editor-text" class="d-none">
+                    <textarea class="form-control" id="tpl-text" rows="12" placeholder="Plain text version..." style="font-family:monospace;font-size:0.85rem"></textarea>
+                </div>
+                <div id="tpl-editor-import" class="d-none">
+                    <p class="text-muted small mb-2">Paste the raw email source to extract its HTML body and subject.</p>
+                    <textarea class="form-control mb-2" id="tpl-import-raw" rows="8" placeholder="Paste raw email source here..." style="font-family:monospace;font-size:0.82rem"></textarea>
+                    <button class="btn btn-sm btn-outline-info" onclick="importEmailTemplate()">
+                        <i class="bi bi-download"></i> Import
+                    </button>
+                </div>
+                <div id="tpl-editor-preview" class="d-none">
+                    <iframe id="tpl-preview-frame" style="width:100%;height:300px;border:1px solid #374151;border-radius:6px;background:#fff"></iframe>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-infrared" id="btn-save-template" onclick="saveTemplate()">
+                    <i class="bi bi-check-circle"></i> Save Template
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- View Template Modal -->
+<div class="modal fade" id="viewTemplateModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-eye"></i> <span id="view-tpl-name"></span></h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-2"><strong>Subject:</strong> <span id="view-tpl-subject"></span></div>
+                <iframe id="view-tpl-frame" style="width:100%;height:350px;border:1px solid #374151;border-radius:6px;background:#fff"></iframe>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
             </div>
         </div>
     </div>
@@ -111,44 +234,77 @@
     const ACTIVE_PROJECT_ID = {{ active_project.id if active_project else 'null' }};
     const ACTIVE_PROJECT_CODE = {{ active_project.code | tojson if active_project else 'null' }};
 
+    var _currentTab = 'profiles';
+
     function escapeAttr(str) {
         return String(str == null ? '' : str)
             .replace(/&/g, '&amp;').replace(/"/g, '&quot;')
             .replace(/'/g, '&#x27;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     }
+    function escapeHtml(str) {
+        var div = document.createElement('div');
+        div.appendChild(document.createTextNode(str));
+        return div.innerHTML;
+    }
 
     function projectBadge(rType, extId, projId, projCode, projResId) {
         if (projId) {
-            const canUntag = IS_ADMIN || projId === ACTIVE_PROJECT_ID;
+            var canUntag = IS_ADMIN || projId === ACTIVE_PROJECT_ID;
             return '<span class="badge bg-danger me-1" style="font-size:0.7rem">' + escapeHtml(projCode || '') + '</span>' +
                 (canUntag && !IS_READONLY ? '<i class="bi bi-x-circle text-muted" style="cursor:pointer;font-size:0.8rem" title="Untag" onclick="untagResource(' + projId + ',' + projResId + ')"></i>' : '');
         }
         if (!IS_READONLY && ACTIVE_PROJECT_ID !== null) {
             return '<i class="bi bi-tag text-muted" style="cursor:pointer;font-size:0.85rem" title="Tag to ' + escapeAttr(ACTIVE_PROJECT_CODE || 'active project') + '" onclick="tagResource(\'' + escapeAttr(rType) + '\',\'' + escapeAttr(extId) + '\')"></i>';
         }
-        return '<span class="text-muted" style="font-size:0.75rem">—</span>';
+        return '<span class="text-muted" style="font-size:0.75rem">-</span>';
     }
 
     async function tagResource(rType, extId) {
-        const res = await fetch('/api/projects/' + ACTIVE_PROJECT_ID + '/resources', {
+        var res = await fetch('/api/projects/' + ACTIVE_PROJECT_ID + '/resources', {
             method: 'POST', headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({resource_type: rType, external_id: extId}),
         });
-        if (!res.ok) { const d = await res.json(); showToast(d.error || 'Tag failed', 'danger'); return; }
+        if (!res.ok) { var d = await res.json(); showToast(d.error || 'Tag failed', 'danger'); return; }
         loadProfiles();
     }
 
     async function untagResource(projId, resId) {
-        const confirmed = await showConfirm('Remove project tag from this profile?');
+        var confirmed = await showConfirm('Remove project tag from this profile?');
         if (!confirmed) return;
-        const res = await fetch('/api/projects/' + projId + '/resources/' + resId, {method: 'DELETE'});
-        if (!res.ok) { const d = await res.json(); showToast(d.error || 'Untag failed', 'danger'); return; }
+        var res = await fetch('/api/projects/' + projId + '/resources/' + resId, {method: 'DELETE'});
+        if (!res.ok) { var d = await res.json(); showToast(d.error || 'Untag failed', 'danger'); return; }
         loadProfiles();
     }
 
+    // ── Tab switching ────────────────────────────────────────────────────────
+
+    function switchGpTab(name) {
+        _currentTab = name;
+        var tabs = document.querySelectorAll('#gophish-tabs .nav-link');
+        tabs[0].classList.toggle('active', name === 'profiles');
+        tabs[1].classList.toggle('active', name === 'templates');
+        document.getElementById('pane-profiles').classList.toggle('d-none', name !== 'profiles');
+        document.getElementById('pane-templates').classList.toggle('d-none', name !== 'templates');
+        var btnP = document.getElementById('btn-new-profile');
+        var btnT = document.getElementById('btn-new-template');
+        if (btnP) { btnP.classList.toggle('d-none', name !== 'profiles'); }
+        if (btnT) { btnT.classList.toggle('d-none', name !== 'templates'); }
+    }
+
+    function refreshCurrentTab() {
+        if (_currentTab === 'profiles') loadProfiles();
+        else loadTemplates();
+    }
+
+    // ── Init ─────────────────────────────────────────────────────────────────
+
     document.addEventListener('DOMContentLoaded', function() {
         loadProfiles();
+        loadTemplates();
+        switchGpTab('profiles');
     });
+
+    // ── Sending Profiles ─────────────────────────────────────────────────────
 
     function loadProfiles() {
         fetch('/api/gophish/profiles')
@@ -156,27 +312,29 @@
             .then(function(data) {
                 if (data.error) {
                     document.getElementById('not-configured').classList.remove('d-none');
-                    document.getElementById('profiles-content').classList.add('d-none');
+                    document.getElementById('pane-profiles').classList.add('d-none');
+                    document.getElementById('pane-templates').classList.add('d-none');
                     return;
                 }
                 document.getElementById('not-configured').classList.add('d-none');
-                document.getElementById('profiles-content').classList.remove('d-none');
 
                 var profiles = data.profiles || [];
-                var tbody = document.getElementById('profiles-table');
+                var badge = document.getElementById('profiles-badge');
+                if (profiles.length) { badge.textContent = profiles.length; badge.classList.remove('d-none'); }
+                else { badge.classList.add('d-none'); }
 
+                var tbody = document.getElementById('profiles-table');
                 if (profiles.length === 0) {
-                    var emptyMsg = (!IS_ADMIN && ACTIVE_PROJECT_ID === null)
+                    var msg = (!IS_ADMIN && ACTIVE_PROJECT_ID === null)
                         ? 'Select a project to view sending profiles'
                         : 'No sending profiles found';
-                    tbody.innerHTML = '<tr><td colspan="9" class="text-center text-muted py-4">' + emptyMsg + '</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted py-4">' + msg + '</td></tr>';
                     return;
                 }
 
                 var html = '';
                 profiles.forEach(function(p) {
                     html += '<tr>';
-                    html += '<td><span class="badge bg-success">GoPhish</span></td>';
                     html += '<td>' + p.id + '</td>';
                     html += '<td><strong>' + escapeHtml(p.name) + '</strong></td>';
                     html += '<td>' + escapeHtml(p.from_address || '-') + '</td>';
@@ -187,17 +345,14 @@
                     html += '<td>';
                     if (!IS_READONLY) {
                         html += '<button class="btn btn-sm btn-outline-danger" onclick="deleteProfile(' + p.id + ', \'' + escapeHtml(p.name).replace(/'/g, "\\'") + '\')" title="Delete">';
-                        html += '<i class="bi bi-trash"></i>';
-                        html += '</button>';
+                        html += '<i class="bi bi-trash"></i></button>';
                     }
-                    html += '</td>';
-                    html += '</tr>';
+                    html += '</td></tr>';
                 });
                 tbody.innerHTML = html;
             })
-            .catch(function(err) {
+            .catch(function() {
                 document.getElementById('not-configured').classList.remove('d-none');
-                document.getElementById('profiles-content').classList.add('d-none');
             });
     }
 
@@ -217,8 +372,7 @@
         if (!password) { alert('Enter a password'); return; }
 
         var fullHost = host + ':' + (port || '587');
-
-        var btn = document.getElementById('btn-create');
+        var btn = document.getElementById('btn-create-profile');
         btn.disabled = true;
         btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Creating...';
 
@@ -226,29 +380,16 @@
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({
-                name: name,
-                from_address: from,
-                host: fullHost,
-                username: username,
-                password: password,
-                ignore_cert_errors: ignoreCert
+                name: name, from_address: from, host: fullHost,
+                username: username, password: password, ignore_cert_errors: ignoreCert
             })
         })
         .then(function(r) { return r.json(); })
         .then(function(data) {
             btn.disabled = false;
             btn.innerHTML = '<i class="bi bi-plus-circle"></i> Create Profile';
-
-            if (data.error) {
-                alert('Failed: ' + data.error);
-                return;
-            }
-
-            // Close modal and reload
-            var modal = bootstrap.Modal.getInstance(document.getElementById('createModal'));
-            modal.hide();
-
-            // Clear form
+            if (data.error) { alert('Failed: ' + data.error); return; }
+            bootstrap.Modal.getInstance(document.getElementById('createProfileModal')).hide();
             document.getElementById('new-name').value = '';
             document.getElementById('new-from').value = '';
             document.getElementById('new-host').value = '';
@@ -256,7 +397,6 @@
             document.getElementById('new-username').value = '';
             document.getElementById('new-password').value = '';
             document.getElementById('new-ignore-cert').checked = true;
-
             loadProfiles();
         })
         .catch(function(err) {
@@ -271,22 +411,184 @@
             fetch('/api/gophish/profiles/' + id, {method: 'DELETE'})
                 .then(function(r) { return r.json(); })
                 .then(function(data) {
-                    if (data.error) {
-                        showToast('Failed: ' + data.error, 'danger');
-                        return;
-                    }
+                    if (data.error) { showToast('Failed: ' + data.error, 'danger'); return; }
                     loadProfiles();
                 })
-                .catch(function(err) {
-                    showToast('Request failed: ' + err, 'danger');
-                });
+                .catch(function(err) { showToast('Request failed: ' + err, 'danger'); });
         });
     }
 
-    function escapeHtml(str) {
-        var div = document.createElement('div');
-        div.appendChild(document.createTextNode(str));
-        return div.innerHTML;
+    // ── Email Templates ──────────────────────────────────────────────────────
+
+    function loadTemplates() {
+        fetch('/api/gophish/templates')
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (data.error) return;
+                var templates = data.templates || [];
+                var badge = document.getElementById('templates-badge');
+                if (templates.length) { badge.textContent = templates.length; badge.classList.remove('d-none'); }
+                else { badge.classList.add('d-none'); }
+
+                var tbody = document.getElementById('templates-table');
+                if (!templates.length) {
+                    tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-4">No email templates found</td></tr>';
+                    return;
+                }
+
+                tbody.innerHTML = templates.map(function(t) {
+                    var modified = t.modified_date ? new Date(t.modified_date).toLocaleDateString() : '-';
+                    var actions = '';
+                    actions += '<button class="btn btn-sm btn-outline-info me-1" onclick="viewTemplate(' + t.id + ')" title="Preview"><i class="bi bi-eye"></i></button>';
+                    if (!IS_READONLY) {
+                        actions += '<button class="btn btn-sm btn-outline-warning me-1" onclick="editTemplate(' + t.id + ')" title="Edit"><i class="bi bi-pencil"></i></button>';
+                        actions += '<button class="btn btn-sm btn-outline-danger" onclick="deleteTemplate(' + t.id + ',\'' + escapeHtml(t.name).replace(/'/g, "\\'") + '\')" title="Delete"><i class="bi bi-trash"></i></button>';
+                    }
+                    return '<tr>'
+                        + '<td>' + t.id + '</td>'
+                        + '<td><strong>' + escapeHtml(t.name) + '</strong></td>'
+                        + '<td>' + escapeHtml(t.subject || '-') + '</td>'
+                        + '<td>' + modified + '</td>'
+                        + '<td>' + actions + '</td>'
+                        + '</tr>';
+                }).join('');
+            })
+            .catch(function() {});
+    }
+
+    function viewTemplate(id) {
+        fetch('/api/gophish/templates/' + id)
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (data.error) { alert(data.error); return; }
+                var t = data.template;
+                document.getElementById('view-tpl-name').textContent = t.name || '';
+                document.getElementById('view-tpl-subject').textContent = t.subject || '-';
+                var frame = document.getElementById('view-tpl-frame');
+                frame.srcdoc = t.html || ('<pre>' + escapeHtml(t.text || '(empty)') + '</pre>');
+                new bootstrap.Modal(document.getElementById('viewTemplateModal')).show();
+            });
+    }
+
+    function editTemplate(id) {
+        fetch('/api/gophish/templates/' + id)
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (data.error) { alert(data.error); return; }
+                var t = data.template;
+                document.getElementById('tpl-edit-id').value = t.id;
+                document.getElementById('tpl-name').value = t.name || '';
+                document.getElementById('tpl-subject').value = t.subject || '';
+                document.getElementById('tpl-html').value = t.html || '';
+                document.getElementById('tpl-text').value = t.text || '';
+                document.getElementById('tpl-modal-title').innerHTML = '<i class="bi bi-pencil"></i> Edit Email Template';
+                switchTplEditor('html');
+                new bootstrap.Modal(document.getElementById('createTemplateModal')).show();
+            });
+    }
+
+    function openNewTemplate() {
+        document.getElementById('tpl-edit-id').value = '';
+        document.getElementById('tpl-name').value = '';
+        document.getElementById('tpl-subject').value = '';
+        document.getElementById('tpl-html').value = '';
+        document.getElementById('tpl-text').value = '';
+        document.getElementById('tpl-import-raw').value = '';
+        document.getElementById('tpl-modal-title').innerHTML = '<i class="bi bi-plus-circle"></i> New Email Template';
+        switchTplEditor('html');
+    }
+
+    // Reset form when opening "New Template" via the button
+    var tplModalEl = document.getElementById('createTemplateModal');
+    if (tplModalEl) {
+        tplModalEl.addEventListener('show.bs.modal', function(e) {
+            if (!document.getElementById('tpl-edit-id').value) openNewTemplate();
+        });
+        tplModalEl.addEventListener('hidden.bs.modal', function() {
+            document.getElementById('tpl-edit-id').value = '';
+        });
+    }
+
+    function switchTplEditor(name) {
+        ['html', 'text', 'import', 'preview'].forEach(function(t) {
+            document.getElementById('tpl-editor-' + t).classList.toggle('d-none', t !== name);
+            document.getElementById('tpl-tab-' + t).classList.toggle('active', t === name);
+        });
+        if (name === 'preview') {
+            var frame = document.getElementById('tpl-preview-frame');
+            var html = document.getElementById('tpl-html').value;
+            frame.srcdoc = html || '<p style="color:#999;padding:20px">No HTML content</p>';
+        }
+    }
+
+    function importEmailTemplate() {
+        var raw = document.getElementById('tpl-import-raw').value.trim();
+        if (!raw) { alert('Paste the raw email source first'); return; }
+        fetch('/api/gophish/templates/import', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({content: raw, convert_links: true})
+        })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            if (data.error) { alert('Import failed: ' + data.error); return; }
+            var t = data.template || {};
+            if (t.html) document.getElementById('tpl-html').value = t.html;
+            if (t.text) document.getElementById('tpl-text').value = t.text;
+            if (t.subject) document.getElementById('tpl-subject').value = t.subject;
+            switchTplEditor('html');
+            showToast('Email imported successfully', 'success');
+        })
+        .catch(function(err) { alert('Import failed: ' + err); });
+    }
+
+    function saveTemplate() {
+        var editId = document.getElementById('tpl-edit-id').value;
+        var name = document.getElementById('tpl-name').value.trim();
+        var subject = document.getElementById('tpl-subject').value.trim();
+        var html = document.getElementById('tpl-html').value;
+        var text = document.getElementById('tpl-text').value;
+
+        if (!name) { alert('Enter a template name'); return; }
+        if (!html && !text) { alert('Enter HTML or plain text content'); return; }
+
+        var btn = document.getElementById('btn-save-template');
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Saving...';
+
+        var url = editId ? '/api/gophish/templates/' + editId : '/api/gophish/templates';
+        var method = editId ? 'PUT' : 'POST';
+
+        fetch(url, {
+            method: method,
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({name: name, subject: subject, html: html, text: text})
+        })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="bi bi-check-circle"></i> Save Template';
+            if (data.error) { alert('Failed: ' + data.error); return; }
+            bootstrap.Modal.getInstance(document.getElementById('createTemplateModal')).hide();
+            loadTemplates();
+        })
+        .catch(function(err) {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="bi bi-check-circle"></i> Save Template';
+            alert('Request failed: ' + err);
+        });
+    }
+
+    function deleteTemplate(id, name) {
+        showConfirm('Delete Template', 'Delete email template <strong>' + name + '</strong>?', 'Delete', function() {
+            fetch('/api/gophish/templates/' + id, {method: 'DELETE'})
+                .then(function(r) { return r.json(); })
+                .then(function(data) {
+                    if (data.error) { showToast('Failed: ' + data.error, 'danger'); return; }
+                    loadTemplates();
+                })
+                .catch(function(err) { showToast('Request failed: ' + err, 'danger'); });
+        });
     }
 </script>
 {% endblock %}

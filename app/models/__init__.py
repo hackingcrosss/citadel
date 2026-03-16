@@ -9,3 +9,4 @@ from app.models.cdn_distribution import CdnDistribution
 from app.models.audit_log import AuditLog
 from app.models.domain_tag import DomainGroomingTag
 from app.models.email_grooming import EmailGroomingConfig
+from app.models.email_grooming_log import EmailGroomingLog
