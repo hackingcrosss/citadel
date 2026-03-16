@@ -8,3 +8,4 @@ from app.models.project_resource import ProjectResource
 from app.models.cdn_distribution import CdnDistribution
 from app.models.audit_log import AuditLog
 from app.models.domain_tag import DomainGroomingTag
+from app.models.email_grooming import EmailGroomingConfig
