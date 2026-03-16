@@ -132,3 +132,52 @@ def create_listener(listener_type, data):
 
 def delete_listener(listener_name):
     return _request('DELETE', f'/api/v1/listeners/{listener_name}')
+
+
+# Payload string → REST API type slug mapping
+_PAYLOAD_TYPE_MAP = {
+    'beacon_https': 'https',
+    'beacon_http': 'http',
+    'beacon_dns': 'dns',
+    'bind_pipe': 'smb',
+    'bind_tcp': 'tcp',
+    'foreign_reverse_https': 'foreignHttps',
+    'foreign_reverse_http': 'foreignHttp',
+    'external_c2': 'externalC2',
+}
+
+
+def _detect_type(listener):
+    """Detect the listener type slug from the payload string."""
+    payload = listener.get('payload', '')
+    for key, slug in _PAYLOAD_TYPE_MAP.items():
+        if key in payload:
+            return slug
+    return None
+
+
+# Fields to strip before recreating (CS adds these, not user-set)
+_INTERNAL_FIELDS = {'id', 'payload', 'status', 'project_id', 'project_code', 'project_resource_id'}
+
+
+def update_listener_hosts(listener_name, new_hosts):
+    """Update a listener's callback hosts by deleting and recreating it.
+    Returns the new listener data."""
+    current = get_listener(listener_name)
+    if not current:
+        raise Exception(f'Listener "{listener_name}" not found')
+
+    listener_type = _detect_type(current)
+    if not listener_type:
+        raise Exception(f'Cannot determine listener type from payload: {current.get("payload")}')
+
+    if listener_type not in ('http', 'https', 'dns'):
+        raise Exception(f'Listener type "{listener_type}" does not support callback hosts')
+
+    # Build the recreation body from the current config
+    body = {k: v for k, v in current.items() if k not in _INTERNAL_FIELDS}
+    body['hosts'] = new_hosts
+
+    # Delete then recreate
+    delete_listener(listener_name)
+    return create_listener(listener_type, body)

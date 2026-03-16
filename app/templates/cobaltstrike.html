@@ -98,6 +98,38 @@
         </div>
     </div>
 </div>
+<!-- Edit Callback Hosts Modal -->
+<div class="modal fade" id="editHostsModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-pencil-square"></i> Edit Callback Hosts</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p class="text-muted mb-2">Listener: <strong id="edit-hosts-name"></strong></p>
+                <div class="mb-3">
+                    <label class="form-label">Callback Hosts</label>
+                    <div id="edit-hosts-list"></div>
+                    <div class="input-group mt-2">
+                        <input type="text" class="form-control" id="edit-hosts-new" placeholder="host.example.com" onkeydown="if(event.key==='Enter'){addEditHost();event.preventDefault();}">
+                        <button class="btn btn-outline-secondary" type="button" onclick="addEditHost()"><i class="bi bi-plus"></i></button>
+                    </div>
+                </div>
+                <div id="edit-hosts-warning" class="alert alert-warning d-none small">
+                    Editing callback hosts will briefly stop and restart the listener.
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-infrared" id="btn-save-hosts" onclick="saveEditHosts()">
+                    <i class="bi bi-check-lg"></i> Save Hosts
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- JSON Inspect Modal -->
 <div class="modal fade" id="jsonModal" tabindex="-1">
     <div class="modal-dialog modal-lg">
@@ -390,6 +422,14 @@
                     html += '<i class="bi bi-code-slash"></i>';
                     html += '</button>';
                     if (!IS_READONLY) {
+                        // Edit hosts button — only for http/https/dns listeners
+                        var hasHosts = Array.isArray(l.hosts) && l.hosts.length > 0;
+                        var typeSupportsHosts = (lType === 'HTTP' || lType === 'HTTPS' || lType === 'DNS');
+                        if (hasHosts || typeSupportsHosts) {
+                            html += '<button class="btn btn-sm btn-outline-warning me-1" onclick=\'openEditHosts(' + idx + ')\' title="Edit Callback Hosts">';
+                            html += '<i class="bi bi-pencil-square"></i>';
+                            html += '</button>';
+                        }
                         html += '<button class="btn btn-sm btn-outline-danger" onclick="deleteListener(\'' + escapeHtml(l.name || '').replace(/'/g, "\\'") + '\')" title="Stop & Delete">';
                         html += '<i class="bi bi-trash"></i>';
                         html += '</button>';
@@ -560,6 +600,90 @@
         document.getElementById('json-content').textContent = json;
         var modal = new bootstrap.Modal(document.getElementById('jsonModal'));
         modal.show();
+    }
+
+    // ---- Edit Callback Hosts ----
+    var _editHostsName = '';
+    var _editHosts = [];
+
+    function openEditHosts(idx) {
+        var listener = (window._csListeners || [])[idx];
+        if (!listener) { alert('Listener data not found'); return; }
+        _editHostsName = listener.name || '';
+        _editHosts = Array.isArray(listener.hosts) ? listener.hosts.slice() : [];
+        document.getElementById('edit-hosts-name').textContent = _editHostsName;
+        document.getElementById('edit-hosts-warning').classList.remove('d-none');
+        renderEditHosts();
+        var modal = new bootstrap.Modal(document.getElementById('editHostsModal'));
+        modal.show();
+    }
+
+    function renderEditHosts() {
+        var container = document.getElementById('edit-hosts-list');
+        if (_editHosts.length === 0) {
+            container.innerHTML = '<div class="text-muted small">No hosts configured</div>';
+            return;
+        }
+        var html = '';
+        _editHosts.forEach(function(h, i) {
+            html += '<span class="badge bg-secondary me-1 mb-1" style="font-size:0.85rem">';
+            html += escapeHtml(h);
+            html += ' <i class="bi bi-x-circle" style="cursor:pointer" onclick="removeEditHost(' + i + ')"></i>';
+            html += '</span>';
+        });
+        container.innerHTML = html;
+    }
+
+    function addEditHost() {
+        var input = document.getElementById('edit-hosts-new');
+        var val = input.value.trim();
+        if (!val) return;
+        // Support comma-separated input
+        val.split(',').forEach(function(h) {
+            h = h.trim();
+            if (h && _editHosts.indexOf(h) === -1) _editHosts.push(h);
+        });
+        input.value = '';
+        renderEditHosts();
+    }
+
+    function removeEditHost(idx) {
+        _editHosts.splice(idx, 1);
+        renderEditHosts();
+    }
+
+    function saveEditHosts() {
+        if (_editHosts.length === 0) {
+            alert('At least one callback host is required');
+            return;
+        }
+        var btn = document.getElementById('btn-save-hosts');
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Saving...';
+
+        fetch('/api/cobaltstrike/listeners/' + encodeURIComponent(_editHostsName) + '/hosts', {
+            method: 'PATCH',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({hosts: _editHosts})
+        })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="bi bi-check-lg"></i> Save Hosts';
+            if (data.error) {
+                alert('Failed: ' + data.error);
+                return;
+            }
+            var modal = bootstrap.Modal.getInstance(document.getElementById('editHostsModal'));
+            modal.hide();
+            showToast('Callback hosts updated', 'success');
+            loadListeners();
+        })
+        .catch(function(err) {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="bi bi-check-lg"></i> Save Hosts';
+            alert('Request failed: ' + err);
+        });
     }
 
     function escapeHtml(str) {
