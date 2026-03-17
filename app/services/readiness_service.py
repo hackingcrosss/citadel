@@ -1,5 +1,5 @@
 import logging
-from app.services.dns_service import list_dns_records, get_ssl_setting
+from app.services.dns_service import list_dns_records, get_ssl_setting, get_whois_info
 from app.services.email_service import get_domain as mg_get_domain
 from app.services.npm_service import list_proxy_hosts
 
@@ -51,7 +51,21 @@ def check_domain_readiness(domain):
         else:
             checks['dns_a_record'] = _check(False, 'No root A record found')
 
-    # ── 2. SSL strict/full ───────────────────────────────────────────────────
+    # ── 2. Domain age (30+ days) ────────────────────────────────────────────
+    try:
+        whois_info = get_whois_info(domain_name)
+        age_days = whois_info.get('age_days')
+        if age_days is not None:
+            if age_days >= 30:
+                checks['domain_age'] = _check(True, f'{age_days} days old')
+            else:
+                checks['domain_age'] = _check(False, f'Only {age_days} days old (need 30+)')
+        else:
+            checks['domain_age'] = _check(False, 'Could not determine registration date')
+    except Exception as exc:
+        checks['domain_age'] = _check(False, f'WHOIS lookup failed: {exc}')
+
+    # ── 3. SSL strict/full ───────────────────────────────────────────────────
     if not zone_id:
         checks['ssl_strict'] = _check(False, 'No Cloudflare zone ID')
     elif cf_error:

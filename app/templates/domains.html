@@ -77,6 +77,27 @@
                 <span id="zone-detail-plan" class="fw-bold"></span>
             </div>
         </div>
+        <hr class="my-2">
+        <div class="row text-center" id="whois-row">
+            <div class="col-md-4">
+                <small class="text-muted d-block">Registered</small>
+                <span id="zone-detail-registered" class="fw-bold">
+                    <span class="spinner-border spinner-border-sm text-muted" style="width:.7rem;height:.7rem"></span>
+                </span>
+            </div>
+            <div class="col-md-4">
+                <small class="text-muted d-block">Expires</small>
+                <span id="zone-detail-expires" class="fw-bold">
+                    <span class="spinner-border spinner-border-sm text-muted" style="width:.7rem;height:.7rem"></span>
+                </span>
+            </div>
+            <div class="col-md-4">
+                <small class="text-muted d-block">Domain Age</small>
+                <span id="zone-detail-age" class="fw-bold">
+                    <span class="spinner-border spinner-border-sm text-muted" style="width:.7rem;height:.7rem"></span>
+                </span>
+            </div>
+        </div>
     </div>
 </div>
 
@@ -266,6 +287,7 @@
     const IS_WHITE_TEAM = {{ 'true' if current_user.role == 'white_team' else 'false' }};
     const IS_READONLY = IS_AUDITOR || IS_WHITE_TEAM;
     let currentZoneId = null;
+    let currentZoneName = null;
 
     document.addEventListener('DOMContentLoaded', loadZones);
 
@@ -294,6 +316,7 @@
                 (data.zones || []).forEach(z => {
                     const opt = document.createElement('option');
                     opt.value = z.id;
+                    opt.dataset.name = z.name;
                     const acct = z.account_label && z.account_label !== 'default' ? ' [' + z.account_label + ']' : '';
                     opt.textContent = z.name + acct + ' (' + z.status + ')';
                     select.appendChild(opt);
@@ -312,7 +335,10 @@
     }
 
     function onZoneChange() {
-        currentZoneId = document.getElementById('zone-select').value;
+        const select = document.getElementById('zone-select');
+        currentZoneId = select.value;
+        const selectedOpt = select.options[select.selectedIndex];
+        currentZoneName = selectedOpt ? selectedOpt.dataset.name : null;
         if (!currentZoneId) {
             document.getElementById('zone-info-card').style.display = 'none';
             document.getElementById('records-tbody').innerHTML =
@@ -328,12 +354,26 @@
     function loadZoneDetails() {
         if (!currentZoneId) return;
 
+        // Show the card immediately; individual sections fill in as data arrives
+        document.getElementById('zone-info-card').style.display = '';
+
+        // Reset WHOIS row to loading state
+        ['zone-detail-registered', 'zone-detail-expires', 'zone-detail-age'].forEach(id => {
+            document.getElementById(id).innerHTML =
+                '<span class="spinner-border spinner-border-sm text-muted" style="width:.7rem;height:.7rem"></span>';
+        });
+
+        // Reset other fields
+        document.getElementById('zone-detail-status').innerHTML = '-';
+        document.getElementById('zone-detail-ssl').textContent = '-';
+        document.getElementById('zone-detail-ns').textContent = '-';
+        document.getElementById('zone-detail-plan').textContent = '-';
+
         fetch('/api/domains/zones/' + currentZoneId)
             .then(r => r.json())
             .then(data => {
                 if (data.error) return;
                 const z = data.zone;
-                document.getElementById('zone-info-card').style.display = '';
                 document.getElementById('zone-detail-status').innerHTML =
                     z.status === 'active'
                         ? '<span class="badge bg-success">Active</span>'
@@ -342,16 +382,90 @@
                     (z.name_servers || []).join(', ');
                 document.getElementById('zone-detail-plan').textContent =
                     z.plan ? z.plan.name : '-';
-            });
+            })
+            .catch(() => {});
 
         fetch('/api/domains/zones/' + currentZoneId + '/ssl')
             .then(r => r.json())
             .then(data => {
+                if (data.error) {
+                    document.getElementById('zone-detail-ssl').innerHTML =
+                        '<span class="text-muted" title="' + data.error + '">N/A</span>';
+                    return;
+                }
                 if (data.ssl) {
                     document.getElementById('zone-detail-ssl').textContent = data.ssl.value || '-';
                 }
             })
-            .catch(() => {});
+            .catch(() => {
+                document.getElementById('zone-detail-ssl').innerHTML = '<span class="text-muted">N/A</span>';
+            });
+
+        loadWhoisInfo();
+    }
+
+    function loadWhoisInfo() {
+        if (!currentZoneName) return;
+
+        fetch('/api/domains/whois?domain=' + encodeURIComponent(currentZoneName))
+            .then(r => r.json())
+            .then(data => {
+                if (data.error) {
+                    document.getElementById('zone-detail-registered').innerHTML = '<span class="text-muted">-</span>';
+                    document.getElementById('zone-detail-expires').innerHTML = '<span class="text-muted">-</span>';
+                    document.getElementById('zone-detail-age').innerHTML = '<span class="text-muted">-</span>';
+                    return;
+                }
+                const w = data.whois;
+
+                // Registration date
+                if (w.creation_date) {
+                    const d = new Date(w.creation_date);
+                    document.getElementById('zone-detail-registered').textContent = d.toLocaleDateString();
+                } else {
+                    document.getElementById('zone-detail-registered').innerHTML = '<span class="text-muted">Unknown</span>';
+                }
+
+                // Expiration date
+                if (w.expiration_date) {
+                    const d = new Date(w.expiration_date);
+                    let html = d.toLocaleDateString();
+                    if (w.is_expired) {
+                        html += ' <span class="badge bg-danger ms-1">Expired</span>';
+                    }
+                    document.getElementById('zone-detail-expires').innerHTML = html;
+                } else {
+                    document.getElementById('zone-detail-expires').innerHTML = '<span class="text-muted">Unknown</span>';
+                }
+
+                // Domain age
+                if (w.age_days !== null) {
+                    let ageText;
+                    if (w.age_days >= 365) {
+                        const years = Math.floor(w.age_days / 365);
+                        const months = Math.floor((w.age_days % 365) / 30);
+                        ageText = years + 'y' + (months > 0 ? ' ' + months + 'mo' : '');
+                    } else if (w.age_days >= 30) {
+                        ageText = Math.floor(w.age_days / 30) + 'mo ' + (w.age_days % 30) + 'd';
+                    } else {
+                        ageText = w.age_days + ' days';
+                    }
+                    let html = ageText;
+                    if (w.is_aged) {
+                        html += ' <span class="badge bg-success ms-1">30d+</span>';
+                    } else {
+                        html += ' <span class="badge bg-warning text-dark ms-1">&lt;30d</span>';
+                    }
+                    document.getElementById('zone-detail-age').innerHTML = html;
+                } else {
+                    document.getElementById('zone-detail-age').innerHTML = '<span class="text-muted">Unknown</span>';
+                }
+            })
+            .catch(() => {
+                document.getElementById('zone-detail-registered').innerHTML = '<span class="text-muted">-</span>';
+                document.getElementById('zone-detail-expires').innerHTML = '<span class="text-muted">-</span>';
+                document.getElementById('zone-detail-age').innerHTML = '<span class="text-muted">-</span>';
+            });
     }
 
     function loadDNSRecords() {
