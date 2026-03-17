@@ -1,5 +1,6 @@
 import logging
 import requests
+from datetime import datetime, timezone
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from flask import current_app
 from app.services.credential_service import get_credential, get_account_labels
@@ -204,3 +205,49 @@ def enable_dmarc_management(zone_id, label='default'):
     tag = result.get('tag') or result.get('rua_tag') or result.get('rua_mailbox') or ''
     rua = f'{tag}@dmarc-reports.cloudflare.net' if tag else None
     return {'enabled': result.get('enabled', True), 'tag': tag, 'rua': rua}
+
+
+# --- WHOIS ---
+
+def get_whois_info(domain_name):
+    """Fetch WHOIS registration/expiration dates for a domain.
+
+    Returns a dict with creation_date, expiration_date, age_days, is_expired,
+    is_aged (>30 days old), and registrar.
+    """
+    try:
+        import whois
+    except ImportError:
+        raise ValueError("python-whois package is not installed")
+
+    w = whois.whois(domain_name)
+
+    def _first_date(val):
+        if val is None:
+            return None
+        if isinstance(val, list):
+            val = val[0] if val else None
+        if isinstance(val, datetime):
+            # Ensure timezone-aware for safe comparisons
+            if val.tzinfo is None:
+                return val.replace(tzinfo=timezone.utc)
+            return val
+        return None
+
+    creation = _first_date(w.creation_date)
+    expiration = _first_date(w.expiration_date)
+    now = datetime.now(timezone.utc)
+
+    age_days = (now - creation).days if creation else None
+    is_expired = expiration < now if expiration else None
+    is_aged = age_days >= 30 if age_days is not None else None
+
+    return {
+        'domain': domain_name,
+        'creation_date': creation.isoformat() if creation else None,
+        'expiration_date': expiration.isoformat() if expiration else None,
+        'age_days': age_days,
+        'is_expired': is_expired,
+        'is_aged': is_aged,
+        'registrar': w.registrar if hasattr(w, 'registrar') else None,
+    }

@@ -24,3 +24,4 @@ azure-mgmt-network>=25.0.0
 azure-mgmt-dns>=8.0.0
 azure-mgmt-cdn>=13.0.0
 azure-mgmt-resource>=23.0.0
+python-whois>=0.9.4

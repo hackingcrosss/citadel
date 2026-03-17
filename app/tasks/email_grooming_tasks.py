@@ -446,8 +446,6 @@ def process_email_grooming(self):
                 subject=subject,
                 html_body=html_body,
                 text_body=text_body,
-                from_first=first_name,
-                from_last=last_name,
                 envelope_sender=envelope_sender,
             )
             log_entry = EmailGroomingLog(
@@ -563,8 +561,6 @@ def run_full_grooming_cycle(self):
                     subject=subject,
                     html_body=html_body,
                     text_body=text_body,
-                    from_first=first_name,
-                    from_last=last_name,
                     envelope_sender=envelope_sender,
                 )
                 log_entry = EmailGroomingLog(
@@ -638,8 +634,6 @@ def send_grooming_email_now(self, config_id):
             subject=subject,
             html_body=html_body,
             text_body=text_body,
-            from_first=first_name,
-            from_last=last_name,
             envelope_sender=envelope_sender,
         )
         log_entry = EmailGroomingLog(

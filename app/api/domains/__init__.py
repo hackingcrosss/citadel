@@ -380,8 +380,8 @@ def list_zones():
 
 @api_bp.route('/domains/zones/<zone_id>', methods=['GET'])
 @login_required
-@admin_required
 def get_zone(zone_id):
+    _assert_zone_accessible(zone_id, write=False)
     try:
         zone = dns_service.get_zone(zone_id, label=_zone_label(zone_id))
         return jsonify({'zone': zone})
@@ -593,6 +593,20 @@ def remove_grooming_tag(domain_id, tag):
 # ---------------------------------------------------------------------------
 # SSL
 # ---------------------------------------------------------------------------
+
+@api_bp.route('/domains/whois', methods=['GET'])
+@login_required
+def get_domain_whois():
+    """Fetch WHOIS registration/expiration info for a domain by name."""
+    domain_name = request.args.get('domain', '').strip().lower()
+    if not domain_name or not _DOMAIN_RE.match(domain_name):
+        return jsonify({'error': 'Valid domain name required (?domain=example.com)'}), 400
+    try:
+        info = dns_service.get_whois_info(domain_name)
+        return jsonify({'whois': info})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 400
+
 
 @api_bp.route('/domains/zones/<zone_id>/ssl', methods=['GET'])
 @login_required
