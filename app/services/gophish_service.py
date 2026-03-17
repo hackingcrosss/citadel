@@ -134,7 +134,7 @@ def _ensure_grooming_template(subject, html_body, text_body=''):
 
 
 def send_test_email(smtp_profile, to_email, subject, html_body, text_body='',
-                    from_first='', from_last='', envelope_sender=None):
+                    envelope_sender=None):
     """Send a single email via GoPhish's send_test_email utility endpoint.
 
     Args:
@@ -143,8 +143,6 @@ def send_test_email(smtp_profile, to_email, subject, html_body, text_body='',
         subject: Email subject line.
         html_body: HTML body content.
         text_body: Plain text body (optional fallback).
-        from_first: First name for the template context.
-        from_last: Last name for the template context.
         envelope_sender: Override the profile's from_address (e.g. "Name <user@domain>").
 
     Returns:
@@ -158,12 +156,15 @@ def send_test_email(smtp_profile, to_email, subject, html_body, text_body='',
     if envelope_sender:
         smtp['from_address'] = envelope_sender
 
+    # Note: first_name/last_name in GoPhish payload are the RECIPIENT's name
+    # (used for {{.FirstName}}/{{.LastName}} and the To: header).
+    # The sender display name is controlled by smtp.from_address.
     payload = {
         'template': {
             'name': _GROOMING_TEMPLATE_NAME,
         },
-        'first_name': from_first,
-        'last_name': from_last,
+        'first_name': '',
+        'last_name': '',
         'email': to_email,
         'position': '',
         'url': '',
