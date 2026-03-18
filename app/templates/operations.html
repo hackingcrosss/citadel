@@ -201,13 +201,13 @@
             <i class="bi bi-crosshair"></i> Setup C2 Connection
         </div>
         <div class="card-body">
-            <p class="text-muted small">Create a Cobalt Strike listener, NPM reverse proxy, and Cloudflare DNS entries in one step. DNS points to RedWarden, NPM forwards to CS Listener IP.</p>
+            <p class="text-muted small">Create a Cobalt Strike listener, NPM reverse proxy, and Cloudflare DNS entries in one step. DNS points to C2 Redirector, NPM forwards to CS Listener IP.</p>
 
             <div id="c2-redwarden-warning" class="alert alert-warning small d-none mb-3">
-                <i class="bi bi-exclamation-triangle"></i> RedWarden IP not configured. <a href="/settings#credentials">Set it in Settings</a>.
+                <i class="bi bi-exclamation-triangle"></i> C2 Redirector IP not configured. <a href="/settings#c2">Set it in Settings</a>.
             </div>
             <div id="c2-redwarden-info" class="small text-muted mb-2 d-none">
-                <i class="bi bi-info-circle"></i> Cloudflare DNS will point to RedWarden: <strong id="c2-redwarden-display"></strong>
+                <i class="bi bi-info-circle"></i> Cloudflare DNS will point to C2 Redirector: <strong id="c2-redwarden-display"></strong>
             </div>
             <div id="c2-csip-warning" class="alert alert-warning small d-none mb-3">
                 <i class="bi bi-exclamation-triangle"></i> CS Listener IP not configured. <a href="/settings#credentials">Set it in Settings</a> (Cobalt Strike section).
@@ -282,7 +282,7 @@
                             <input class="form-check-input" type="checkbox" id="c2-cdn-enabled" onchange="onCdnToggle()">
                             <label class="form-check-label fw-bold" for="c2-cdn-enabled">Use CDN Redirector</label>
                         </div>
-                        <small class="text-muted d-block mb-2">Route beacon traffic through CloudFront or Azure Front Door before RedWarden. DNS CNAME → CDN domain instead of A → RedWarden.</small>
+                        <small class="text-muted d-block mb-2">Route beacon traffic through CloudFront or Azure Front Door before the C2 Redirector. DNS CNAME → CDN domain instead of A → Redirector.</small>
                         <div id="c2-cdn-fields" class="d-none">
                             <div class="row g-2">
                                 <div class="col-md-5">
@@ -305,7 +305,7 @@
                                     </select>
                                 </div>
                             </div>
-                            <small class="text-muted mt-1 d-block">Flow: Beacon → DNS CNAME → CDN → RedWarden → NPM → CS Listener</small>
+                            <small class="text-muted mt-1 d-block">Flow: Beacon → DNS CNAME → CDN → C2 Redirector → NPM → CS Listener</small>
                         </div>
                     </div>
                 </div>
@@ -1638,7 +1638,7 @@
 
     function setupC2() {
         if (!selectedZoneId) { alert('Select a zone first'); return; }
-        if (!redwardenIp) { alert('RedWarden IP not configured. Set it in Settings.'); return; }
+        if (!redwardenIp) { alert('C2 Redirector IP not configured. Set it in Settings → C2.'); return; }
         if (!csListenerIp) { alert('CS Listener IP not configured. Set it in Settings (Cobalt Strike section).'); return; }
 
         var type = document.getElementById('c2-type').value;
@@ -1861,7 +1861,7 @@
             .then(function(ok) {
                 if (!ok) return Promise.reject('stop');
 
-                // Step 4 (optional): Create CDN distribution pointing to RedWarden.
+                // Step 4 (optional): Create CDN distribution pointing to C2 Redirector.
                 // Fire-and-forget — CDN provisioning (2–15 min) must not block Step 5 (A records).
                 if (!cdnEnabled) return true;
 
@@ -1908,10 +1908,10 @@
             .then(function(ok) {
                 if (!ok) return Promise.reject('stop');
 
-                // Step 5: Cloudflare A records → RedWarden (same regardless of CDN)
+                // Step 5: Cloudflare A records → C2 Redirector (same regardless of CDN)
                 // When CDN is enabled the CDN distribution's origin is the callback domain,
-                // which resolves to RedWarden via this A record:
-                // Beacon → CDN → c2.example.com (A → RedWarden) → NPM → CS Listener
+                // which resolves to C2 Redirector via this A record:
+                // Beacon → CDN → c2.example.com (A → Redirector) → NPM → CS Listener
                 logWarn(LOG, 'Creating Cloudflare A records for ' + callbackHosts.length + ' callback host(s) &rarr; ' + redwardenIp + (cdnDomain ? ' (CDN origin)' : '') + '...');
                 var dnsPromises = callbackHosts.map(function(host) {
                     return fetch('/api/domains/zones/' + selectedZoneId + '/records', {
@@ -1943,8 +1943,8 @@
             .then(function() {
                 setButtonLoading('btn-c2-setup', false);
                 var flowStr = cdnDomain
-                    ? 'Beacon &rarr; CDN (' + cdnDomain + ') &rarr; Cloudflare &rarr; RedWarden (' + redwardenIp + ') &rarr; NPM &rarr; CS Listener (' + listenerName + ')'
-                    : 'Beacon &rarr; Cloudflare &rarr; RedWarden (' + redwardenIp + ') &rarr; NPM &rarr; CS Listener (' + listenerName + ')';
+                    ? 'Beacon &rarr; CDN (' + cdnDomain + ') &rarr; Cloudflare &rarr; C2 Redirector (' + redwardenIp + ') &rarr; NPM &rarr; CS Listener (' + listenerName + ')'
+                    : 'Beacon &rarr; Cloudflare &rarr; C2 Redirector (' + redwardenIp + ') &rarr; NPM &rarr; CS Listener (' + listenerName + ')';
                 logInfo(LOG, '<strong>C2 setup complete!</strong> Flow: ' + flowStr);
             })
             .catch(function(err) {
