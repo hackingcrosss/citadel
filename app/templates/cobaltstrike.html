@@ -1,54 +1,134 @@
 {% extends "base.html" %}
 
-{% block title %}Cobalt Strike - InfraRed{% endblock %}
+{% block title %}C2 - InfraRed{% endblock %}
 
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-4">
-    <h1 class="h3 mb-0">Cobalt Strike Listeners</h1>
-    <div>
-        <button class="btn btn-sm btn-outline-secondary" onclick="loadListeners()">
-            <i class="bi bi-arrow-clockwise"></i> Refresh
+    <h1 class="h3 mb-0">C2 Management</h1>
+    <button class="btn btn-sm btn-outline-secondary" onclick="refreshCurrentTab()">
+        <i class="bi bi-arrow-clockwise"></i> Refresh
+    </button>
+</div>
+
+<!-- Tabs -->
+<ul class="nav nav-tabs mb-3" id="c2Tabs">
+    <li class="nav-item">
+        <button class="nav-link active" id="tab-listeners" onclick="switchC2Tab('listeners')">
+            <i class="bi bi-crosshair"></i> Listeners
         </button>
+    </li>
+    <li class="nav-item">
+        <button class="nav-link" id="tab-profile" onclick="switchC2Tab('profile')">
+            <i class="bi bi-file-earmark-code"></i> Profile Parser
+        </button>
+    </li>
+</ul>
+
+<!-- ============================================================= -->
+<!-- Listeners Tab -->
+<!-- ============================================================= -->
+<div id="pane-listeners">
+    <div id="not-configured" class="d-none text-center py-5">
+        <i class="bi bi-exclamation-triangle text-warning" style="font-size: 2rem;"></i>
+        <p class="mt-2">Cobalt Strike credentials not configured. <a href="/settings#credentials">Configure in Settings</a></p>
+    </div>
+
+    <div id="listeners-content">
         {% if current_user.role != 'viewer' and active_project_role != 'white_team' %}
-        <button class="btn btn-sm btn-infrared" data-bs-toggle="modal" data-bs-target="#createModal">
-            <i class="bi bi-plus-circle"></i> New Listener
-        </button>
+        <div class="mb-3">
+            <button class="btn btn-sm btn-infrared" data-bs-toggle="modal" data-bs-target="#createModal">
+                <i class="bi bi-plus-circle"></i> New Listener
+            </button>
+        </div>
         {% endif %}
+        <div class="card-custom">
+            <div class="card-body p-0">
+                <table class="table table-hover mb-0">
+                    <thead>
+                        <tr>
+                            <th>Provider</th>
+                            <th>ID</th>
+                            <th>Name</th>
+                            <th>Type</th>
+                            <th>Host</th>
+                            <th>Port</th>
+                            <th>Bind Port</th>
+                            <th>Callback Hosts</th>
+                            <th>Status</th>
+                            <th>Project</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="listeners-table">
+                        <tr>
+                            <td colspan="11" class="text-center text-muted py-4">
+                                <span class="spinner-border spinner-border-sm"></span> Loading...
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
     </div>
 </div>
 
-<div id="not-configured" class="d-none text-center py-5">
-    <i class="bi bi-exclamation-triangle text-warning" style="font-size: 2rem;"></i>
-    <p class="mt-2">Cobalt Strike credentials not configured. <a href="/settings#credentials">Configure in Settings</a></p>
-</div>
+<!-- ============================================================= -->
+<!-- Profile Parser Tab -->
+<!-- ============================================================= -->
+<div id="pane-profile" class="d-none">
+    <div class="row g-4">
+        <!-- Input -->
+        <div class="col-lg-6">
+            <div class="card-custom">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <span><i class="bi bi-file-earmark-code me-1"></i> Malleable C2 Profile</span>
+                    <label class="btn btn-sm btn-outline-secondary mb-0" for="profile-file-input">
+                        <i class="bi bi-upload"></i> Upload .profile
+                    </label>
+                    <input type="file" id="profile-file-input" class="d-none" accept=".profile,.txt,.c2profile" onchange="loadProfileFile(this)">
+                </div>
+                <div class="card-body p-2">
+                    <textarea id="profile-text" class="form-control" rows="22"
+                              style="font-family: 'Fira Code', 'Consolas', monospace; font-size: 0.82rem; background: #0d1117; color: #e2e8f0; border-color: #374151;"
+                              placeholder="Paste your Malleable C2 profile here, or upload a .profile file..."></textarea>
+                </div>
+                <div class="card-footer d-flex justify-content-between align-items-center">
+                    <small class="text-muted">Supports http-get, http-post, http-stager, http-config blocks</small>
+                    <button class="btn btn-infrared btn-sm" onclick="parseProfile()" id="btn-parse">
+                        <i class="bi bi-gear"></i> Parse &amp; Generate Nginx Config
+                    </button>
+                </div>
+            </div>
+        </div>
 
-<div id="listeners-content">
-    <div class="card-custom">
-        <div class="card-body p-0">
-            <table class="table table-hover mb-0">
-                <thead>
-                    <tr>
-                        <th>Provider</th>
-                        <th>ID</th>
-                        <th>Name</th>
-                        <th>Type</th>
-                        <th>Host</th>
-                        <th>Port</th>
-                        <th>Bind Port</th>
-                        <th>Callback Hosts</th>
-                        <th>Status</th>
-                        <th>Project</th>
-                        <th>Actions</th>
-                    </tr>
-                </thead>
-                <tbody id="listeners-table">
-                    <tr>
-                        <td colspan="11" class="text-center text-muted py-4">
-                            <span class="spinner-border spinner-border-sm"></span> Loading...
-                        </td>
-                    </tr>
-                </tbody>
-            </table>
+        <!-- Output -->
+        <div class="col-lg-6">
+            <!-- Parsed indicators -->
+            <div class="card-custom mb-3">
+                <div class="card-header">
+                    <i class="bi bi-search me-1"></i> Extracted Traffic Indicators
+                </div>
+                <div class="card-body" id="parsed-output" style="min-height: 100px;">
+                    <div class="text-muted text-center py-4">
+                        <i class="bi bi-arrow-left me-1"></i> Paste a profile and click Parse to see extracted indicators
+                    </div>
+                </div>
+            </div>
+
+            <!-- Nginx config -->
+            <div class="card-custom">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <span><i class="bi bi-filetype-conf me-1"></i> Generated Nginx Config</span>
+                    <button class="btn btn-sm btn-outline-secondary d-none" id="btn-copy-nginx" onclick="copyNginxConfig()">
+                        <i class="bi bi-clipboard"></i> Copy
+                    </button>
+                </div>
+                <div class="card-body p-2" id="nginx-output">
+                    <div class="text-muted text-center py-4">
+                        Nginx restrictive config will appear here after parsing
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 </div>
@@ -157,10 +237,23 @@
     const IS_ADMIN = {{ 'true' if current_user.is_admin else 'false' }};
     const ACTIVE_PROJECT_ID = {{ active_project.id if active_project else 'null' }};
     const ACTIVE_PROJECT_CODE = {{ active_project.code | tojson if active_project else 'null' }};
+
+    var _activeTab = 'listeners';
+
+    // ---- Tab switching ----
+    function switchC2Tab(name) {
+        _activeTab = name;
+        document.getElementById('pane-listeners').classList.toggle('d-none', name !== 'listeners');
+        document.getElementById('tab-listeners').classList.toggle('active', name === 'listeners');
+        document.getElementById('pane-profile').classList.toggle('d-none', name !== 'profile');
+        document.getElementById('tab-profile').classList.toggle('active', name === 'profile');
+    }
+
+    function refreshCurrentTab() {
+        if (_activeTab === 'listeners') loadListeners();
+    }
+
     // ---- Field definitions per listener type ----
-    // Field IDs match the Cobalt Strike REST API JSON field names
-    // POST /api/v1/listeners/{type} with body = { name, ...fields }
-    // GuardRails fields — shown for types that support them
     var GUARDRAILS = [
         {id: 'ipAddress', label: 'IP Address', type: 'text', placeholder: '123.123.*.*', col: 6},
         {id: 'userName', label: 'Username', type: 'text', placeholder: 'admin*', col: 6},
@@ -168,13 +261,9 @@
         {id: 'domain', label: 'Domain Name', type: 'text', placeholder: '*bar.com', col: 6}
     ];
 
-    // Types that support guardRails (foreign and externalC2 do not)
     var GUARDRAIL_TYPES = {'http':1, 'https':1, 'dns':1, 'smb':1, 'tcp':1, 'userDefinedC2':1};
-
-    // Types that support httpProxy
     var PROXY_TYPES = {'http':1, 'https':1};
 
-    // HTTP Proxy fields
     var PROXY_FIELDS = [
         {id: 'proxy-protocol', label: 'Protocol', type: 'select', options: ['', 'http', 'socks4', 'socks5'], col: 3},
         {id: 'proxy-host', label: 'Proxy Host', type: 'text', placeholder: '10.0.0.1', col: 3},
@@ -317,12 +406,10 @@
             return;
         }
 
-        // Type-specific fields
         var html = '<div class="row g-3">';
         html += renderFields(TYPE_FIELDS[type], 'new-');
         html += '</div>';
 
-        // HTTP Proxy section (http/https only)
         if (PROXY_TYPES[type]) {
             html += '<hr class="my-3"><h6 class="text-muted">HTTP Proxy (optional)</h6>';
             html += '<div class="row g-3">';
@@ -332,7 +419,6 @@
 
         container.innerHTML = html;
 
-        // GuardRails section
         if (GUARDRAIL_TYPES[type]) {
             var grHtml = '<hr class="my-3"><h6 class="text-muted">GuardRails (optional)</h6>';
             grHtml += '<div class="row g-3">';
@@ -386,7 +472,6 @@
 
                 var html = '';
                 listeners.forEach(function(l, idx) {
-                    // Extract short type from payload string
                     var lType = '-';
                     var payload = l.payload || '';
                     if (payload.indexOf('beacon_https') !== -1) lType = 'HTTPS';
@@ -422,7 +507,6 @@
                     html += '<i class="bi bi-code-slash"></i>';
                     html += '</button>';
                     if (!IS_READONLY) {
-                        // Edit hosts button — only for http/https/dns listeners
                         var hasHosts = Array.isArray(l.hosts) && l.hosts.length > 0;
                         var typeSupportsHosts = (lType === 'HTTP' || lType === 'HTTPS' || lType === 'DNS');
                         if (hasHosts || typeSupportsHosts) {
@@ -438,7 +522,6 @@
                     html += '</tr>';
                 });
 
-                // Store for detail inspection
                 window._csListeners = listeners;
                 tbody.innerHTML = html;
             })
@@ -448,12 +531,11 @@
             });
     }
 
-    // Collect a field value from an element
     function collectField(f, elId) {
         var el = document.getElementById(elId);
         if (!el) return undefined;
         if (f.type === 'checkbox') return el.checked;
-        if (f.type === 'file') return undefined; // handled separately
+        if (f.type === 'file') return undefined;
         var val = el.value.trim();
         if (!val) return undefined;
         if (f.isArray) return val.split(',').map(function(s) { return s.trim(); }).filter(Boolean);
@@ -468,15 +550,12 @@
         if (!type) { alert('Select a listener type'); return; }
         if (!name) { alert('Enter a listener name'); return; }
 
-        // type goes in URL via backend, name + fields go in JSON body
         var payload = {type: type, name: name};
         var fields = TYPE_FIELDS[type] || [];
 
-        // Collect type-specific fields
         for (var i = 0; i < fields.length; i++) {
             var f = fields[i];
-            if (f.type === 'file') continue; // handled below
-
+            if (f.type === 'file') continue;
             var val = collectField(f, 'new-' + f.id);
             if (f.required && (val === undefined || val === '')) {
                 alert('Missing required field: ' + f.label);
@@ -485,7 +564,6 @@
             if (val !== undefined) payload[f.id] = val;
         }
 
-        // Collect httpProxy (http/https only)
         if (PROXY_TYPES[type]) {
             var proxy = {};
             var hasProxy = false;
@@ -504,7 +582,6 @@
             if (hasProxy) payload.httpProxy = proxy;
         }
 
-        // Collect guardRails
         if (GUARDRAIL_TYPES[type]) {
             var gr = {};
             var hasGr = false;
@@ -517,7 +594,6 @@
             if (hasGr) payload.guardRails = gr;
         }
 
-        // Handle UDC2 file upload — read as base64 then send
         var fileField = fields.find(function(f) { return f.type === 'file'; });
         if (fileField) {
             var fileEl = document.getElementById('new-' + fileField.id);
@@ -560,13 +636,10 @@
 
             var modal = bootstrap.Modal.getInstance(document.getElementById('createModal'));
             modal.hide();
-
-            // Reset form
             document.getElementById('new-type').value = '';
             document.getElementById('new-name').value = '';
             document.getElementById('type-fields').innerHTML = '';
             document.getElementById('type-fields-guardrails').innerHTML = '';
-
             loadListeners();
         })
         .catch(function(err) {
@@ -638,7 +711,6 @@
         var input = document.getElementById('edit-hosts-new');
         var val = input.value.trim();
         if (!val) return;
-        // Support comma-separated input
         val.split(',').forEach(function(h) {
             h = h.trim();
             if (h && _editHosts.indexOf(h) === -1) _editHosts.push(h);
@@ -685,6 +757,172 @@
             alert('Request failed: ' + err);
         });
     }
+
+    // ---- Profile Parser ----
+
+    function loadProfileFile(input) {
+        if (!input.files.length) return;
+        var reader = new FileReader();
+        reader.onload = function(e) {
+            document.getElementById('profile-text').value = e.target.result;
+        };
+        reader.readAsText(input.files[0]);
+        input.value = ''; // reset so same file can be re-selected
+    }
+
+    var _lastNginxConfig = '';
+
+    function parseProfile() {
+        var text = document.getElementById('profile-text').value.trim();
+        if (!text) { alert('Please paste or upload a Malleable C2 profile first.'); return; }
+
+        var btn = document.getElementById('btn-parse');
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Parsing...';
+
+        fetch('/api/cobaltstrike/parse-profile', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({profile: text})
+        })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="bi bi-gear"></i> Parse & Generate Nginx Config';
+
+            if (data.error) {
+                document.getElementById('parsed-output').innerHTML =
+                    '<div class="alert alert-danger mb-0">' + escapeHtml(data.error) + '</div>';
+                return;
+            }
+
+            renderParsedOutput(data.parsed);
+            renderNginxConfig(data.nginx_config);
+        })
+        .catch(function(err) {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="bi bi-gear"></i> Parse & Generate Nginx Config';
+            document.getElementById('parsed-output').innerHTML =
+                '<div class="alert alert-danger mb-0">Request failed: ' + escapeHtml(String(err)) + '</div>';
+        });
+    }
+
+    function renderParsedOutput(parsed) {
+        var html = '';
+
+        // User-Agent
+        if (parsed.user_agent) {
+            html += '<div class="mb-3">';
+            html += '<strong class="text-muted d-block mb-1"><i class="bi bi-globe me-1"></i>User-Agent</strong>';
+            html += '<code class="d-block p-2 rounded" style="background:#1f2937;color:#f9fafb;font-size:0.82rem;word-break:break-all;">' + escapeHtml(parsed.user_agent) + '</code>';
+            html += '</div>';
+        }
+
+        // http-get
+        var hg = parsed.http_get || {};
+        if (hg.uris && hg.uris.length) {
+            html += indicatorSection('http-get URIs', hg.uris, 'bi-arrow-down-circle');
+        }
+        if (hg.client_headers && hg.client_headers.length) {
+            html += headerSection('http-get Client Headers', hg.client_headers);
+        }
+        if (hg.client_parameters && hg.client_parameters.length) {
+            html += paramSection('http-get Client Parameters', hg.client_parameters);
+        }
+
+        // http-post
+        var hp = parsed.http_post || {};
+        if (hp.uris && hp.uris.length) {
+            html += indicatorSection('http-post URIs', hp.uris, 'bi-arrow-up-circle');
+        }
+        if (hp.client_headers && hp.client_headers.length) {
+            html += headerSection('http-post Client Headers', hp.client_headers);
+        }
+        if (hp.client_parameters && hp.client_parameters.length) {
+            html += paramSection('http-post Client Parameters', hp.client_parameters);
+        }
+
+        // http-stager
+        var hs = parsed.http_stager || {};
+        var stagerUris = [];
+        if (hs.uri_x86) stagerUris.push(hs.uri_x86 + ' (x86)');
+        if (hs.uri_x64) stagerUris.push(hs.uri_x64 + ' (x64)');
+        if (stagerUris.length) {
+            html += indicatorSection('http-stager URIs', stagerUris, 'bi-download');
+        }
+
+        // Blocks found
+        if (parsed.raw_blocks && parsed.raw_blocks.length) {
+            html += '<div class="mb-2">';
+            html += '<strong class="text-muted d-block mb-1"><i class="bi bi-diagram-3 me-1"></i>Profile Blocks Found</strong>';
+            html += parsed.raw_blocks.map(function(b) {
+                return '<span class="badge bg-secondary me-1 mb-1">' + escapeHtml(b) + '</span>';
+            }).join('');
+            html += '</div>';
+        }
+
+        if (!html) {
+            html = '<div class="text-warning"><i class="bi bi-exclamation-triangle me-1"></i>No traffic indicators found in profile. Check that it contains http-get/http-post blocks.</div>';
+        }
+
+        document.getElementById('parsed-output').innerHTML = html;
+    }
+
+    function indicatorSection(title, items, icon) {
+        var html = '<div class="mb-3">';
+        html += '<strong class="text-muted d-block mb-1"><i class="bi ' + icon + ' me-1"></i>' + escapeHtml(title) + '</strong>';
+        items.forEach(function(u) {
+            html += '<code class="d-inline-block me-2 mb-1 px-2 py-1 rounded" style="background:#1f2937;color:#86efac;font-size:0.82rem;">' + escapeHtml(u) + '</code>';
+        });
+        html += '</div>';
+        return html;
+    }
+
+    function headerSection(title, headers) {
+        var html = '<div class="mb-3">';
+        html += '<strong class="text-muted d-block mb-1"><i class="bi bi-card-heading me-1"></i>' + escapeHtml(title) + '</strong>';
+        html += '<table class="table table-sm table-bordered mb-0" style="font-size:0.8rem;"><thead><tr><th>Header</th><th>Value</th></tr></thead><tbody>';
+        headers.forEach(function(h) {
+            html += '<tr><td><code>' + escapeHtml(h[0]) + '</code></td><td><code>' + escapeHtml(h[1]) + '</code></td></tr>';
+        });
+        html += '</tbody></table></div>';
+        return html;
+    }
+
+    function paramSection(title, params) {
+        var html = '<div class="mb-3">';
+        html += '<strong class="text-muted d-block mb-1"><i class="bi bi-sliders me-1"></i>' + escapeHtml(title) + '</strong>';
+        html += '<table class="table table-sm table-bordered mb-0" style="font-size:0.8rem;"><thead><tr><th>Parameter</th><th>Value</th></tr></thead><tbody>';
+        params.forEach(function(p) {
+            html += '<tr><td><code>' + escapeHtml(p[0]) + '</code></td><td><code>' + escapeHtml(p[1]) + '</code></td></tr>';
+        });
+        html += '</tbody></table></div>';
+        return html;
+    }
+
+    function renderNginxConfig(config) {
+        _lastNginxConfig = config;
+        var container = document.getElementById('nginx-output');
+        container.innerHTML = '<pre style="max-height:400px;overflow-y:auto;background:#0d1117;color:#e2e8f0;padding:15px;border-radius:6px;font-size:0.8rem;margin:0;white-space:pre-wrap;">' + escapeHtml(config) + '</pre>';
+        document.getElementById('btn-copy-nginx').classList.remove('d-none');
+    }
+
+    function copyNginxConfig() {
+        navigator.clipboard.writeText(_lastNginxConfig).then(function() {
+            showToast('Nginx config copied to clipboard', 'success');
+        }).catch(function() {
+            // Fallback
+            var ta = document.createElement('textarea');
+            ta.value = _lastNginxConfig;
+            document.body.appendChild(ta);
+            ta.select();
+            document.execCommand('copy');
+            document.body.removeChild(ta);
+            showToast('Nginx config copied to clipboard', 'success');
+        });
+    }
+
+    // ---- Utilities ----
 
     function escapeHtml(str) {
         var div = document.createElement('div');

@@ -166,3 +166,30 @@ def delete_cs_listener(listener_name):
         return jsonify({'deleted': True})
     except Exception as e:
         return jsonify({'error': str(e)}), 400
+
+
+# ---------------------------------------------------------------------------
+# Malleable C2 profile parser — generate Nginx restrictor config
+# ---------------------------------------------------------------------------
+
+@api_bp.route('/cobaltstrike/parse-profile', methods=['POST'])
+@login_required
+@feature_required('cobaltstrike')
+def parse_malleable_profile():
+    """Parse a Malleable C2 profile and return extracted indicators + Nginx config."""
+    data = request.get_json(silent=True) or {}
+    profile_text = data.get('profile', '').strip()
+    if not profile_text:
+        return jsonify({'error': 'No profile text provided'}), 400
+
+    try:
+        from app.services.malleable_c2_parser import parse_profile, generate_nginx_config
+        parsed = parse_profile(profile_text)
+        backend = data.get('backend', '$forward_scheme://$server:$port')
+        nginx_config = generate_nginx_config(parsed, backend=backend)
+        return jsonify({
+            'parsed': parsed,
+            'nginx_config': nginx_config,
+        })
+    except Exception as e:
+        return jsonify({'error': f'Failed to parse profile: {str(e)}'}), 400
