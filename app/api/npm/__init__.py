@@ -163,6 +163,20 @@ def list_access_lists():
 def list_certificates():
     try:
         certs = npm_service.list_certificates()
+
+        # Scope to active project's domains
+        _auditor_unscoped = current_user.is_auditor and get_active_project(current_user) is None
+        if not current_user.is_admin and not _auditor_unscoped:
+            active_project = get_active_project(current_user)
+            if active_project is None:
+                certs = []
+            else:
+                project_domains = get_project_domain_names(active_project.id)
+                certs = [c for c in certs
+                         if any(dn == d or dn.endswith('.' + d)
+                                for dn in (c.get('domain_names') or [])
+                                for d in project_domains)]
+
         return jsonify({'certificates': certs})
     except Exception as e:
         return jsonify({'error': str(e)}), 400
