@@ -1827,11 +1827,22 @@
                         };
                         if (cfAcl) npmPayload.access_list_id = cfAcl.id;
 
-                        return fetch('/api/npm/hosts', {
-                            method: 'POST',
-                            headers: {'Content-Type': 'application/json'},
-                            body: JSON.stringify(npmPayload)
-                        });
+                        // Try to fetch Malleable C2 nginx restrictor config
+                        return fetch('/api/cobaltstrike/nginx-config')
+                            .then(function(r) { return r.json(); })
+                            .then(function(cfgData) {
+                                if (cfgData.nginx_config) {
+                                    npmPayload.advanced_config = cfgData.nginx_config;
+                                    logOk(LOG, 'Malleable C2 profile detected — Nginx restrictor config applied to proxy');
+                                } else {
+                                    logInfo(LOG, 'No Malleable C2 profile stored — proxy created without traffic restrictions');
+                                }
+                                return fetch('/api/npm/hosts', {
+                                    method: 'POST',
+                                    headers: {'Content-Type': 'application/json'},
+                                    body: JSON.stringify(npmPayload)
+                                });
+                            });
                     })
                     .then(function(r) { return r.json(); })
                     .then(function(npmData) {
