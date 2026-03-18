@@ -883,7 +883,18 @@
         html += '<strong class="text-muted d-block mb-1"><i class="bi bi-card-heading me-1"></i>' + escapeHtml(title) + '</strong>';
         html += '<table class="table table-sm table-bordered mb-0" style="font-size:0.8rem;"><thead><tr><th>Header</th><th>Value</th></tr></thead><tbody>';
         headers.forEach(function(h) {
-            html += '<tr><td><code>' + escapeHtml(h[0]) + '</code></td><td><code>' + escapeHtml(h[1]) + '</code></td></tr>';
+            var val = h[1] || '';
+            // Show prepend/append markers for data-transform headers (Cookie, etc.)
+            if (!val && h.length > 2) {
+                var parts = [];
+                if (h[2] && h[2].length) parts.push('prepend: ' + h[2].map(function(p){ return '"' + escapeHtml(p) + '"'; }).join(', '));
+                if (h[3] && h[3].length) parts.push('append: ' + h[3].map(function(a){ return '"' + escapeHtml(a) + '"'; }).join(', '));
+                if (parts.length) {
+                    html += '<tr><td><code>' + escapeHtml(h[0]) + '</code></td><td><span class="text-info">' + parts.join(' &middot; ') + '</span> <span class="text-muted">&lt;encoded payload&gt;</span></td></tr>';
+                    return;
+                }
+            }
+            html += '<tr><td><code>' + escapeHtml(h[0]) + '</code></td><td><code>' + escapeHtml(val) + '</code></td></tr>';
         });
         html += '</tbody></table></div>';
         return html;

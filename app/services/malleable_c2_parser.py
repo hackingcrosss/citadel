@@ -57,6 +57,10 @@ def _parse_block(tokens, pos):
       'uri_list'       -> [uri, ...] from 'set uri' split on space
     """
     result = {'_headers': [], '_parameters': []}
+    # Track prepend/append from data transform chains (metadata, id, output).
+    # These accumulate until consumed by a terminating 'header' or 'parameter'.
+    _prepends = []
+    _appends = []
     while pos < len(tokens):
         tok = tokens[pos]
 
@@ -79,26 +83,51 @@ def _parse_block(tokens, pos):
             continue
 
         # 'header' directive: header "Name" "Value";
-        if tok == 'header' and pos + 2 < len(tokens):
+        # Inside a data-transform block (metadata/id/output) this has only 1 arg:
+        #   header "Cookie";   — means "put transformed data into this header"
+        # Outside (in client block) it has 2 args:
+        #   header "Accept" "text/html";
+        if tok == 'header' and pos + 1 < len(tokens):
             name = _unquote(tokens[pos + 1])
-            value = _unquote(tokens[pos + 2])
-            result['_headers'].append((name, value))
-            pos += 3
+            # 2-arg form: next token is a quoted string (the value)
+            has_second_arg = (pos + 2 < len(tokens)
+                              and tokens[pos + 2].startswith('"')
+                              and tokens[pos + 2] not in (';', '}'))
+            if has_second_arg:
+                value = _unquote(tokens[pos + 2])
+                result['_headers'].append((name, value, [], []))
+                pos += 3
+            else:
+                # 1-arg form inside transform block — attach prepend/append context
+                result['_headers'].append((name, '', list(_prepends), list(_appends)))
+                _prepends.clear()
+                _appends.clear()
+                pos += 2
             if pos < len(tokens) and tokens[pos] == ';':
                 pos += 1
             continue
 
         # 'parameter' directive: parameter "name" "value";
-        if tok == 'parameter' and pos + 2 < len(tokens):
+        # Can also be 1-arg form inside transform blocks
+        if tok == 'parameter' and pos + 1 < len(tokens):
             name = _unquote(tokens[pos + 1])
-            value = _unquote(tokens[pos + 2])
-            result['_parameters'].append((name, value))
-            pos += 3
+            has_second_arg = (pos + 2 < len(tokens)
+                              and tokens[pos + 2].startswith('"')
+                              and tokens[pos + 2] not in (';', '}'))
+            if has_second_arg:
+                value = _unquote(tokens[pos + 2])
+                result['_parameters'].append((name, value, [], []))
+                pos += 3
+            else:
+                result['_parameters'].append((name, '', list(_prepends), list(_appends)))
+                _prepends.clear()
+                _appends.clear()
+                pos += 2
             if pos < len(tokens) and tokens[pos] == ';':
                 pos += 1
             continue
 
-        # Data transform keywords (base64, mask, append, prepend, etc.) — skip
+        # Data transform keywords (base64, mask, etc.) — skip but don't clear prepend/append
         if tok in ('base64', 'base64url', 'mask', 'netbios', 'netbiosu', 'print',
                    'uri-append', 'strrep'):
             pos += 1
@@ -109,8 +138,16 @@ def _parse_block(tokens, pos):
                 pos += 1
             continue
 
-        # 'append' / 'prepend' with a string arg
-        if tok in ('append', 'prepend') and pos + 1 < len(tokens):
+        # 'append' / 'prepend' with a string arg — track values
+        if tok == 'prepend' and pos + 1 < len(tokens):
+            _prepends.append(_unquote(tokens[pos + 1]))
+            pos += 2
+            if pos < len(tokens) and tokens[pos] == ';':
+                pos += 1
+            continue
+
+        if tok == 'append' and pos + 1 < len(tokens):
+            _appends.append(_unquote(tokens[pos + 1]))
             pos += 2
             if pos < len(tokens) and tokens[pos] == ';':
                 pos += 1
@@ -388,13 +425,36 @@ def _add_location_block(lines, uri, method, headers, backend):
     lines.append('    }')
 
     # Header checks — use if directives for required headers
-    for hdr_name, hdr_value in headers:
+    for hdr_entry in headers:
+        # Support both (name, value) and (name, value, prepends, appends) tuples
+        hdr_name = hdr_entry[0]
+        hdr_value = hdr_entry[1]
+        hdr_prepends = hdr_entry[2] if len(hdr_entry) > 2 else []
+        hdr_appends = hdr_entry[3] if len(hdr_entry) > 3 else []
+
         # Skip common headers that aren't useful for filtering
         if hdr_name.lower() in ('host', 'connection', 'content-length',
                                  'content-type', 'accept-encoding'):
             continue
         var_name = 'http_' + hdr_name.lower().replace('-', '_')
-        if hdr_value:
+
+        if hdr_prepends or hdr_appends:
+            # Data-transform header (e.g. Cookie with prepend "session=" append ";")
+            # Build a regex that checks the header contains the prepend/append markers.
+            # The encoded data between them is variable, so we use .* wildcards.
+            # Example: prepend "session=" append ";" → regex: .*session=.*;.*
+            regex_parts = []
+            for p in hdr_prepends:
+                regex_parts.append(_nginx_escape_regex(p))
+            regex_parts.append('.*')  # the encoded payload
+            for a in hdr_appends:
+                regex_parts.append(_nginx_escape_regex(a))
+            regex = ''.join(regex_parts)
+            lines.append(f'    # Verify {hdr_name} contains C2 transform markers')
+            lines.append(f'    if (${var_name} !~ "{regex}") {{')
+            lines.append('        return 404;')
+            lines.append('    }')
+        elif hdr_value:
             escaped_val = _nginx_escape_regex(hdr_value)
             lines.append(f'    if (${var_name} !~* "^{escaped_val}$") {{')
             lines.append('        return 404;')
