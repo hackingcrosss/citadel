@@ -8,6 +8,7 @@ from app import db
 from app.models.domain import Domain
 from app.models.email_grooming import EmailGroomingConfig
 from app.models.email_grooming_log import EmailGroomingLog
+from app.services.project_service import get_active_project
 
 _EMAIL_RE = re.compile(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$')
 _OUTLOOK_DOMAINS = {
@@ -22,6 +23,18 @@ def _is_outlook(email):
     return domain in _OUTLOOK_DOMAINS
 
 
+def _project_domain_ids():
+    """Return set of domain IDs belonging to the active project, or None if unscoped (admin/auditor)."""
+    _auditor_unscoped = current_user.is_auditor and get_active_project(current_user) is None
+    if current_user.is_admin or _auditor_unscoped:
+        return None  # no filtering
+    active_project = get_active_project(current_user)
+    if active_project is None:
+        return set()  # no project → empty
+    ids = {d.id for d in Domain.query.filter_by(checkout_project_id=active_project.id).with_entities(Domain.id).all()}
+    return ids
+
+
 # ---------------------------------------------------------------------------
 # List all configs (with optional domain filter)
 # ---------------------------------------------------------------------------
@@ -33,6 +46,12 @@ def list_email_grooming():
     q = EmailGroomingConfig.query
     if domain_id:
         q = q.filter_by(domain_id=domain_id)
+
+    # Scope to active project's domains
+    allowed_ids = _project_domain_ids()
+    if allowed_ids is not None:
+        q = q.filter(EmailGroomingConfig.domain_id.in_(allowed_ids)) if allowed_ids else q.filter(db.false())
+
     configs = q.order_by(EmailGroomingConfig.created_at.desc()).all()
 
     # Aggregate stats
@@ -257,9 +276,19 @@ def list_email_grooming_logs():
     limit = request.args.get('limit', 50, type=int)
     limit = min(limit, 200)
 
+    # Scope to active project's domains
+    allowed_ids = _project_domain_ids()
+    allowed_config_ids = None
+    if allowed_ids is not None:
+        allowed_config_ids = {c.id for c in EmailGroomingConfig.query.filter(
+            EmailGroomingConfig.domain_id.in_(allowed_ids)
+        ).with_entities(EmailGroomingConfig.id).all()} if allowed_ids else set()
+
     q = EmailGroomingLog.query
     if config_id:
         q = q.filter_by(config_id=config_id)
+    if allowed_config_ids is not None:
+        q = q.filter(EmailGroomingLog.config_id.in_(allowed_config_ids)) if allowed_config_ids else q.filter(db.false())
     logs = q.order_by(EmailGroomingLog.sent_at.desc()).limit(limit).all()
 
     # Also compute today's stats
@@ -267,6 +296,8 @@ def list_email_grooming_logs():
     today_q = EmailGroomingLog.query.filter(EmailGroomingLog.sent_at >= today_start)
     if config_id:
         today_q = today_q.filter_by(config_id=config_id)
+    if allowed_config_ids is not None:
+        today_q = today_q.filter(EmailGroomingLog.config_id.in_(allowed_config_ids)) if allowed_config_ids else today_q.filter(db.false())
     today_sent = today_q.filter_by(success=True).count()
     today_failed = today_q.filter_by(success=False).count()
 
@@ -291,32 +322,35 @@ def email_grooming_domain_stats():
 
     today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
 
+    # Scope to active project's domains
+    allowed_ids = _project_domain_ids()
+    allowed_config_ids = None
+    if allowed_ids is not None:
+        allowed_config_ids = {c.id for c in EmailGroomingConfig.query.filter(
+            EmailGroomingConfig.domain_id.in_(allowed_ids)
+        ).with_entities(EmailGroomingConfig.id).all()} if allowed_ids else set()
+
     # Total counts per sender domain
-    total_rows = (
-        db.session.query(
-            sender_domain.label('domain'),
-            func.count().label('total'),
-            func.sum(db.case((EmailGroomingLog.success == True, 1), else_=0)).label('success'),
-            func.sum(db.case((EmailGroomingLog.success == False, 1), else_=0)).label('failed'),
-        )
-        .group_by(sender_domain)
-        .order_by(func.count().desc())
-        .all()
+    total_q = db.session.query(
+        sender_domain.label('domain'),
+        func.count().label('total'),
+        func.sum(db.case((EmailGroomingLog.success == True, 1), else_=0)).label('success'),
+        func.sum(db.case((EmailGroomingLog.success == False, 1), else_=0)).label('failed'),
     )
+    if allowed_config_ids is not None:
+        total_q = total_q.filter(EmailGroomingLog.config_id.in_(allowed_config_ids)) if allowed_config_ids else total_q.filter(db.false())
+    total_rows = total_q.group_by(sender_domain).order_by(func.count().desc()).all()
 
     # Today's counts per sender domain
-    today_rows = (
-        db.session.query(
-            sender_domain.label('domain'),
-            func.count().label('total'),
-            func.sum(db.case((EmailGroomingLog.success == True, 1), else_=0)).label('success'),
-            func.sum(db.case((EmailGroomingLog.success == False, 1), else_=0)).label('failed'),
-        )
-        .filter(EmailGroomingLog.sent_at >= today_start)
-        .group_by(sender_domain)
-        .order_by(func.count().desc())
-        .all()
-    )
+    today_q = db.session.query(
+        sender_domain.label('domain'),
+        func.count().label('total'),
+        func.sum(db.case((EmailGroomingLog.success == True, 1), else_=0)).label('success'),
+        func.sum(db.case((EmailGroomingLog.success == False, 1), else_=0)).label('failed'),
+    ).filter(EmailGroomingLog.sent_at >= today_start)
+    if allowed_config_ids is not None:
+        today_q = today_q.filter(EmailGroomingLog.config_id.in_(allowed_config_ids)) if allowed_config_ids else today_q.filter(db.false())
+    today_rows = today_q.group_by(sender_domain).order_by(func.count().desc()).all()
 
     today_map = {r.domain: {'total': r.total, 'success': int(r.success or 0), 'failed': int(r.failed or 0)} for r in today_rows}
 
