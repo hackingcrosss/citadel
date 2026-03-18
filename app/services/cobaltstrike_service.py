@@ -5,32 +5,37 @@ from app.services.credential_service import get_credential
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-# Module-level JWT token cache
-_token_cache = {
-    'token': None,
-    'lock': threading.Lock()
-}
+# Per-label JWT token cache: {label: {'token': str|None, 'lock': Lock}}
+_token_caches = {}
+_cache_lock = threading.Lock()
 
 
-def _base_url():
-    url = get_credential('cobaltstrike', 'api_url')
+def _get_label_cache(label='default'):
+    with _cache_lock:
+        if label not in _token_caches:
+            _token_caches[label] = {'token': None, 'lock': threading.Lock()}
+        return _token_caches[label]
+
+
+def _base_url(label='default'):
+    url = get_credential('cobaltstrike', 'api_url', label=label)
     if not url:
-        raise ValueError('Cobalt Strike API URL not configured')
+        raise ValueError(f'Cobalt Strike API URL not configured for server "{label}"')
     return url.rstrip('/')
 
 
-def _get_credentials():
-    username = get_credential('cobaltstrike', 'username')
-    password = get_credential('cobaltstrike', 'password')
+def _get_credentials(label='default'):
+    username = get_credential('cobaltstrike', 'username', label=label)
+    password = get_credential('cobaltstrike', 'password', label=label)
     if not username or not password:
-        raise ValueError('Cobalt Strike username/password not configured')
+        raise ValueError(f'Cobalt Strike username/password not configured for server "{label}"')
     return username, password
 
 
-def _authenticate():
+def _authenticate(label='default'):
     """Authenticate with the CS REST API and return a JWT token."""
-    username, password = _get_credentials()
-    url = _base_url() + '/api/auth/login'
+    username, password = _get_credentials(label)
+    url = _base_url(label) + '/api/auth/login'
     resp = requests.post(url, json={
         'username': username,
         'password': password
@@ -44,16 +49,17 @@ def _authenticate():
     return token
 
 
-def _get_token(force_refresh=False):
+def _get_token(label='default', force_refresh=False):
     """Get a cached token or authenticate to obtain a new one."""
-    with _token_cache['lock']:
-        if _token_cache['token'] is None or force_refresh:
-            _token_cache['token'] = _authenticate()
-        return _token_cache['token']
+    cache = _get_label_cache(label)
+    with cache['lock']:
+        if cache['token'] is None or force_refresh:
+            cache['token'] = _authenticate(label)
+        return cache['token']
 
 
-def _headers(token=None):
-    t = token or _get_token()
+def _headers(label='default', token=None):
+    t = token or _get_token(label)
     return {
         'Authorization': f'Bearer {t}',
         'Content-Type': 'application/json'
@@ -71,12 +77,12 @@ def _is_jwt_error(resp):
     return any(k in text.lower() for k in keywords)
 
 
-def _request(method, path, **kwargs):
-    url = _base_url() + path
-    token = _get_token()
+def _request(method, path, label='default', **kwargs):
+    url = _base_url(label) + path
+    token = _get_token(label)
     resp = requests.request(
         method, url,
-        headers=_headers(token),
+        headers=_headers(label, token),
         verify=False,
         timeout=15,
         **kwargs
@@ -85,10 +91,10 @@ def _request(method, path, **kwargs):
     # Re-authenticate on 401, or on 400 with a JWT error (CS returns 400 for
     # stale tokens after a teamserver restart that regenerates the signing key).
     if resp.status_code == 401 or (resp.status_code == 400 and _is_jwt_error(resp)):
-        new_token = _get_token(force_refresh=True)
+        new_token = _get_token(label, force_refresh=True)
         resp = requests.request(
             method, url,
-            headers=_headers(new_token),
+            headers=_headers(label, new_token),
             verify=False,
             timeout=15,
             **kwargs
@@ -108,30 +114,30 @@ def _request(method, path, **kwargs):
     return resp.json()
 
 
-def verify_connection():
+def verify_connection(label='default'):
     """Test connectivity by listing listeners."""
-    listeners = _request('GET', '/api/v1/listeners')
+    listeners = _request('GET', '/api/v1/listeners', label=label)
     count = len(listeners) if isinstance(listeners, list) else 0
     return {'listener_count': count}
 
 
-def list_listeners():
-    return _request('GET', '/api/v1/listeners')
+def list_listeners(label='default'):
+    return _request('GET', '/api/v1/listeners', label=label)
 
 
-def get_listener(listener_name):
-    return _request('GET', f'/api/v1/listeners/{listener_name}')
+def get_listener(listener_name, label='default'):
+    return _request('GET', f'/api/v1/listeners/{listener_name}', label=label)
 
 
-def create_listener(listener_type, data):
+def create_listener(listener_type, data, label='default'):
     """Create a listener. The CS REST API uses type-specific endpoints:
     POST /api/v1/listeners/{type}  with the listener config as JSON body.
     The body must NOT include a 'payload' field — the type is in the URL."""
-    return _request('POST', f'/api/v1/listeners/{listener_type}', json=data)
+    return _request('POST', f'/api/v1/listeners/{listener_type}', label=label, json=data)
 
 
-def delete_listener(listener_name):
-    return _request('DELETE', f'/api/v1/listeners/{listener_name}')
+def delete_listener(listener_name, label='default'):
+    return _request('DELETE', f'/api/v1/listeners/{listener_name}', label=label)
 
 
 # Payload string → REST API type slug mapping (ordered: longer keys first to
@@ -171,10 +177,10 @@ def _detect_type(listener):
     return None
 
 
-def update_listener_hosts(listener_name, new_hosts):
+def update_listener_hosts(listener_name, new_hosts, label='default'):
     """Update a listener's callback hosts by deleting and recreating it.
     Returns the new listener data."""
-    current = get_listener(listener_name)
+    current = get_listener(listener_name, label=label)
     if not current:
         raise Exception(f'Listener "{listener_name}" not found')
 
@@ -191,14 +197,14 @@ def update_listener_hosts(listener_name, new_hosts):
     body['hosts'] = new_hosts
 
     # Delete then recreate — if recreate fails, attempt to restore original config
-    delete_listener(listener_name)
+    delete_listener(listener_name, label=label)
     try:
-        return create_listener(listener_type, body)
+        return create_listener(listener_type, body, label=label)
     except Exception as exc:
         # Attempt to restore the original listener
         restore_body = {k: v for k, v in current.items() if k in valid}
         try:
-            create_listener(listener_type, restore_body)
+            create_listener(listener_type, restore_body, label=label)
         except Exception:
             pass  # restore is best-effort
         raise Exception(f'Failed to recreate listener with new hosts: {exc}. '

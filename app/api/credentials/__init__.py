@@ -7,7 +7,7 @@ from app.services import credential_service
 _log = logging.getLogger(__name__)
 
 
-_MULTI_ACCOUNT_PROVIDERS = {'cloudflare', 'aws', 'azure'}
+_MULTI_ACCOUNT_PROVIDERS = {'cloudflare', 'aws', 'azure', 'cobaltstrike'}
 
 
 @api_bp.route('/credentials/<provider>', methods=['GET'])
@@ -85,6 +85,18 @@ def delete_azure_account(label):
     if deleted:
         return jsonify({'deleted': True, 'label': label})
     return jsonify({'error': 'Account not found'}), 404
+
+
+@api_bp.route('/credentials/cobaltstrike/account/<label>', methods=['DELETE'])
+@login_required
+def delete_cobaltstrike_account(label):
+    labels = credential_service.get_account_labels('cobaltstrike')
+    if len(labels) <= 1:
+        return jsonify({'error': 'Cannot delete the last C2 server'}), 400
+    deleted = credential_service.delete_account('cobaltstrike', label)
+    if deleted:
+        return jsonify({'deleted': True, 'label': label})
+    return jsonify({'error': 'C2 server not found'}), 404
 
 
 @api_bp.route('/credentials/<provider>/test', methods=['POST'])
@@ -171,9 +183,9 @@ def _test_gophish():
     return result
 
 
-def _test_cobaltstrike():
+def _test_cobaltstrike(label='default'):
     from app.services import cobaltstrike_service
-    result = cobaltstrike_service.verify_connection()
+    result = cobaltstrike_service.verify_connection(label=label)
     return result
 
 
