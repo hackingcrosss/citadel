@@ -731,7 +731,7 @@
                 {% endif %}
                 {% if current_plan.is_enabled('cobaltstrike') %}
                 <a class="nav-link {% if request.endpoint == 'cobaltstrike' %}active{% endif %}" href="{{ url_for('cobaltstrike') }}">
-                    <i class="bi bi-crosshair"></i> Listeners
+                    <i class="bi bi-crosshair"></i> C2
                 </a>
                 {% endif %}
                 <a class="nav-link {% if request.endpoint == 'orchestration_mgmt' %}active{% endif %}" href="{{ url_for('orchestration_mgmt') }}">
