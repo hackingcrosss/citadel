@@ -73,13 +73,9 @@ def register_routes(app):
     def check_password_change():
         """Redirect authenticated users who must change their password."""
         if current_user.is_authenticated and current_user.must_change_password:
-            allowed = ('change_password', 'profile', 'logout', 'static')
+            allowed = ('change_password', 'login', 'logout', 'static')
             if request.endpoint and request.endpoint not in allowed:
-                # Allow self-service API endpoints so the profile page works
-                if request.path.startswith('/api/users/me'):
-                    return None
-                flash('Please change your password before continuing', 'warning')
-                return redirect(url_for('profile'))
+                return redirect(url_for('change_password'))
 
     @app.route('/')
     def index():
@@ -119,9 +115,8 @@ def register_routes(app):
 
                 login_user(user, remember=remember)
 
-                # Check if this is default admin password
-                if email == 'admin@infrared.local' and user.check_password('admin'):
-                    flash('You are using the default password. Please change it immediately!', 'warning')
+                # Force password change if flagged
+                if user.must_change_password:
                     return redirect(url_for('change_password'))
 
                 audit_service.log('auth.login', 'user', user.id, user.email)
