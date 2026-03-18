@@ -121,6 +121,9 @@ def update_user(user_id):
             return jsonify({'error': 'Cannot deactivate your own account'}), 400
         user.is_active = bool(data['is_active'])
 
+    if 'must_change_password' in data:
+        user.must_change_password = bool(data['must_change_password'])
+
     if 'plan_override' in data:
         override = (data['plan_override'] or '').strip() or None
         if override and override not in TIERS:

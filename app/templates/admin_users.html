@@ -219,18 +219,27 @@ function loadUsers() {
                 : `<button class="btn btn-sm btn-outline-danger ms-1" onclick="deleteUser(${u.id}, '${u.email.replace(/'/g, "\\'")}')">
                        <i class="bi bi-trash"></i>
                    </button>`;
+            const forceResetBtn = isSelf ? '' : (u.must_change_password
+                ? `<button class="btn btn-sm btn-warning ms-1" disabled title="Password change already pending">
+                       <i class="bi bi-key-fill"></i>
+                   </button>`
+                : `<button class="btn btn-sm btn-outline-warning ms-1" onclick="forcePasswordChange(${u.id}, '${u.email.replace(/'/g, "\\'")}')" title="Force password change on next login">
+                       <i class="bi bi-key"></i>
+                   </button>`);
             const editData = JSON.stringify(u).replace(/'/g, '&#39;');
+            const pwBadge = u.must_change_password ? ' <span class="badge bg-warning text-dark" style="font-size:0.6rem">pw reset</span>' : '';
             return `<tr>
-                <td>${u.email}${isSelf ? ' <span class="badge bg-secondary">you</span>' : ''}</td>
+                <td>${u.email}${isSelf ? ' <span class="badge bg-secondary">you</span>' : ''}${pwBadge}</td>
                 <td>${u.display_name || '<span class="text-muted">—</span>'}</td>
                 <td>${roleBadge(u.role)}${u.role === 'white_team' && u.company_name ? ` <span class="badge bg-secondary ms-1" style="font-size:0.65rem">${u.company_name}</span>` : ''}</td>
                 <td>${planBadge(u)}</td>
                 <td>${statusIcon}</td>
                 <td><small>${lastLogin}</small></td>
-                <td class="text-end">
+                <td class="text-end text-nowrap">
                     <button class="btn btn-sm btn-outline-secondary" onclick="openEditModal('${editData.replace(/"/g, '&quot;')}')">
                         <i class="bi bi-pencil"></i>
                     </button>
+                    ${forceResetBtn}
                     ${deleteBtn}
                 </td>
             </tr>`;
@@ -427,6 +436,31 @@ function deleteUser(id, email) {
                     }
                 })
                 .catch(() => showToast('Request failed.', 'danger'));
+        }
+    );
+}
+
+function forcePasswordChange(userId, email) {
+    showConfirm(
+        'Force Password Change',
+        `Force <strong>${email}</strong> to change their password on next login?`,
+        'Confirm',
+        () => {
+            fetch(`/api/users/${userId}`, {
+                method: 'PUT',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({must_change_password: true})
+            })
+            .then(r => r.json().then(d => ({status: r.status, data: d})))
+            .then(({status, data}) => {
+                if (status === 200) {
+                    showToast(`${email} will be required to change their password on next login.`, 'success');
+                    loadUsers();
+                } else {
+                    showToast(data.error || 'Failed to update user.', 'danger');
+                }
+            })
+            .catch(() => showToast('Request failed.', 'danger'));
         }
     );
 }
