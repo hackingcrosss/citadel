@@ -109,8 +109,12 @@ def find_all_profiles_for_domain(domain_name):
 _GROOMING_TEMPLATE_NAME = 'InfraRed Grooming'
 
 
-def _ensure_grooming_template(subject, html_body, text_body=''):
-    """Create or update the grooming template in GoPhish so send_test_email can reference it."""
+def _ensure_grooming_template(subject, html_body, text_body='', attachments=None):
+    """Create or update the grooming template in GoPhish so send_test_email can reference it.
+
+    Args:
+        attachments: Optional list of dicts with 'name', 'content' (base64), and 'type' keys.
+    """
     templates = list_templates()
     existing = None
     if isinstance(templates, list):
@@ -124,6 +128,7 @@ def _ensure_grooming_template(subject, html_body, text_body=''):
         'subject': subject,
         'html': html_body,
         'text': text_body,
+        'attachments': attachments or [],
     }
 
     if existing:
@@ -134,7 +139,7 @@ def _ensure_grooming_template(subject, html_body, text_body=''):
 
 
 def send_test_email(smtp_profile, to_email, subject, html_body, text_body='',
-                    envelope_sender=None):
+                    envelope_sender=None, attachments=None):
     """Send a single email via GoPhish's send_test_email utility endpoint.
 
     Args:
@@ -144,12 +149,13 @@ def send_test_email(smtp_profile, to_email, subject, html_body, text_body='',
         html_body: HTML body content.
         text_body: Plain text body (optional fallback).
         envelope_sender: Override the profile's from_address (e.g. "Name <user@domain>").
+        attachments: Optional list of dicts with 'name', 'content' (base64), 'type' keys.
 
     Returns:
         API response dict (empty on success, GoPhish returns 200 with empty body).
     """
     # GoPhish requires the template to exist in its DB — create/update it first
-    tpl = _ensure_grooming_template(subject, html_body, text_body)
+    tpl = _ensure_grooming_template(subject, html_body, text_body, attachments=attachments)
 
     # Build SMTP profile with proper envelope sender if provided
     smtp = dict(smtp_profile)
