@@ -73,8 +73,14 @@
     <div class="col-md-3 mb-4">
         <div class="card-custom">
             <div class="list-group list-group-flush" id="settings-side-nav">
-                <a href="#infrastructure" class="list-group-item list-group-item-action">
-                    <i class="bi bi-server"></i> Infrastructure
+                <a href="#compute" class="list-group-item list-group-item-action">
+                    <i class="bi bi-hdd-stack"></i> Compute
+                </a>
+                <a href="#dns" class="list-group-item list-group-item-action">
+                    <i class="bi bi-globe"></i> DNS
+                </a>
+                <a href="#networking" class="list-group-item list-group-item-action">
+                    <i class="bi bi-diagram-2"></i> Networking
                 </a>
                 <a href="#phishing" class="list-group-item list-group-item-action">
                     <i class="bi bi-envelope-at"></i> Phishing
@@ -97,10 +103,10 @@
 
     <!-- Settings Content -->
     <div class="col-md-9">
-        <!-- ── Infrastructure ─────────────────────────────────────────── -->
-        <div class="card-custom mb-4" id="infrastructure">
+        <!-- ── Compute ────────────────────────────────────────────────── -->
+        <div class="card-custom mb-4" id="compute">
             <div class="card-header">
-                <i class="bi bi-server"></i> Infrastructure
+                <i class="bi bi-hdd-stack"></i> Compute
             </div>
             <div class="card-body p-3">
 
@@ -339,6 +345,95 @@
                     </div>
                 </div>
 
+            </div>
+        </div>
+
+        <!-- ── DNS ───────────────────────────────────────────────────── -->
+        <div class="card-custom mb-4" id="dns">
+            <div class="card-header">
+                <i class="bi bi-globe"></i> DNS
+            </div>
+            <div class="card-body p-3">
+
+                <!-- Cloudflare -->
+                <div class="provider-block">
+                    <button class="provider-header collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#cf-body">
+                        <span class="d-flex align-items-center gap-2">
+                            <i class="bi bi-cloud-fog text-warning"></i>
+                            <strong>Cloudflare</strong>
+                            <span class="role-badge">Domains</span>
+                            <span class="config-status" id="cf-cfg"></span>
+                        </span>
+                        <i class="bi bi-chevron-down chevron"></i>
+                    </button>
+                    <div class="collapse" id="cf-body">
+                        <div class="provider-body">
+                            <div class="d-flex align-items-center justify-content-between mb-2">
+                                <small class="text-muted">One entry per Cloudflare account / API token.</small>
+                                <button class="btn btn-sm btn-outline-primary" onclick="toggleCfAddForm()">
+                                    <i class="bi bi-plus-circle"></i> Add Account
+                                </button>
+                            </div>
+
+                            <!-- Add-account form (hidden by default) -->
+                            <div id="cf-add-form" class="card bg-dark border-secondary mb-3" style="display:none!important">
+                                <div class="card-body p-3">
+                                    <div class="row g-2 align-items-end">
+                                        <div class="col-md-4">
+                                            <label class="form-label form-label-sm">Account label</label>
+                                            <input type="text" class="form-control form-control-sm" id="cf-new-label"
+                                                   placeholder="e.g. ClientA">
+                                        </div>
+                                        <div class="col-md-6">
+                                            <label class="form-label form-label-sm">API Token</label>
+                                            <div class="input-group input-group-sm">
+                                                <input type="password" class="form-control" id="cf-new-token"
+                                                       placeholder="Cloudflare API token">
+                                                <button class="btn btn-outline-secondary" type="button"
+                                                        onclick="toggleVisibility('cf-new-token', this)">
+                                                    <i class="bi bi-eye"></i>
+                                                </button>
+                                            </div>
+                                        </div>
+                                        <div class="col-md-2 d-flex gap-1">
+                                            <button class="btn btn-sm btn-primary w-100" onclick="addCloudflareAccount()">
+                                                <i class="bi bi-check-lg"></i> Save
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Accounts table -->
+                            <table class="table table-sm table-dark table-bordered mb-0" id="cf-accounts-table">
+                                <thead>
+                                    <tr>
+                                        <th>Label</th>
+                                        <th>API Token</th>
+                                        <th>Updated</th>
+                                        <th style="width:160px"></th>
+                                    </tr>
+                                </thead>
+                                <tbody id="cf-accounts-tbody">
+                                    <tr id="cf-accounts-empty">
+                                        <td colspan="4" class="text-muted text-center">No accounts configured</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+
+        <!-- ── Networking ────────────────────────────────────────────── -->
+        <div class="card-custom mb-4" id="networking">
+            <div class="card-header">
+                <i class="bi bi-diagram-2"></i> Networking
+            </div>
+            <div class="card-body p-3">
+
                 <!-- Nginx Proxy Manager -->
                 <div class="provider-block">
                     <button class="provider-header collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#npm-body">
@@ -442,75 +537,6 @@
                                     </div>
                                 </div>
                             </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Cloudflare -->
-                <div class="provider-block">
-                    <button class="provider-header collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#cf-body">
-                        <span class="d-flex align-items-center gap-2">
-                            <i class="bi bi-cloud-fog text-warning"></i>
-                            <strong>Cloudflare</strong>
-                            <span class="role-badge">Domains</span>
-                            <span class="config-status" id="cf-cfg"></span>
-                        </span>
-                        <i class="bi bi-chevron-down chevron"></i>
-                    </button>
-                    <div class="collapse" id="cf-body">
-                        <div class="provider-body">
-                            <div class="d-flex align-items-center justify-content-between mb-2">
-                                <small class="text-muted">One entry per Cloudflare account / API token.</small>
-                                <button class="btn btn-sm btn-outline-primary" onclick="toggleCfAddForm()">
-                                    <i class="bi bi-plus-circle"></i> Add Account
-                                </button>
-                            </div>
-
-                            <!-- Add-account form (hidden by default) -->
-                            <div id="cf-add-form" class="card bg-dark border-secondary mb-3" style="display:none!important">
-                                <div class="card-body p-3">
-                                    <div class="row g-2 align-items-end">
-                                        <div class="col-md-4">
-                                            <label class="form-label form-label-sm">Account label</label>
-                                            <input type="text" class="form-control form-control-sm" id="cf-new-label"
-                                                   placeholder="e.g. ClientA">
-                                        </div>
-                                        <div class="col-md-6">
-                                            <label class="form-label form-label-sm">API Token</label>
-                                            <div class="input-group input-group-sm">
-                                                <input type="password" class="form-control" id="cf-new-token"
-                                                       placeholder="Cloudflare API token">
-                                                <button class="btn btn-outline-secondary" type="button"
-                                                        onclick="toggleVisibility('cf-new-token', this)">
-                                                    <i class="bi bi-eye"></i>
-                                                </button>
-                                            </div>
-                                        </div>
-                                        <div class="col-md-2 d-flex gap-1">
-                                            <button class="btn btn-sm btn-primary w-100" onclick="addCloudflareAccount()">
-                                                <i class="bi bi-check-lg"></i> Save
-                                            </button>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <!-- Accounts table -->
-                            <table class="table table-sm table-dark table-bordered mb-0" id="cf-accounts-table">
-                                <thead>
-                                    <tr>
-                                        <th>Label</th>
-                                        <th>API Token</th>
-                                        <th>Updated</th>
-                                        <th style="width:160px"></th>
-                                    </tr>
-                                </thead>
-                                <tbody id="cf-accounts-tbody">
-                                    <tr id="cf-accounts-empty">
-                                        <td colspan="4" class="text-muted text-center">No accounts configured</td>
-                                    </tr>
-                                </tbody>
-                            </table>
                         </div>
                     </div>
                 </div>
@@ -651,6 +677,16 @@
                                     </div>
                                     <small class="text-muted" id="cs-listener-ip-status">Private IP of the CS teamserver EC2 instance.</small>
                                 </div>
+                                <div class="col-md-6">
+                                    <label class="form-label">C2 Redirector IP <small class="text-muted">(public IP — for DNS A records)</small></label>
+                                    <div class="input-group">
+                                        <input type="text" class="form-control" id="redwarden-ip" placeholder="e.g. 203.0.113.50">
+                                        <select class="form-select" id="redwarden-ip-from-ec2" style="max-width:200px;" onchange="onRedwardenEc2Select()">
+                                            <option value="">Set from EC2...</option>
+                                        </select>
+                                    </div>
+                                    <small class="text-muted" id="redwarden-ip-status">Public IP of the C2 redirector host. Used by Operations for DNS records.</small>
+                                </div>
                                 <div class="col-12">
                                     <label class="form-label">Malleable C2 Profile <small class="text-muted">(used to generate Nginx restrictor config during C2 setup)</small></label>
                                     <textarea class="form-control" id="cs-malleable-profile" rows="6"
@@ -668,38 +704,6 @@
                                     <button class="btn btn-sm btn-outline-primary" onclick="saveCobaltstrikeCredentials()"><i class="bi bi-pencil"></i> Update</button>
                                     <button class="btn btn-sm btn-outline-success" onclick="testCobaltstrikeConnection()"><i class="bi bi-check-circle"></i> Test Connection</button>
                                     <span id="cs-test-result" class="ms-2"></span>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- RedWarden -->
-                <div class="provider-block">
-                    <button class="provider-header collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#redwarden-body">
-                        <span class="d-flex align-items-center gap-2">
-                            <i class="bi bi-shield-shaded text-warning"></i>
-                            <strong>RedWarden</strong>
-                            <span class="role-badge">Beacon Reverse Proxy</span>
-                            <span class="config-status" id="rw-cfg"></span>
-                        </span>
-                        <i class="bi bi-chevron-down chevron"></i>
-                    </button>
-                    <div class="collapse" id="redwarden-body">
-                        <div class="provider-body">
-                            <div class="row g-3">
-                                <div class="col-md-6">
-                                    <label class="form-label">RedWarden IP <small class="text-muted">(for Cloudflare DNS records)</small></label>
-                                    <div class="input-group">
-                                        <input type="text" class="form-control" id="redwarden-ip" placeholder="e.g. 203.0.113.50">
-                                        <select class="form-select" id="redwarden-ip-from-ec2" style="max-width:200px;" onchange="onRedwardenEc2Select()">
-                                            <option value="">Set from EC2...</option>
-                                        </select>
-                                    </div>
-                                    <small class="text-muted" id="redwarden-ip-status">Public IP of the RedWarden host. Used by Operations for C2 DNS records.</small>
-                                </div>
-                                <div class="col-12">
-                                    <button class="btn btn-sm btn-outline-primary" onclick="saveRedwardenCredentials()"><i class="bi bi-pencil"></i> Update</button>
                                 </div>
                             </div>
                         </div>
@@ -849,7 +853,6 @@
         loadDockerStatus();
         loadGophishStatus();
         loadCobaltstrikeStatus();
-        loadRedwardenStatus();
         loadOpenAIStatus();
         loadNpmSshStatus();
         loadEc2ForNpm();
@@ -907,7 +910,6 @@
             { key: 'mailgun',      id: 'mg-cfg'       },
             { key: 'gophish',      id: 'gophish-cfg'  },
             { key: 'cobaltstrike', id: 'cs-cfg'       },
-            { key: 'redwarden',    id: 'rw-cfg'       },
             { key: 'openai',       id: 'openai-cfg'   },
         ];
         PROVIDERS.forEach(function(p) {
@@ -1651,6 +1653,19 @@
                 }
             })
             .catch(err => console.error('Failed to load CS credentials:', err));
+
+        // Also load redirector IP (stored under redwarden provider)
+        fetch('/api/credentials/redwarden')
+            .then(r => r.json())
+            .then(data => {
+                const creds = data.redwarden || {};
+                if (creds.ip) {
+                    document.getElementById('redwarden-ip').placeholder = creds.ip.masked;
+                    document.getElementById('redwarden-ip-status').textContent =
+                        'Last updated: ' + new Date(creds.ip.updated_at).toLocaleString();
+                }
+            })
+            .catch(() => {});
     }
 
     function loadCsProfileFile(input) {
@@ -1668,6 +1683,7 @@
         const username = document.getElementById('cs-username').value;
         const password = document.getElementById('cs-password').value;
         const listenerIp = document.getElementById('cs-listener-ip').value.trim();
+        const redirectorIp = document.getElementById('redwarden-ip').value.trim();
         const profile = document.getElementById('cs-malleable-profile').value.trim();
 
         const body = {};
@@ -1677,28 +1693,40 @@
         if (listenerIp) body.listener_ip = listenerIp;
         if (profile) body.malleable_profile = profile;
 
-        if (Object.keys(body).length === 0) {
+        // Save redirector IP under the redwarden provider (kept for backend compatibility)
+        var redirectorPromise = Promise.resolve();
+        if (redirectorIp) {
+            redirectorPromise = fetch('/api/credentials/redwarden', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ip: redirectorIp})
+            }).then(r => r.json());
+        }
+
+        if (Object.keys(body).length === 0 && !redirectorIp) {
             showToast('Enter at least one value to save.', 'warning');
             return;
         }
 
-        fetch('/api/credentials/cobaltstrike', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify(body)
-        })
-        .then(r => r.json())
-        .then(data => {
-            if (data.saved) {
-                showToast('Cobalt Strike credentials saved.');
-                document.getElementById('cs-api-url').value = '';
-                document.getElementById('cs-username').value = '';
-                document.getElementById('cs-password').value = '';
-                document.getElementById('cs-listener-ip').value = '';
-                document.getElementById('cs-malleable-profile').value = '';
-                loadCobaltstrikeStatus();
-                loadConfigBadges();
-            }
+        var csPromise = Object.keys(body).length > 0
+            ? fetch('/api/credentials/cobaltstrike', {
+                  method: 'POST',
+                  headers: {'Content-Type': 'application/json'},
+                  body: JSON.stringify(body)
+              }).then(r => r.json())
+            : Promise.resolve({saved: true});
+
+        Promise.all([csPromise, redirectorPromise])
+        .then(function() {
+            showToast('Cobalt Strike credentials saved.');
+            document.getElementById('cs-api-url').value = '';
+            document.getElementById('cs-username').value = '';
+            document.getElementById('cs-password').value = '';
+            document.getElementById('cs-listener-ip').value = '';
+            document.getElementById('redwarden-ip').value = '';
+            document.getElementById('cs-malleable-profile').value = '';
+            loadCobaltstrikeStatus();
+            loadConfigBadges();
         })
         .catch(err => showToast('Error saving: ' + err, 'danger'));
     }
@@ -1721,43 +1749,6 @@
             });
     }
 
-    // --- RedWarden ---
-
-    function loadRedwardenStatus() {
-        fetch('/api/credentials/redwarden')
-            .then(r => r.json())
-            .then(data => {
-                const creds = data.redwarden || {};
-                if (creds.ip) {
-                    document.getElementById('redwarden-ip').placeholder = creds.ip.masked;
-                    document.getElementById('redwarden-ip-status').textContent =
-                        'Last updated: ' + new Date(creds.ip.updated_at).toLocaleString();
-                }
-            })
-            .catch(err => console.error('Failed to load RedWarden credentials:', err));
-    }
-
-    function saveRedwardenCredentials() {
-        const ip = document.getElementById('redwarden-ip').value.trim();
-        if (!ip) { showToast('Enter a RedWarden IP address.', 'warning'); return; }
-
-        fetch('/api/credentials/redwarden', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({ip: ip})
-        })
-        .then(r => r.json())
-        .then(data => {
-            if (data.saved) {
-                showToast('RedWarden credentials saved.');
-                document.getElementById('redwarden-ip').value = '';
-                loadRedwardenStatus();
-                loadConfigBadges();
-            }
-        })
-        .catch(err => showToast('Error saving: ' + err, 'danger'));
-    }
-
     // --- NPM EC2 Picker ---
 
     function loadEc2ForNpm() {
@@ -1773,7 +1764,7 @@
                 const npmSelect = document.getElementById('npm-ip-from-ec2');
                 npmSelect.innerHTML = '<option value="">Set from EC2...</option>';
 
-                // Populate RedWarden picker (public IP)
+                // Populate C2 Redirector picker (public IP)
                 const rwSelect = document.getElementById('redwarden-ip-from-ec2');
                 rwSelect.innerHTML = '<option value="">Set from EC2...</option>';
 
