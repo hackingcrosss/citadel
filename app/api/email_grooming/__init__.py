@@ -1,5 +1,6 @@
 import re
 from datetime import datetime, timedelta
+from sqlalchemy import func
 from flask import request, jsonify
 from flask_login import login_required, current_user
 from app.api import api_bp
@@ -276,3 +277,60 @@ def list_email_grooming_logs():
             'failed': today_failed,
         },
     })
+
+
+# ---------------------------------------------------------------------------
+# Per-domain send stats (emails sent grouped by sender domain)
+# ---------------------------------------------------------------------------
+
+@api_bp.route('/email-grooming/domain-stats', methods=['GET'])
+@login_required
+def email_grooming_domain_stats():
+    # Extract domain from from_address (everything after '@')
+    sender_domain = func.split_part(EmailGroomingLog.from_address, '@', 2)
+
+    today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+
+    # Total counts per sender domain
+    total_rows = (
+        db.session.query(
+            sender_domain.label('domain'),
+            func.count().label('total'),
+            func.sum(db.case((EmailGroomingLog.success == True, 1), else_=0)).label('success'),
+            func.sum(db.case((EmailGroomingLog.success == False, 1), else_=0)).label('failed'),
+        )
+        .group_by(sender_domain)
+        .order_by(func.count().desc())
+        .all()
+    )
+
+    # Today's counts per sender domain
+    today_rows = (
+        db.session.query(
+            sender_domain.label('domain'),
+            func.count().label('total'),
+            func.sum(db.case((EmailGroomingLog.success == True, 1), else_=0)).label('success'),
+            func.sum(db.case((EmailGroomingLog.success == False, 1), else_=0)).label('failed'),
+        )
+        .filter(EmailGroomingLog.sent_at >= today_start)
+        .group_by(sender_domain)
+        .order_by(func.count().desc())
+        .all()
+    )
+
+    today_map = {r.domain: {'total': r.total, 'success': int(r.success or 0), 'failed': int(r.failed or 0)} for r in today_rows}
+
+    domains = []
+    for r in total_rows:
+        today = today_map.get(r.domain, {'total': 0, 'success': 0, 'failed': 0})
+        domains.append({
+            'domain': r.domain,
+            'total': r.total,
+            'success': int(r.success or 0),
+            'failed': int(r.failed or 0),
+            'today_total': today['total'],
+            'today_success': today['success'],
+            'today_failed': today['failed'],
+        })
+
+    return jsonify({'domains': domains})
