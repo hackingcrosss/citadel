@@ -193,3 +193,26 @@ def parse_malleable_profile():
         })
     except Exception as e:
         return jsonify({'error': f'Failed to parse profile: {str(e)}'}), 400
+
+
+@api_bp.route('/cobaltstrike/nginx-config', methods=['GET'])
+@login_required
+@feature_required('cobaltstrike')
+def get_stored_nginx_config():
+    """Generate Nginx restrictor config from the stored Malleable C2 profile."""
+    from app.services.credential_service import get_credential
+    from app.services.malleable_c2_parser import parse_profile, generate_nginx_config
+
+    profile_text = get_credential('cobaltstrike', 'malleable_profile')
+    if not profile_text:
+        return jsonify({'error': 'No Malleable C2 profile stored. Upload one in Settings.', 'nginx_config': ''}), 404
+
+    try:
+        parsed = parse_profile(profile_text)
+        nginx_config = generate_nginx_config(parsed)
+        return jsonify({
+            'nginx_config': nginx_config,
+            'has_profile': True,
+        })
+    except Exception as e:
+        return jsonify({'error': f'Failed to parse stored profile: {str(e)}', 'nginx_config': ''}), 400

@@ -652,6 +652,19 @@
                                     <small class="text-muted" id="cs-listener-ip-status">Private IP of the CS teamserver EC2 instance.</small>
                                 </div>
                                 <div class="col-12">
+                                    <label class="form-label">Malleable C2 Profile <small class="text-muted">(used to generate Nginx restrictor config during C2 setup)</small></label>
+                                    <textarea class="form-control" id="cs-malleable-profile" rows="6"
+                                              style="font-family: 'Fira Code', 'Consolas', monospace; font-size: 0.8rem;"
+                                              placeholder="Paste your Malleable C2 profile here..."></textarea>
+                                    <div class="d-flex align-items-center gap-2 mt-1">
+                                        <small class="text-muted" id="cs-malleable-profile-status">Paste the profile used by your teamserver so C2 setup can auto-generate Nginx traffic restrictions.</small>
+                                        <label class="btn btn-sm btn-outline-secondary mb-0 ms-auto" for="cs-profile-file-input">
+                                            <i class="bi bi-upload"></i> Upload .profile
+                                        </label>
+                                        <input type="file" id="cs-profile-file-input" class="d-none" accept=".profile,.txt,.c2profile" onchange="loadCsProfileFile(this)">
+                                    </div>
+                                </div>
+                                <div class="col-12">
                                     <button class="btn btn-sm btn-outline-primary" onclick="saveCobaltstrikeCredentials()"><i class="bi bi-pencil"></i> Update</button>
                                     <button class="btn btn-sm btn-outline-success" onclick="testCobaltstrikeConnection()"><i class="bi bi-check-circle"></i> Test Connection</button>
                                     <span id="cs-test-result" class="ms-2"></span>
@@ -1632,8 +1645,22 @@
                     document.getElementById('cs-listener-ip-status').textContent =
                         'Last updated: ' + new Date(creds.listener_ip.updated_at).toLocaleString();
                 }
+                if (creds.malleable_profile) {
+                    document.getElementById('cs-malleable-profile-status').innerHTML =
+                        '<i class="bi bi-check-circle text-success"></i> Profile saved — last updated: ' + new Date(creds.malleable_profile.updated_at).toLocaleString();
+                }
             })
             .catch(err => console.error('Failed to load CS credentials:', err));
+    }
+
+    function loadCsProfileFile(input) {
+        if (!input.files.length) return;
+        var reader = new FileReader();
+        reader.onload = function(e) {
+            document.getElementById('cs-malleable-profile').value = e.target.result;
+        };
+        reader.readAsText(input.files[0]);
+        input.value = '';
     }
 
     function saveCobaltstrikeCredentials() {
@@ -1641,12 +1668,14 @@
         const username = document.getElementById('cs-username').value;
         const password = document.getElementById('cs-password').value;
         const listenerIp = document.getElementById('cs-listener-ip').value.trim();
+        const profile = document.getElementById('cs-malleable-profile').value.trim();
 
         const body = {};
         if (apiUrl) body.api_url = apiUrl;
         if (username) body.username = username;
         if (password) body.password = password;
         if (listenerIp) body.listener_ip = listenerIp;
+        if (profile) body.malleable_profile = profile;
 
         if (Object.keys(body).length === 0) {
             showToast('Enter at least one value to save.', 'warning');
@@ -1666,6 +1695,7 @@
                 document.getElementById('cs-username').value = '';
                 document.getElementById('cs-password').value = '';
                 document.getElementById('cs-listener-ip').value = '';
+                document.getElementById('cs-malleable-profile').value = '';
                 loadCobaltstrikeStatus();
                 loadConfigBadges();
             }
