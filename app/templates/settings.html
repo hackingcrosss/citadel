@@ -630,86 +630,159 @@
 
         <!-- ── C2 ─────────────────────────────────────────────────────── -->
         <div class="card-custom mb-4" id="c2">
-            <div class="card-header">
-                <i class="bi bi-crosshair"></i> C2
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span><i class="bi bi-crosshair"></i> C2 Servers</span>
+                <button class="btn btn-sm btn-outline-primary" onclick="toggleC2AddForm()">
+                    <i class="bi bi-plus-circle"></i> Add C2 Server
+                </button>
             </div>
             <div class="card-body p-3">
+                <p class="text-muted small mb-3">Configure one or more C2 servers. Each server stores connection credentials, IPs, and an optional Malleable C2 profile for Nginx restrictor config generation.</p>
 
-                <!-- Cobalt Strike -->
-                <div class="provider-block">
-                    <button class="provider-header collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#cs-body">
-                        <span class="d-flex align-items-center gap-2">
-                            <i class="bi bi-crosshair text-danger"></i>
-                            <strong>Cobalt Strike</strong>
-                            <span class="role-badge">Listeners</span>
-                            <span class="config-status" id="cs-cfg"></span>
-                        </span>
-                        <i class="bi bi-chevron-down chevron"></i>
-                    </button>
-                    <div class="collapse" id="cs-body">
-                        <div class="provider-body">
-                            <div class="row g-3">
-                                <div class="col-md-4">
-                                    <label class="form-label">Teamserver URL</label>
-                                    <input type="text" class="form-control" id="cs-api-url" placeholder="https://teamserver:50443">
-                                    <small class="text-muted" id="cs-api-url-status"></small>
-                                </div>
-                                <div class="col-md-4">
-                                    <label class="form-label">Username</label>
-                                    <input type="text" class="form-control" id="cs-username" placeholder="Enter CS username">
-                                    <small class="text-muted" id="cs-username-status"></small>
-                                </div>
-                                <div class="col-md-4">
-                                    <label class="form-label">Password</label>
-                                    <div class="input-group">
-                                        <input type="password" class="form-control" id="cs-password" placeholder="Enter CS password">
-                                        <button class="btn btn-outline-secondary" type="button"><i class="bi bi-eye"></i></button>
-                                    </div>
-                                    <small class="text-muted" id="cs-password-status"></small>
-                                </div>
-                                <div class="col-md-6">
-                                    <label class="form-label">Listener IP <small class="text-muted">(private IP — stager host &amp; NPM forward target)</small></label>
-                                    <div class="input-group">
-                                        <input type="text" class="form-control" id="cs-listener-ip" placeholder="e.g. 172.31.0.10">
-                                        <select class="form-select" id="cs-listener-ip-from-ec2" style="max-width:200px;" onchange="onCsListenerIpEc2Select()">
-                                            <option value="">Set from EC2...</option>
-                                        </select>
-                                    </div>
-                                    <small class="text-muted" id="cs-listener-ip-status">Private IP of the CS teamserver EC2 instance.</small>
-                                </div>
-                                <div class="col-md-6">
-                                    <label class="form-label">C2 Redirector IP <small class="text-muted">(public IP — for DNS A records)</small></label>
-                                    <div class="input-group">
-                                        <input type="text" class="form-control" id="redwarden-ip" placeholder="e.g. 203.0.113.50">
-                                        <select class="form-select" id="redwarden-ip-from-ec2" style="max-width:200px;" onchange="onRedwardenEc2Select()">
-                                            <option value="">Set from EC2...</option>
-                                        </select>
-                                    </div>
-                                    <small class="text-muted" id="redwarden-ip-status">Public IP of the C2 redirector host. Used by Operations for DNS records.</small>
-                                </div>
-                                <div class="col-12">
-                                    <label class="form-label">Malleable C2 Profile <small class="text-muted">(used to generate Nginx restrictor config during C2 setup)</small></label>
-                                    <textarea class="form-control" id="cs-malleable-profile" rows="6"
-                                              style="font-family: 'Fira Code', 'Consolas', monospace; font-size: 0.8rem;"
-                                              placeholder="Paste your Malleable C2 profile here..."></textarea>
-                                    <div class="d-flex align-items-center gap-2 mt-1">
-                                        <small class="text-muted" id="cs-malleable-profile-status">Paste the profile used by your teamserver so C2 setup can auto-generate Nginx traffic restrictions.</small>
-                                        <label class="btn btn-sm btn-outline-secondary mb-0 ms-auto" for="cs-profile-file-input">
-                                            <i class="bi bi-upload"></i> Upload .profile
-                                        </label>
-                                        <input type="file" id="cs-profile-file-input" class="d-none" accept=".profile,.txt,.c2profile" onchange="loadCsProfileFile(this)">
-                                    </div>
-                                </div>
-                                <div class="col-12">
-                                    <button class="btn btn-sm btn-outline-primary" onclick="saveCobaltstrikeCredentials()"><i class="bi bi-pencil"></i> Update</button>
-                                    <button class="btn btn-sm btn-outline-success" onclick="testCobaltstrikeConnection()"><i class="bi bi-check-circle"></i> Test Connection</button>
-                                    <span id="cs-test-result" class="ms-2"></span>
-                                </div>
+                <!-- C2 Servers Table -->
+                <table class="table table-sm table-hover align-middle mb-3">
+                    <thead>
+                        <tr>
+                            <th>Label</th>
+                            <th>Type</th>
+                            <th>Teamserver</th>
+                            <th>Listener IP</th>
+                            <th>Redirector IP</th>
+                            <th>Profile</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody id="c2-servers-tbody">
+                        <tr id="c2-servers-empty"><td colspan="7" class="text-center text-muted">No C2 servers configured</td></tr>
+                    </tbody>
+                </table>
+
+                <!-- Add C2 Server Form (hidden by default) -->
+                <div id="c2-add-form" style="display:none!important" class="border rounded p-3 mb-3" style="border-color: var(--ir-border) !important;">
+                    <h6 class="fw-bold mb-3"><i class="bi bi-plus-circle"></i> Add C2 Server</h6>
+                    <div class="row g-3">
+                        <div class="col-md-4">
+                            <label class="form-label">Label</label>
+                            <input type="text" class="form-control" id="c2-new-label" placeholder="e.g. primary, staging">
+                            <small class="text-muted">Unique name for this C2 server</small>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">C2 Type</label>
+                            <select class="form-select" id="c2-new-type">
+                                <option value="cobaltstrike" selected>Cobalt Strike</option>
+                            </select>
+                            <small class="text-muted">More integrations coming soon</small>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Teamserver URL</label>
+                            <input type="text" class="form-control" id="c2-new-api-url" placeholder="https://teamserver:50443">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Username</label>
+                            <input type="text" class="form-control" id="c2-new-username" placeholder="CS username">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Password</label>
+                            <div class="input-group">
+                                <input type="password" class="form-control" id="c2-new-password" placeholder="CS password">
+                                <button class="btn btn-outline-secondary" type="button" onclick="toggleVisibility('c2-new-password', this)"><i class="bi bi-eye"></i></button>
                             </div>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Listener IP <small class="text-muted">(private)</small></label>
+                            <div class="input-group">
+                                <input type="text" class="form-control" id="c2-new-listener-ip" placeholder="172.31.0.10">
+                                <select class="form-select c2-ec2-private-picker" style="max-width:160px;" onchange="onC2NewEc2Pick(this, 'c2-new-listener-ip')">
+                                    <option value="">EC2...</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Redirector IP <small class="text-muted">(public)</small></label>
+                            <div class="input-group">
+                                <input type="text" class="form-control" id="c2-new-redirector-ip" placeholder="203.0.113.50">
+                                <select class="form-select c2-ec2-public-picker" style="max-width:160px;" onchange="onC2NewEc2Pick(this, 'c2-new-redirector-ip')">
+                                    <option value="">EC2...</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label">Malleable C2 Profile <small class="text-muted">(optional — for Nginx restrictor config)</small></label>
+                            <textarea class="form-control" id="c2-new-profile" rows="4"
+                                      style="font-family: 'Fira Code', 'Consolas', monospace; font-size: 0.8rem;"
+                                      placeholder="Paste your Malleable C2 profile here..."></textarea>
+                            <div class="d-flex align-items-center gap-2 mt-1">
+                                <small class="text-muted">Paste the profile used by your teamserver so C2 setup can auto-generate Nginx traffic restrictions.</small>
+                                <label class="btn btn-sm btn-outline-secondary mb-0 ms-auto" for="c2-new-profile-file">
+                                    <i class="bi bi-upload"></i> Upload .profile
+                                </label>
+                                <input type="file" id="c2-new-profile-file" class="d-none" accept=".profile,.txt,.c2profile" onchange="loadC2ProfileFile(this, 'c2-new-profile')">
+                            </div>
+                        </div>
+                        <div class="col-12">
+                            <button class="btn btn-sm btn-outline-primary" onclick="addC2Server()"><i class="bi bi-check-circle"></i> Save Server</button>
+                            <button class="btn btn-sm btn-outline-secondary ms-1" onclick="toggleC2AddForm()">Cancel</button>
                         </div>
                     </div>
                 </div>
 
+                <!-- Expand panel for editing an existing server -->
+                <div id="c2-edit-panel" class="d-none border rounded p-3 mb-3">
+                    <h6 class="fw-bold mb-3"><i class="bi bi-pencil"></i> Edit C2 Server: <code id="c2-edit-label-display"></code></h6>
+                    <input type="hidden" id="c2-edit-label">
+                    <div class="row g-3">
+                        <div class="col-md-4">
+                            <label class="form-label">Teamserver URL</label>
+                            <input type="text" class="form-control" id="c2-edit-api-url" placeholder="Leave blank to keep current">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Username</label>
+                            <input type="text" class="form-control" id="c2-edit-username" placeholder="Leave blank to keep current">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Password</label>
+                            <div class="input-group">
+                                <input type="password" class="form-control" id="c2-edit-password" placeholder="Leave blank to keep current">
+                                <button class="btn btn-outline-secondary" type="button" onclick="toggleVisibility('c2-edit-password', this)"><i class="bi bi-eye"></i></button>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Listener IP <small class="text-muted">(private)</small></label>
+                            <div class="input-group">
+                                <input type="text" class="form-control" id="c2-edit-listener-ip" placeholder="Keep current">
+                                <select class="form-select c2-ec2-private-picker" style="max-width:160px;" onchange="onC2NewEc2Pick(this, 'c2-edit-listener-ip')">
+                                    <option value="">EC2...</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Redirector IP <small class="text-muted">(public)</small></label>
+                            <div class="input-group">
+                                <input type="text" class="form-control" id="c2-edit-redirector-ip" placeholder="Keep current">
+                                <select class="form-select c2-ec2-public-picker" style="max-width:160px;" onchange="onC2NewEc2Pick(this, 'c2-edit-redirector-ip')">
+                                    <option value="">EC2...</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Malleable C2 Profile</label>
+                            <textarea class="form-control" id="c2-edit-profile" rows="4"
+                                      style="font-family: 'Fira Code', 'Consolas', monospace; font-size: 0.8rem;"
+                                      placeholder="Leave blank to keep current profile..."></textarea>
+                            <div class="d-flex align-items-center gap-2 mt-1">
+                                <small class="text-muted" id="c2-edit-profile-status"></small>
+                                <label class="btn btn-sm btn-outline-secondary mb-0 ms-auto" for="c2-edit-profile-file">
+                                    <i class="bi bi-upload"></i> Upload
+                                </label>
+                                <input type="file" id="c2-edit-profile-file" class="d-none" accept=".profile,.txt,.c2profile" onchange="loadC2ProfileFile(this, 'c2-edit-profile')">
+                            </div>
+                        </div>
+                        <div class="col-12">
+                            <button class="btn btn-sm btn-outline-primary" onclick="saveC2Edit()"><i class="bi bi-pencil"></i> Update</button>
+                            <button class="btn btn-sm btn-outline-secondary ms-1" onclick="closeC2Edit()">Cancel</button>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -909,7 +982,6 @@
             { key: 'cloudflare',   id: 'cf-cfg'       },
             { key: 'mailgun',      id: 'mg-cfg'       },
             { key: 'gophish',      id: 'gophish-cfg'  },
-            { key: 'cobaltstrike', id: 'cs-cfg'       },
             { key: 'openai',       id: 'openai-cfg'   },
         ];
         PROVIDERS.forEach(function(p) {
@@ -1620,133 +1692,256 @@
             });
     }
 
-    // --- Cobalt Strike ---
+    // --- C2 Servers (multi-account) ---
 
-    function loadCobaltstrikeStatus() {
-        fetch('/api/credentials/cobaltstrike')
+    function loadCobaltstrikeStatus() { loadC2Servers(); }
+
+    function loadC2Servers() {
+        fetch('/api/cobaltstrike/servers')
             .then(r => r.json())
             .then(data => {
-                const creds = data.cobaltstrike || {};
-                if (creds.api_url) {
-                    document.getElementById('cs-api-url').placeholder = creds.api_url.masked;
-                    document.getElementById('cs-api-url-status').textContent =
-                        'Last updated: ' + new Date(creds.api_url.updated_at).toLocaleString();
+                const servers = data.servers || [];
+                const tbody = document.getElementById('c2-servers-tbody');
+                const emptyRow = document.getElementById('c2-servers-empty');
+
+                Array.from(tbody.querySelectorAll('tr[data-c2-row]')).forEach(r => r.remove());
+
+                if (servers.length === 0) {
+                    emptyRow.style.display = '';
+                    return;
                 }
-                if (creds.username) {
-                    document.getElementById('cs-username').placeholder = creds.username.masked;
-                    document.getElementById('cs-username-status').textContent =
-                        'Last updated: ' + new Date(creds.username.updated_at).toLocaleString();
-                }
-                if (creds.password) {
-                    document.getElementById('cs-password').placeholder = creds.password.masked;
-                    document.getElementById('cs-password-status').textContent =
-                        'Last updated: ' + new Date(creds.password.updated_at).toLocaleString();
-                }
-                if (creds.listener_ip) {
-                    document.getElementById('cs-listener-ip').placeholder = creds.listener_ip.masked;
-                    document.getElementById('cs-listener-ip-status').textContent =
-                        'Last updated: ' + new Date(creds.listener_ip.updated_at).toLocaleString();
-                }
-                if (creds.malleable_profile) {
-                    document.getElementById('cs-malleable-profile-status').innerHTML =
-                        '<i class="bi bi-check-circle text-success"></i> Profile saved — last updated: ' + new Date(creds.malleable_profile.updated_at).toLocaleString();
-                }
+                emptyRow.style.display = 'none';
+
+                servers.forEach(s => {
+                    const lbl = s.label || 'default';
+                    const tr = document.createElement('tr');
+                    tr.setAttribute('data-c2-row', lbl);
+                    tr.innerHTML = `
+                        <td><code>${escHtml(lbl)}</code></td>
+                        <td><span class="badge bg-secondary">${escHtml(s.c2_type || 'cobaltstrike')}</span></td>
+                        <td><span class="font-monospace text-muted small">${escHtml(s.api_url_masked || '—')}</span></td>
+                        <td><span class="font-monospace small">${s.listener_ip ? escHtml(s.listener_ip) : '<span class="text-muted">—</span>'}</span></td>
+                        <td><span class="font-monospace small">${s.redirector_ip ? escHtml(s.redirector_ip) : '<span class="text-muted">—</span>'}</span></td>
+                        <td>${s.has_profile ? '<i class="bi bi-check-circle text-success"></i>' : '<span class="text-muted">—</span>'}</td>
+                        <td class="text-end">
+                            <button class="btn btn-sm btn-outline-secondary me-1" title="Edit"
+                                    onclick="openC2Edit('${escHtml(lbl)}')">
+                                <i class="bi bi-pencil"></i>
+                            </button>
+                            <button class="btn btn-sm btn-outline-success me-1" title="Test"
+                                    onclick="testC2Server('${escHtml(lbl)}', this)">
+                                <i class="bi bi-check-circle"></i>
+                            </button>
+                            <button class="btn btn-sm btn-outline-danger" title="Delete"
+                                    onclick="deleteC2Server('${escHtml(lbl)}')">
+                                <i class="bi bi-trash"></i>
+                            </button>
+                            <span class="c2-test-result ms-1" data-label="${escHtml(lbl)}"></span>
+                        </td>`;
+                    tbody.appendChild(tr);
+                });
             })
-            .catch(err => console.error('Failed to load CS credentials:', err));
+            .catch(err => console.error('Failed to load C2 servers:', err));
+    }
 
-        // Also load redirector IP (stored under redwarden provider)
-        fetch('/api/credentials/redwarden')
+    function toggleC2AddForm() {
+        const form = document.getElementById('c2-add-form');
+        const hidden = form.style.display === 'none' || form.style.cssText.includes('none');
+        form.style.cssText = hidden ? 'display:block!important' : 'display:none!important';
+        if (hidden) loadC2Ec2Pickers();
+    }
+
+    function loadC2Ec2Pickers() {
+        fetch('/api/aws/instances')
             .then(r => r.json())
             .then(data => {
-                const creds = data.redwarden || {};
-                if (creds.ip) {
-                    document.getElementById('redwarden-ip').placeholder = creds.ip.masked;
-                    document.getElementById('redwarden-ip-status').textContent =
-                        'Last updated: ' + new Date(creds.ip.updated_at).toLocaleString();
-                }
+                if (data.error) return;
+                const instances = data.instances || [];
+                const publicInst = instances.filter(i => i.public_ip);
+                const privateInst = instances.filter(i => i.private_ip);
+
+                document.querySelectorAll('.c2-ec2-private-picker').forEach(sel => {
+                    sel.innerHTML = '<option value="">EC2...</option>';
+                    privateInst.forEach(inst => {
+                        const opt = document.createElement('option');
+                        opt.value = inst.private_ip;
+                        opt.textContent = (inst.name || inst.id) + ' (' + inst.private_ip + ')';
+                        sel.appendChild(opt);
+                    });
+                });
+                document.querySelectorAll('.c2-ec2-public-picker').forEach(sel => {
+                    sel.innerHTML = '<option value="">EC2...</option>';
+                    publicInst.forEach(inst => {
+                        const opt = document.createElement('option');
+                        opt.value = inst.public_ip;
+                        opt.textContent = (inst.name || inst.id) + ' (' + inst.public_ip + ')';
+                        sel.appendChild(opt);
+                    });
+                });
             })
             .catch(() => {});
     }
 
-    function loadCsProfileFile(input) {
+    function onC2NewEc2Pick(sel, targetId) {
+        if (sel.value) document.getElementById(targetId).value = sel.value;
+        sel.value = '';
+    }
+
+    function loadC2ProfileFile(input, targetId) {
         if (!input.files.length) return;
         var reader = new FileReader();
         reader.onload = function(e) {
-            document.getElementById('cs-malleable-profile').value = e.target.result;
+            document.getElementById(targetId).value = e.target.result;
         };
         reader.readAsText(input.files[0]);
         input.value = '';
     }
 
-    function saveCobaltstrikeCredentials() {
-        const apiUrl = document.getElementById('cs-api-url').value;
-        const username = document.getElementById('cs-username').value;
-        const password = document.getElementById('cs-password').value;
-        const listenerIp = document.getElementById('cs-listener-ip').value.trim();
-        const redirectorIp = document.getElementById('redwarden-ip').value.trim();
-        const profile = document.getElementById('cs-malleable-profile').value.trim();
+    function addC2Server() {
+        const label = (document.getElementById('c2-new-label').value || '').trim() || 'default';
+        const c2Type = document.getElementById('c2-new-type').value;
+        const apiUrl = document.getElementById('c2-new-api-url').value.trim();
+        const username = document.getElementById('c2-new-username').value.trim();
+        const password = document.getElementById('c2-new-password').value.trim();
+        const listenerIp = document.getElementById('c2-new-listener-ip').value.trim();
+        const redirectorIp = document.getElementById('c2-new-redirector-ip').value.trim();
+        const profile = document.getElementById('c2-new-profile').value.trim();
 
-        const body = {};
+        if (!apiUrl) {
+            showToast('Teamserver URL is required.', 'warning');
+            return;
+        }
+
+        const body = {label: label, c2_type: c2Type, api_url: apiUrl};
+        if (username) body.username = username;
+        if (password) body.password = password;
+        if (listenerIp) body.listener_ip = listenerIp;
+        if (redirectorIp) body.redirector_ip = redirectorIp;
+        if (profile) body.malleable_profile = profile;
+
+        fetch('/api/credentials/cobaltstrike', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(body)
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.saved) {
+                showToast(`C2 server '${label}' saved.`);
+                // Clear form
+                ['c2-new-label', 'c2-new-api-url', 'c2-new-username', 'c2-new-password',
+                 'c2-new-listener-ip', 'c2-new-redirector-ip', 'c2-new-profile'].forEach(id => {
+                    document.getElementById(id).value = '';
+                });
+                document.getElementById('c2-add-form').style.cssText = 'display:none!important';
+                loadC2Servers();
+                loadConfigBadges();
+            } else {
+                showToast(data.error || 'Failed to save.', 'danger');
+            }
+        })
+        .catch(err => showToast('Error: ' + err, 'danger'));
+    }
+
+    function openC2Edit(label) {
+        document.getElementById('c2-edit-label').value = label;
+        document.getElementById('c2-edit-label-display').textContent = label;
+        document.getElementById('c2-edit-api-url').value = '';
+        document.getElementById('c2-edit-username').value = '';
+        document.getElementById('c2-edit-password').value = '';
+        document.getElementById('c2-edit-listener-ip').value = '';
+        document.getElementById('c2-edit-redirector-ip').value = '';
+        document.getElementById('c2-edit-profile').value = '';
+        document.getElementById('c2-edit-profile-status').textContent = '';
+        document.getElementById('c2-edit-panel').classList.remove('d-none');
+        loadC2Ec2Pickers();
+    }
+
+    function closeC2Edit() {
+        document.getElementById('c2-edit-panel').classList.add('d-none');
+    }
+
+    function saveC2Edit() {
+        const label = document.getElementById('c2-edit-label').value;
+        const body = {label: label};
+        const apiUrl = document.getElementById('c2-edit-api-url').value.trim();
+        const username = document.getElementById('c2-edit-username').value.trim();
+        const password = document.getElementById('c2-edit-password').value.trim();
+        const listenerIp = document.getElementById('c2-edit-listener-ip').value.trim();
+        const redirectorIp = document.getElementById('c2-edit-redirector-ip').value.trim();
+        const profile = document.getElementById('c2-edit-profile').value.trim();
+
         if (apiUrl) body.api_url = apiUrl;
         if (username) body.username = username;
         if (password) body.password = password;
         if (listenerIp) body.listener_ip = listenerIp;
+        if (redirectorIp) body.redirector_ip = redirectorIp;
         if (profile) body.malleable_profile = profile;
 
-        // Save redirector IP under the redwarden provider (kept for backend compatibility)
-        var redirectorPromise = Promise.resolve();
-        if (redirectorIp) {
-            redirectorPromise = fetch('/api/credentials/redwarden', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({ip: redirectorIp})
-            }).then(r => r.json());
-        }
-
-        if (Object.keys(body).length === 0 && !redirectorIp) {
-            showToast('Enter at least one value to save.', 'warning');
+        if (Object.keys(body).length <= 1) {
+            showToast('Enter at least one field to update.', 'warning');
             return;
         }
 
-        var csPromise = Object.keys(body).length > 0
-            ? fetch('/api/credentials/cobaltstrike', {
-                  method: 'POST',
-                  headers: {'Content-Type': 'application/json'},
-                  body: JSON.stringify(body)
-              }).then(r => r.json())
-            : Promise.resolve({saved: true});
-
-        Promise.all([csPromise, redirectorPromise])
-        .then(function() {
-            showToast('Cobalt Strike credentials saved.');
-            document.getElementById('cs-api-url').value = '';
-            document.getElementById('cs-username').value = '';
-            document.getElementById('cs-password').value = '';
-            document.getElementById('cs-listener-ip').value = '';
-            document.getElementById('redwarden-ip').value = '';
-            document.getElementById('cs-malleable-profile').value = '';
-            loadCobaltstrikeStatus();
-            loadConfigBadges();
+        fetch('/api/credentials/cobaltstrike', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(body)
         })
-        .catch(err => showToast('Error saving: ' + err, 'danger'));
+        .then(r => r.json())
+        .then(data => {
+            if (data.saved) {
+                showToast(`C2 server '${label}' updated.`);
+                closeC2Edit();
+                loadC2Servers();
+                loadConfigBadges();
+            } else {
+                showToast(data.error || 'Failed to save.', 'danger');
+            }
+        })
+        .catch(err => showToast('Error: ' + err, 'danger'));
     }
 
-    function testCobaltstrikeConnection() {
-        const resultEl = document.getElementById('cs-test-result');
-        resultEl.innerHTML = '<span class="text-muted"><i class="bi bi-hourglass-split"></i> Testing...</span>';
+    function testC2Server(label, btn) {
+        const resultEl = document.querySelector(`.c2-test-result[data-label="${label}"]`);
+        if (resultEl) resultEl.innerHTML = '<span class="text-muted"><i class="bi bi-hourglass-split"></i></span>';
+        if (btn) btn.disabled = true;
 
-        fetch('/api/credentials/cobaltstrike/test', {method: 'POST'})
+        fetch('/api/credentials/cobaltstrike/test', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({label})
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (btn) btn.disabled = false;
+            if (resultEl) {
+                resultEl.innerHTML = data.success
+                    ? `<span class="text-success"><i class="bi bi-check-circle-fill"></i> ${data.result?.listener_count ?? 0} listeners</span>`
+                    : '<span class="text-danger"><i class="bi bi-x-circle-fill"></i> Failed</span>';
+            }
+        })
+        .catch(() => {
+            if (btn) btn.disabled = false;
+            if (resultEl) resultEl.innerHTML = '<span class="text-danger"><i class="bi bi-x-circle-fill"></i></span>';
+        });
+    }
+
+    function deleteC2Server(label) {
+        if (!confirm(`Delete C2 server '${label}'? This cannot be undone.`)) return;
+
+        fetch(`/api/credentials/cobaltstrike/account/${encodeURIComponent(label)}`, {method: 'DELETE'})
             .then(r => r.json())
             .then(data => {
-                if (data.success) {
-                    resultEl.innerHTML = '<span class="text-success"><i class="bi bi-check-circle-fill"></i> Connected (' + (data.result.listener_count || 0) + ' listeners)</span>';
+                if (data.deleted) {
+                    showToast(`C2 server '${label}' deleted.`);
+                    loadC2Servers();
+                    loadConfigBadges();
                 } else {
-                    resultEl.innerHTML = '<span class="text-danger"><i class="bi bi-x-circle-fill"></i> ' + data.error + '</span>';
+                    showToast(data.error || 'Failed to delete.', 'danger');
                 }
             })
-            .catch(err => {
-                resultEl.innerHTML = '<span class="text-danger"><i class="bi bi-x-circle-fill"></i> Request failed</span>';
-            });
+            .catch(err => showToast('Error: ' + err, 'danger'));
     }
 
     // --- NPM EC2 Picker ---
@@ -1758,40 +1953,17 @@
                 if (data.error) return;
                 const allInstances = data.instances || [];
                 const publicInstances = allInstances.filter(i => i.public_ip);
-                const privateInstances = allInstances.filter(i => i.private_ip);
 
                 // Populate NPM picker (public IP)
                 const npmSelect = document.getElementById('npm-ip-from-ec2');
                 npmSelect.innerHTML = '<option value="">Set from EC2...</option>';
 
-                // Populate C2 Redirector picker (public IP)
-                const rwSelect = document.getElementById('redwarden-ip-from-ec2');
-                rwSelect.innerHTML = '<option value="">Set from EC2...</option>';
-
                 publicInstances.forEach(inst => {
                     const label = (inst.name || inst.id) + ' (' + inst.public_ip + ')';
-
-                    const opt1 = document.createElement('option');
-                    opt1.value = inst.public_ip;
-                    opt1.textContent = label;
-                    npmSelect.appendChild(opt1);
-
-                    const opt2 = document.createElement('option');
-                    opt2.value = inst.public_ip;
-                    opt2.textContent = label;
-                    rwSelect.appendChild(opt2);
-                });
-
-                // Populate CS Listener IP picker (private IP)
-                const csIpSelect = document.getElementById('cs-listener-ip-from-ec2');
-                csIpSelect.innerHTML = '<option value="">Set from EC2...</option>';
-
-                privateInstances.forEach(inst => {
-                    const label = (inst.name || inst.id) + ' (' + inst.private_ip + ')';
                     const opt = document.createElement('option');
-                    opt.value = inst.private_ip;
+                    opt.value = inst.public_ip;
                     opt.textContent = label;
-                    csIpSelect.appendChild(opt);
+                    npmSelect.appendChild(opt);
                 });
             })
             .catch(() => {});
@@ -1801,22 +1973,6 @@
         const select = document.getElementById('npm-ip-from-ec2');
         if (select.value) {
             document.getElementById('npm-public-ip').value = select.value;
-        }
-        select.value = '';
-    }
-
-    function onRedwardenEc2Select() {
-        const select = document.getElementById('redwarden-ip-from-ec2');
-        if (select.value) {
-            document.getElementById('redwarden-ip').value = select.value;
-        }
-        select.value = '';
-    }
-
-    function onCsListenerIpEc2Select() {
-        const select = document.getElementById('cs-listener-ip-from-ec2');
-        if (select.value) {
-            document.getElementById('cs-listener-ip').value = select.value;
         }
         select.value = '';
     }

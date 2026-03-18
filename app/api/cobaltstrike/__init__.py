@@ -27,8 +27,9 @@ TYPE_REQUIRED = {
 @login_required
 @feature_required('cobaltstrike')
 def list_cs_listeners():
+    label = request.args.get('label', 'default')
     try:
-        listeners = cobaltstrike_service.list_listeners()
+        listeners = cobaltstrike_service.list_listeners(label=label)
 
         # Enrich listeners with project tag
         names = [l.get('name', '') for l in listeners if l.get('name')]
@@ -80,8 +81,9 @@ def list_cs_listeners():
 @login_required
 @feature_required('cobaltstrike')
 def get_cs_listener(listener_name):
+    label = request.args.get('label', 'default')
     try:
-        listener = cobaltstrike_service.get_listener(listener_name)
+        listener = cobaltstrike_service.get_listener(listener_name, label=label)
         return jsonify({'listener': listener})
     except Exception as e:
         return jsonify({'error': str(e)}), 400
@@ -95,6 +97,7 @@ def create_cs_listener():
     if not data:
         return jsonify({'error': 'No data provided'}), 400
 
+    label = data.pop('c2_server', None) or data.pop('label', 'default')
     listener_type = data.pop('type', '')
     if not listener_type:
         return jsonify({'error': 'Missing required field: type'}), 400
@@ -110,7 +113,7 @@ def create_cs_listener():
     assert_resource_writable('cs_listener', data.get('name', ''), current_user)
 
     try:
-        result = cobaltstrike_service.create_listener(listener_type, data)
+        result = cobaltstrike_service.create_listener(listener_type, data, label=label)
         # Auto-tag to active project if one is set
         listener_name = result.get('name') or data.get('name', '')
         if listener_name:
@@ -137,6 +140,7 @@ def update_cs_listener_hosts(listener_name):
     if not data:
         return jsonify({'error': 'No data provided'}), 400
 
+    label = data.get('label', 'default')
     hosts = data.get('hosts')
     if not isinstance(hosts, list) or not hosts:
         return jsonify({'error': 'hosts must be a non-empty list of strings'}), 400
@@ -147,7 +151,7 @@ def update_cs_listener_hosts(listener_name):
         return jsonify({'error': 'hosts must contain at least one valid hostname'}), 400
 
     try:
-        result = cobaltstrike_service.update_listener_hosts(listener_name, hosts)
+        result = cobaltstrike_service.update_listener_hosts(listener_name, hosts, label=label)
         audit_service.log('cs_listener.update_hosts', 'cs_listener', listener_name, listener_name,
                           {'hosts': hosts})
         return jsonify({'listener': result})
@@ -160,12 +164,43 @@ def update_cs_listener_hosts(listener_name):
 @feature_required('cobaltstrike')
 def delete_cs_listener(listener_name):
     assert_resource_writable('cs_listener', listener_name, current_user)
+    label = request.args.get('label', 'default')
     try:
-        cobaltstrike_service.delete_listener(listener_name)
+        cobaltstrike_service.delete_listener(listener_name, label=label)
         audit_service.log('cs_listener.delete', 'cs_listener', listener_name, listener_name)
         return jsonify({'deleted': True})
     except Exception as e:
         return jsonify({'error': str(e)}), 400
+
+
+# ---------------------------------------------------------------------------
+# C2 server listing (for operations page selector)
+# ---------------------------------------------------------------------------
+
+@api_bp.route('/cobaltstrike/servers', methods=['GET'])
+@login_required
+@feature_required('cobaltstrike')
+def list_c2_servers():
+    """Return configured C2 server labels with their type and IPs."""
+    from app.services.credential_service import get_all_for_provider, get_credential
+    data = get_all_for_provider('cobaltstrike')
+    servers = []
+    for label, keys in sorted(data.items()):
+        c2_type = get_credential('cobaltstrike', 'c2_type', label=label) or 'cobaltstrike'
+        listener_ip = get_credential('cobaltstrike', 'listener_ip', label=label) or ''
+        redirector_ip = get_credential('cobaltstrike', 'redirector_ip', label=label) or ''
+        has_profile = bool(get_credential('cobaltstrike', 'malleable_profile', label=label))
+        api_url_info = keys.get('api_url', {})
+        servers.append({
+            'label': label,
+            'c2_type': c2_type,
+            'listener_ip': listener_ip,
+            'redirector_ip': redirector_ip,
+            'has_profile': has_profile,
+            'configured': bool(api_url_info),
+            'api_url_masked': api_url_info.get('masked', ''),
+        })
+    return jsonify({'servers': servers})
 
 
 # ---------------------------------------------------------------------------
@@ -203,7 +238,8 @@ def get_stored_nginx_config():
     from app.services.credential_service import get_credential
     from app.services.malleable_c2_parser import parse_profile, generate_nginx_config
 
-    profile_text = get_credential('cobaltstrike', 'malleable_profile')
+    label = request.args.get('label', 'default')
+    profile_text = get_credential('cobaltstrike', 'malleable_profile', label=label)
     if not profile_text:
         return jsonify({'error': 'No Malleable C2 profile stored. Upload one in Settings.', 'nginx_config': ''}), 404
 

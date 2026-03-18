@@ -201,19 +201,23 @@
             <i class="bi bi-crosshair"></i> Setup C2 Connection
         </div>
         <div class="card-body">
-            <p class="text-muted small">Create a Cobalt Strike listener, NPM reverse proxy, and Cloudflare DNS entries in one step. DNS points to C2 Redirector, NPM forwards to CS Listener IP.</p>
+            <p class="text-muted small">Create a C2 listener, NPM reverse proxy, and Cloudflare DNS entries in one step. DNS points to C2 Redirector, NPM forwards to C2 Listener IP.</p>
 
-            <div id="c2-redwarden-warning" class="alert alert-warning small d-none mb-3">
-                <i class="bi bi-exclamation-triangle"></i> C2 Redirector IP not configured. <a href="/settings#c2">Set it in Settings</a>.
-            </div>
-            <div id="c2-redwarden-info" class="small text-muted mb-2 d-none">
-                <i class="bi bi-info-circle"></i> Cloudflare DNS will point to C2 Redirector: <strong id="c2-redwarden-display"></strong>
-            </div>
-            <div id="c2-csip-warning" class="alert alert-warning small d-none mb-3">
-                <i class="bi bi-exclamation-triangle"></i> CS Listener IP not configured. <a href="/settings#credentials">Set it in Settings</a> (Cobalt Strike section).
-            </div>
-            <div id="c2-csip-info" class="small text-muted mb-2 d-none">
-                <i class="bi bi-info-circle"></i> Stager host &amp; NPM forward target: <strong id="c2-csip-display"></strong>
+            <div class="row g-2 mb-3">
+                <div class="col-md-4">
+                    <label class="form-label">C2 Server</label>
+                    <select class="form-select" id="c2-server-select" onchange="onC2ServerChange()">
+                        <option value="">Loading...</option>
+                    </select>
+                </div>
+                <div class="col-md-8 d-flex align-items-end">
+                    <div id="c2-no-servers-warning" class="alert alert-warning small py-1 px-2 mb-0 d-none">
+                        <i class="bi bi-exclamation-triangle"></i> No C2 servers configured. <a href="/settings#c2">Add one in Settings</a>.
+                    </div>
+                    <div id="c2-server-info" class="small text-muted d-none">
+                        <i class="bi bi-info-circle"></i> <span id="c2-server-info-text"></span>
+                    </div>
+                </div>
             </div>
 
             {% if current_user.role != 'viewer' and active_project_role != 'white_team' %}
@@ -479,6 +483,8 @@
     var npmPublicIp = '';
     var redwardenIp = '';
     var csListenerIp = '';
+    var c2Servers = [];        // [{label, c2_type, listener_ip, redirector_ip, has_profile, configured}]
+    var selectedC2Server = ''; // label of the selected C2 server
     var mailgunDnsRecords = null;
     var mailgunDomain = '';
     var mailgunRegion = 'us';
@@ -492,8 +498,7 @@
         loadInstances();
         loadContainers();
         loadNpmPublicIp();
-        loadRedwardenIp();
-        loadCsListenerIp();
+        loadC2Servers();
     }
 
     // --- Helpers ---
@@ -1203,44 +1208,61 @@
             .catch(function() {});
     }
 
-    function loadRedwardenIp() {
-        fetch('/api/credentials/redwarden/ip')
+    function loadC2Servers() {
+        fetch('/api/cobaltstrike/servers')
             .then(function(r) { return r.json(); })
             .then(function(data) {
-                if (data && data.value) {
-                    redwardenIp = data.value;
-                    document.getElementById('c2-redwarden-warning').classList.add('d-none');
-                    document.getElementById('c2-redwarden-info').classList.remove('d-none');
-                    document.getElementById('c2-redwarden-display').textContent = redwardenIp;
-                } else {
-                    document.getElementById('c2-redwarden-warning').classList.remove('d-none');
-                    document.getElementById('c2-redwarden-info').classList.add('d-none');
+                c2Servers = data.servers || [];
+                var sel = document.getElementById('c2-server-select');
+                if (!sel) return;
+                sel.innerHTML = '<option value="">Select C2 server...</option>';
+                c2Servers.forEach(function(s) {
+                    var opt = document.createElement('option');
+                    opt.value = s.label;
+                    var typeLabel = s.c2_type === 'cobaltstrike' ? 'CS' : s.c2_type;
+                    opt.textContent = s.label + ' (' + typeLabel + ')';
+                    if (!s.configured) opt.textContent += ' [not configured]';
+                    sel.appendChild(opt);
+                });
+                // Auto-select if only one server
+                if (c2Servers.length === 1) {
+                    sel.value = c2Servers[0].label;
+                    onC2ServerChange();
+                } else if (c2Servers.length === 0) {
+                    document.getElementById('c2-no-servers-warning').classList.remove('d-none');
+                    document.getElementById('c2-server-info').classList.add('d-none');
                 }
             })
-            .catch(function() {
-                document.getElementById('c2-redwarden-warning').classList.remove('d-none');
-                document.getElementById('c2-redwarden-info').classList.add('d-none');
-            });
+            .catch(function() {});
     }
 
-    function loadCsListenerIp() {
-        fetch('/api/credentials/cobaltstrike/listener_ip')
-            .then(function(r) { return r.json(); })
-            .then(function(data) {
-                if (data && data.value) {
-                    csListenerIp = data.value;
-                    document.getElementById('c2-csip-warning').classList.add('d-none');
-                    document.getElementById('c2-csip-info').classList.remove('d-none');
-                    document.getElementById('c2-csip-display').textContent = csListenerIp;
-                } else {
-                    document.getElementById('c2-csip-warning').classList.remove('d-none');
-                    document.getElementById('c2-csip-info').classList.add('d-none');
-                }
-            })
-            .catch(function() {
-                document.getElementById('c2-csip-warning').classList.remove('d-none');
-                document.getElementById('c2-csip-info').classList.add('d-none');
-            });
+    function onC2ServerChange() {
+        var sel = document.getElementById('c2-server-select');
+        selectedC2Server = sel.value;
+        var server = c2Servers.find(function(s) { return s.label === selectedC2Server; });
+
+        var warningEl = document.getElementById('c2-no-servers-warning');
+        var infoEl = document.getElementById('c2-server-info');
+
+        if (!server) {
+            redwardenIp = '';
+            csListenerIp = '';
+            warningEl.classList.remove('d-none');
+            infoEl.classList.add('d-none');
+            return;
+        }
+
+        redwardenIp = server.redirector_ip || '';
+        csListenerIp = server.listener_ip || '';
+
+        warningEl.classList.add('d-none');
+        infoEl.classList.remove('d-none');
+
+        var parts = [];
+        if (csListenerIp) parts.push('Listener IP: <strong>' + csListenerIp + '</strong>');
+        if (redwardenIp) parts.push('Redirector: <strong>' + redwardenIp + '</strong>');
+        if (server.has_profile) parts.push('<i class="bi bi-check-circle text-success"></i> Malleable profile');
+        document.getElementById('c2-server-info-text').innerHTML = parts.join(' &middot; ') || 'Server configured (no IPs set)';
     }
 
     function onTargetTypeChange() {
@@ -1638,8 +1660,11 @@
 
     function setupC2() {
         if (!selectedZoneId) { alert('Select a zone first'); return; }
-        if (!redwardenIp) { alert('C2 Redirector IP not configured. Set it in Settings → C2.'); return; }
-        if (!csListenerIp) { alert('CS Listener IP not configured. Set it in Settings (Cobalt Strike section).'); return; }
+        if (!selectedC2Server) { alert('Select a C2 server first'); return; }
+        var c2Server = c2Servers.find(function(s) { return s.label === selectedC2Server; });
+        if (!c2Server) { alert('Selected C2 server not found'); return; }
+        if (!redwardenIp) { alert('C2 Redirector IP not configured for server "' + selectedC2Server + '". Set it in Settings → C2.'); return; }
+        if (!csListenerIp) { alert('Listener IP not configured for server "' + selectedC2Server + '". Set it in Settings → C2.'); return; }
 
         var type = document.getElementById('c2-type').value;
         if (!type) { alert('Select a listener type'); return; }
@@ -1669,7 +1694,7 @@
 
         // Collect all type-specific fields from the modal
         var fields = C2_TYPE_FIELDS[type] || [];
-        var listenerPayload = {type: type};
+        var listenerPayload = {type: type, c2_server: selectedC2Server};
 
         // Listener name (auto-generate if empty)
         var listenerName = document.getElementById('c2-name').value.trim();
@@ -1743,9 +1768,9 @@
         var schemeMap = {http: 'http', https: 'https', dns: 'https'};
 
         // Step 1: Fetch existing listeners to find used ports
-        logWarn(LOG, 'Fetching existing CS listeners to find available port...');
+        logWarn(LOG, 'Fetching existing listeners on <strong>' + selectedC2Server + '</strong> to find available port...');
 
-        fetch('/api/cobaltstrike/listeners')
+        fetch('/api/cobaltstrike/listeners?label=' + encodeURIComponent(selectedC2Server))
             .then(function(r) { return r.json(); })
             .then(function(data) {
                 if (data.error) {
@@ -1780,7 +1805,7 @@
                     listenerPayload.dnsBindPort = bindPort;
                 }
 
-                logWarn(LOG, 'Creating CS listener: <strong>' + listenerName + '</strong> (' + type.toUpperCase() + ', bind port ' + bindPort + ')...');
+                logWarn(LOG, 'Creating listener on <strong>' + selectedC2Server + '</strong>: <strong>' + listenerName + '</strong> (' + type.toUpperCase() + ', bind port ' + bindPort + ')...');
 
                 return fetch('/api/cobaltstrike/listeners', {
                     method: 'POST',
@@ -1827,8 +1852,8 @@
                         };
                         if (cfAcl) npmPayload.access_list_id = cfAcl.id;
 
-                        // Try to fetch Malleable C2 nginx restrictor config
-                        return fetch('/api/cobaltstrike/nginx-config')
+                        // Try to fetch Malleable C2 nginx restrictor config for selected server
+                        return fetch('/api/cobaltstrike/nginx-config?label=' + encodeURIComponent(selectedC2Server))
                             .then(function(r) { return r.json(); })
                             .then(function(cfgData) {
                                 if (cfgData.nginx_config) {
