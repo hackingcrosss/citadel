@@ -1,8 +1,9 @@
 import re
 from flask import request, jsonify
-from flask_login import login_required
+from flask_login import login_required, current_user
 from app.api import api_bp
 from app.utils.decorators import feature_required
+from app.services.project_service import get_active_project, get_project_domain_names
 
 # Cloudflare zone IDs are 32-char hex strings
 _ZONE_ID_RE = re.compile(r'^[a-f0-9]{32}$')
@@ -140,9 +141,34 @@ def get_deployed_sites():
     try:
         from app.services import website_generator_service
         sites = website_generator_service.get_deployed_sites()
+
+        # Scope to active project's domains
+        _auditor_unscoped = current_user.is_auditor and get_active_project(current_user) is None
+        if not current_user.is_admin and not _auditor_unscoped:
+            active_project = get_active_project(current_user)
+            if active_project is None:
+                sites = []
+            else:
+                project_domains = get_project_domain_names(active_project.id)
+                sites = [s for s in sites if _fqdn_matches_domains(s.get('fqdn', ''), project_domains)]
+
         return jsonify({'sites': sites})
     except Exception as e:
         return jsonify({'error': str(e), 'sites': []}), 500
+
+
+def _fqdn_matches_domains(fqdn, domain_set):
+    """Check if an FQDN belongs to any domain in the set (exact or subdomain match)."""
+    if not fqdn:
+        return False
+    fqdn = fqdn.lower().rstrip('.')
+    if fqdn in domain_set:
+        return True
+    # Check if it's a subdomain of any project domain
+    for d in domain_set:
+        if fqdn.endswith('.' + d):
+            return True
+    return False
 
 
 @api_bp.route('/website-generator/deployed-sites/<folder_name>', methods=['DELETE'])
