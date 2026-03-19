@@ -34,12 +34,19 @@ def _zone_label(zone_id):
     """Return the credential label to use for a given zone_id.
 
     Resolution order:
+    0. Explicit ``label`` query parameter from the client (most reliable — the
+       frontend knows which account owns the zone from the zone listing).
     1. Local domain record (most authoritative — set when a domain is imported).
     2. The in-memory cache populated by list_zones_all_accounts() — covers zones
        that are visible in the selector but not yet imported locally.
     3. First available Cloudflare account label — safe fallback when neither of
        the above is populated (e.g. direct API calls before any zone listing).
     """
+    # Allow the caller to pass the label explicitly via ?label=
+    explicit = request.args.get('label') or (request.get_json(silent=True) or {}).get('label')
+    if explicit:
+        return explicit
+
     domain = Domain.query.filter_by(cloudflare_zone_id=zone_id).first()
     if domain:
         return domain.credential_label
@@ -622,16 +629,83 @@ def get_ssl(zone_id):
 @api_bp.route('/domains/zones/<zone_id>/enable-dmarc', methods=['POST'])
 @login_required
 def enable_zone_dmarc(zone_id):
-    """Enable Cloudflare DMARC Management for a zone.
+    """Enable Cloudflare DMARC Management and create the _dmarc TXT record.
 
-    Returns the rua address Cloudflare provides for inclusion in the _dmarc TXT record.
+    Steps:
+    1. Activate DMARC reporting via Cloudflare API to obtain the rua address.
+    2. Create (or update) the ``_dmarc`` TXT record on the zone.
     """
     _assert_zone_accessible(zone_id, write=True)
+    label = _zone_label(zone_id)
     try:
-        result = dns_service.enable_dmarc_management(zone_id, label=_zone_label(zone_id))
-        return jsonify(result)
+        result = dns_service.enable_dmarc_management(zone_id, label=label)
     except Exception as e:
         return jsonify({'error': str(e)}), 400
+
+    rua = result.get('rua')
+    if not rua:
+        return jsonify({'error': 'Cloudflare did not return a reporting address (rua). DMARC record not created.'}), 502
+
+    dmarc_value = f'v=DMARC1; p=quarantine; rua=mailto:{rua}'
+
+    # Resolve the zone name for building the _dmarc FQDN
+    try:
+        zone = dns_service.get_zone(zone_id, label=label)
+        zone_name = zone.get('name', '')
+    except Exception:
+        zone_name = ''
+
+    dmarc_name = f'_dmarc.{zone_name}' if zone_name else '_dmarc'
+
+    # Check for an existing _dmarc TXT record and update it, or create a new one
+    try:
+        existing = dns_service.list_dns_records(zone_id, record_type='TXT', name=dmarc_name, label=label)
+        dmarc_rec = next((r for r in existing if r.get('name', '').startswith('_dmarc')), None)
+
+        if dmarc_rec:
+            record = dns_service.update_dns_record(
+                zone_id, dmarc_rec['id'],
+                record_type='TXT', name='_dmarc', content=dmarc_value,
+                ttl=1, proxied=False, label=label,
+            )
+        else:
+            record = dns_service.create_dns_record(
+                zone_id, record_type='TXT', name='_dmarc', content=dmarc_value,
+                ttl=1, proxied=False, label=label,
+            )
+
+        # Sync to local DB if domain is tracked
+        domain = Domain.query.filter_by(cloudflare_zone_id=zone_id).first()
+        if domain:
+            db_rec = DNSRecord.query.filter_by(cloudflare_record_id=record['id']).first()
+            if db_rec:
+                db_rec.record_type = 'TXT'
+                db_rec.name = record['name']
+                db_rec.content = record['content']
+                db_rec.ttl = 1
+                db_rec.proxied = False
+            else:
+                db.session.add(DNSRecord(
+                    domain_id=domain.id,
+                    cloudflare_record_id=record['id'],
+                    record_type='TXT',
+                    name=record['name'],
+                    content=record['content'],
+                    ttl=1,
+                    proxied=False,
+                    managed_by='infrared',
+                    provider=domain.provider or 'cloudflare',
+                ))
+            db.session.commit()
+
+        result['dmarc_record'] = record
+        result['dmarc_value'] = dmarc_value
+        return jsonify(result)
+    except Exception as e:
+        # DMARC management was enabled but record creation failed
+        result['warning'] = f'DMARC management enabled but record creation failed: {e}'
+        result['dmarc_value'] = dmarc_value
+        return jsonify(result), 207
 
 
 @api_bp.route('/domains/zones/<zone_id>/ssl', methods=['PATCH'])
