@@ -68,13 +68,23 @@
                 </button>
                 {% endif %}
             </div>
-            <div class="col-md-3">
+            <div class="col-md-2">
                 <small class="text-muted d-block">Name Servers</small>
                 <span id="zone-detail-ns" class="fw-bold small"></span>
             </div>
-            <div class="col-md-3">
+            <div class="col-md-2">
                 <small class="text-muted d-block">Plan</small>
                 <span id="zone-detail-plan" class="fw-bold"></span>
+            </div>
+            <div class="col-md-2">
+                <small class="text-muted d-block">DMARC</small>
+                <span id="zone-detail-dmarc" class="fw-bold">-</span>
+                {% if current_user.role != 'viewer' and active_project_role != 'white_team' %}
+                <button class="btn btn-sm btn-link p-0 ms-1" id="btn-enable-dmarc"
+                        onclick="enableDMARC()" title="Enable Cloudflare DMARC Management" style="display:none">
+                    <i class="bi bi-shield-plus"></i>
+                </button>
+                {% endif %}
             </div>
         </div>
         <hr class="my-2">
@@ -288,6 +298,15 @@
     const IS_READONLY = IS_AUDITOR || IS_WHITE_TEAM;
     let currentZoneId = null;
     let currentZoneName = null;
+    let currentZoneLabel = null;
+
+    function zoneUrl(path, extraParams) {
+        const base = '/api/domains/zones/' + currentZoneId + path;
+        const params = new URLSearchParams(extraParams || {});
+        if (currentZoneLabel) params.set('label', currentZoneLabel);
+        const qs = params.toString();
+        return qs ? base + '?' + qs : base;
+    }
 
     document.addEventListener('DOMContentLoaded', loadZones);
 
@@ -317,6 +336,7 @@
                     const opt = document.createElement('option');
                     opt.value = z.id;
                     opt.dataset.name = z.name;
+                    opt.dataset.label = z.account_label || 'default';
                     const acct = z.account_label && z.account_label !== 'default' ? ' [' + z.account_label + ']' : '';
                     opt.textContent = z.name + acct + ' (' + z.status + ')';
                     select.appendChild(opt);
@@ -339,6 +359,7 @@
         currentZoneId = select.value;
         const selectedOpt = select.options[select.selectedIndex];
         currentZoneName = selectedOpt ? selectedOpt.dataset.name : null;
+        currentZoneLabel = selectedOpt ? selectedOpt.dataset.label : null;
         if (!currentZoneId) {
             document.getElementById('zone-info-card').style.display = 'none';
             document.getElementById('records-tbody').innerHTML =
@@ -368,8 +389,11 @@
         document.getElementById('zone-detail-ssl').textContent = '-';
         document.getElementById('zone-detail-ns').textContent = '-';
         document.getElementById('zone-detail-plan').textContent = '-';
+        document.getElementById('zone-detail-dmarc').textContent = '-';
+        const dmarcBtn = document.getElementById('btn-enable-dmarc');
+        if (dmarcBtn) dmarcBtn.style.display = 'none';
 
-        fetch('/api/domains/zones/' + currentZoneId)
+        fetch(zoneUrl(''))
             .then(r => r.json())
             .then(data => {
                 if (data.error) return;
@@ -385,7 +409,7 @@
             })
             .catch(() => {});
 
-        fetch('/api/domains/zones/' + currentZoneId + '/ssl')
+        fetch(zoneUrl('/ssl'))
             .then(r => r.json())
             .then(data => {
                 if (data.error) {
@@ -475,9 +499,10 @@
         tbody.innerHTML = '<tr><td colspan="8" class="text-center py-4"><i class="bi bi-hourglass-split"></i> Loading...</td></tr>';
         updateDomainSelection();
 
-        let url = '/api/domains/zones/' + currentZoneId + '/records';
         const typeFilter = document.getElementById('type-filter').value;
-        if (typeFilter) url += '?type=' + typeFilter;
+        const params = {};
+        if (typeFilter) params.type = typeFilter;
+        const url = zoneUrl('/records', params);
 
         fetch(url)
             .then(r => r.json())
@@ -490,6 +515,18 @@
 
                 const records = data.records || [];
                 document.getElementById('record-count').textContent = records.length + ' records';
+
+                // Detect existing DMARC record
+                const dmarcRec = records.find(r => r.type === 'TXT' && r.name && r.name.startsWith('_dmarc'));
+                const dmarcEl = document.getElementById('zone-detail-dmarc');
+                const dmarcBtn = document.getElementById('btn-enable-dmarc');
+                if (dmarcRec) {
+                    dmarcEl.innerHTML = '<span class="badge bg-success">Active</span>';
+                    if (dmarcBtn) dmarcBtn.style.display = 'none';
+                } else {
+                    dmarcEl.innerHTML = '<span class="badge bg-warning text-dark">Missing</span>';
+                    if (dmarcBtn) dmarcBtn.style.display = '';
+                }
 
                 if (records.length === 0) {
                     tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted py-4">No records found</td></tr>';
@@ -560,7 +597,7 @@
             return;
         }
 
-        fetch('/api/domains/zones/' + currentZoneId + '/records', {
+        fetch(zoneUrl('/records'), {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify(body)
@@ -607,7 +644,7 @@
             body.priority = parseInt(document.getElementById('edit-record-priority').value) || 10;
         }
 
-        fetch('/api/domains/zones/' + currentZoneId + '/records/' + recordId, {
+        fetch(zoneUrl('/records/' + recordId), {
             method: 'PUT',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify(body)
@@ -623,7 +660,7 @@
 
     function deleteRecord(recordId) {
         showConfirm('Delete DNS Record', 'Delete this DNS record? This cannot be undone.', 'Delete', function() {
-            fetch('/api/domains/zones/' + currentZoneId + '/records/' + recordId, {method: 'DELETE'})
+            fetch(zoneUrl('/records/' + recordId), {method: 'DELETE'})
                 .then(r => r.json())
                 .then(data => {
                     if (data.error) { showToast(data.error, 'danger'); return; }
@@ -645,7 +682,7 @@
         if (!currentZoneId) return;
         const value = document.getElementById('ssl-value').value;
 
-        fetch('/api/domains/zones/' + currentZoneId + '/ssl', {
+        fetch(zoneUrl('/ssl'), {
             method: 'PATCH',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({value: value})
@@ -683,6 +720,37 @@
         toggleAllDomainCheckboxes(!allTicked);
     }
 
+    function enableDMARC() {
+        if (!currentZoneId) { alert('Select a zone first'); return; }
+        showConfirm(
+            'Enable DMARC Management',
+            'This will activate Cloudflare DMARC Management and create a <code>_dmarc</code> TXT record with <code>p=quarantine</code> policy.<br><br>Continue?',
+            'Enable DMARC',
+            function() {
+                const btn = document.getElementById('btn-enable-dmarc');
+                if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner-border spinner-border-sm" style="width:.7rem;height:.7rem"></span>'; }
+                fetch(zoneUrl('/enable-dmarc'), {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'}
+                })
+                .then(r => r.json())
+                .then(data => {
+                    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="bi bi-shield-plus"></i>'; }
+                    if (data.error) { showToast(data.error, 'danger'); return; }
+                    if (data.warning) { showToast(data.warning, 'warning'); }
+                    showToast('DMARC management enabled and _dmarc record created', 'success');
+                    document.getElementById('zone-detail-dmarc').innerHTML = '<span class="badge bg-success">Active</span>';
+                    if (btn) btn.style.display = 'none';
+                    loadDNSRecords();
+                })
+                .catch(err => {
+                    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="bi bi-shield-plus"></i>'; }
+                    showToast('Error: ' + err, 'danger');
+                });
+            }
+        );
+    }
+
     function deleteSelectedDomainRecords() {
         if (!currentZoneId) return;
         const checked = Array.from(document.querySelectorAll('.domain-rec-cb:checked'));
@@ -697,7 +765,7 @@
                 const ids = checked.map(cb => cb.dataset.recordId);
                 function deleteNext(i) {
                     if (i >= ids.length) { loadDNSRecords(); return; }
-                    fetch('/api/domains/zones/' + currentZoneId + '/records/' + ids[i], {method: 'DELETE'})
+                    fetch(zoneUrl('/records/' + ids[i]), {method: 'DELETE'})
                         .then(r => r.json())
                         .then(() => deleteNext(i + 1))
                         .catch(() => deleteNext(i + 1));

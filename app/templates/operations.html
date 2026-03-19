@@ -477,6 +477,7 @@
     const IS_READONLY = IS_AUDITOR || IS_WHITE_TEAM;
     var selectedZoneId = '';
     var selectedZoneName = '';
+    var selectedZoneLabel = '';
     var _pendingZone = null; // { zoneId, zoneName } — set before zones load, applied by loadZones()
     var allInstances = [];
     var allContainers = [];
@@ -557,6 +558,14 @@
         }
     }
 
+    function zoneUrl(path, extraParams) {
+        var base = '/api/domains/zones/' + selectedZoneId + path;
+        var params = new URLSearchParams(extraParams || {});
+        if (selectedZoneLabel) params.set('label', selectedZoneLabel);
+        var qs = params.toString();
+        return qs ? base + '?' + qs : base;
+    }
+
     // --- Zone Selector ---
 
     function _setZonesLoading(loading) {
@@ -580,6 +589,7 @@
                 zones.forEach(function(z) {
                     var opt = document.createElement('option');
                     opt.value = z.id + '|' + z.name;
+                    opt.dataset.label = z.account_label || 'default';
                     var acctSuffix = z.account_label && z.account_label !== 'default' ? ' [' + z.account_label + ']' : '';
                     opt.textContent = z.name + acctSuffix + (z.status === 'active' ? '' : ' (' + z.status + ')');
                     select.appendChild(opt);
@@ -608,6 +618,8 @@
         var parts = val.split('|');
         selectedZoneId = parts[0];
         selectedZoneName = parts[1];
+        var selectedOpt = document.getElementById('zoneSelect').selectedOptions[0];
+        selectedZoneLabel = selectedOpt ? selectedOpt.dataset.label || '' : '';
 
         document.getElementById('no-zone-message').classList.add('d-none');
         document.getElementById('operations-content').classList.remove('d-none');
@@ -914,7 +926,7 @@
                 body.priority = parseInt(rec.priority);
             }
 
-            fetch('/api/domains/zones/' + selectedZoneId + '/records', {
+            fetch(zoneUrl('/records'), {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify(body)
@@ -945,7 +957,7 @@
 
         function enableDmarcAndAddRecord() {
             logWarn('email-log', 'Enabling Cloudflare DMARC Management...');
-            fetch('/api/domains/zones/' + selectedZoneId + '/enable-dmarc', { method: 'POST' })
+            fetch(zoneUrl('/enable-dmarc'), { method: 'POST', headers: {'Content-Type': 'application/json'} })
                 .then(function(r) { return r.json(); })
                 .then(function(dmarcData) {
                     if (dmarcData.error) {
@@ -961,7 +973,7 @@
                         ? 'v=DMARC1; p=quarantine; rua=mailto:' + rua + '; fo=1'
                         : 'v=DMARC1; p=quarantine; fo=1';
                     logWarn('email-log', 'Creating DMARC record: ' + dmarcName + '...');
-                    fetch('/api/domains/zones/' + selectedZoneId + '/records', {
+                    fetch(zoneUrl('/records'), {
                         method: 'POST',
                         headers: {'Content-Type': 'application/json'},
                         body: JSON.stringify({
@@ -1315,7 +1327,7 @@
             setButtonLoading('btn-point-domain', true);
             logWarn('point-log', 'Creating A record: <strong>' + recordName + '</strong> &rarr; ' + publicIp + (proxied ? ' (proxied)' : '') + '...');
 
-            fetch('/api/domains/zones/' + selectedZoneId + '/records', {
+            fetch(zoneUrl('/records'), {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify({
@@ -1360,7 +1372,7 @@
             // Step 1: Create A record pointing to NPM host
             logWarn('point-log', 'Creating A record: <strong>' + recordName + '</strong> &rarr; ' + npmPublicIp + ' (proxied)...');
 
-            fetch('/api/domains/zones/' + selectedZoneId + '/records', {
+            fetch(zoneUrl('/records'), {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify({
@@ -1939,7 +1951,7 @@
                 // Beacon → CDN → c2.example.com (A → Redirector) → NPM → CS Listener
                 logWarn(LOG, 'Creating Cloudflare A records for ' + callbackHosts.length + ' callback host(s) &rarr; ' + redwardenIp + (cdnDomain ? ' (CDN origin)' : '') + '...');
                 var dnsPromises = callbackHosts.map(function(host) {
-                    return fetch('/api/domains/zones/' + selectedZoneId + '/records', {
+                    return fetch(zoneUrl('/records'), {
                         method: 'POST',
                         headers: {'Content-Type': 'application/json'},
                         body: JSON.stringify({
