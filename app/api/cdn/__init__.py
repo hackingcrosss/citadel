@@ -7,7 +7,8 @@ from app.services import cdn_service
 from app.models.cdn_distribution import CdnDistribution
 from app import db
 from app.utils.decorators import feature_required
-from app.services.project_service import build_project_tag_map, get_active_project, get_project_domain_names
+from app.services.project_service import build_project_tag_map, get_active_project, get_project_domain_names, get_project_resource_external_ids
+from app.models.project_resource import ProjectResource
 
 _log = logging.getLogger(__name__)
 
@@ -100,14 +101,18 @@ def cdn_list_distributions():
                 result = []
             else:
                 project_domains = get_project_domain_names(active_project.id)
-                def _belongs_to_project(host):
-                    if not host:
-                        return False
+                tagged_ids = get_project_resource_external_ids(active_project.id, 'cdn_dist')
+                def _visible(d):
+                    # Tagged to this project
+                    if str(d.get('id') or '') in tagged_ids:
+                        return True
+                    # Origin host matches a project domain or subdomain
+                    host = d.get('origin_host') or ''
                     for dom in project_domains:
                         if host == dom or host.endswith('.' + dom):
                             return True
                     return False
-                result = [d for d in result if _belongs_to_project(d.get('origin_host'))]
+                result = [d for d in result if _visible(d)]
 
         return jsonify({'distributions': result})
     except Exception as e:
@@ -165,7 +170,8 @@ def cdn_create_distribution():
 
     import re
     _HOSTNAME_RE = re.compile(r'^(?!-)([a-zA-Z0-9-]{1,63}(?<!-)\.)+[a-zA-Z]{2,}$')
-    if not _HOSTNAME_RE.match(origin_host):
+    _IPV4_RE = re.compile(r'^(\d{1,3}\.){3}\d{1,3}$')
+    if not _HOSTNAME_RE.match(origin_host) and not _IPV4_RE.match(origin_host):
         return jsonify({'error': f'Invalid origin host: {origin_host}'}), 400
 
     if provider not in ('cloudfront', 'azure_front_door'):
@@ -187,6 +193,18 @@ def cdn_create_distribution():
     )
     db.session.add(dist)
     db.session.commit()
+
+    # Auto-tag to the creator's active project
+    active_project = get_active_project(current_user)
+    if active_project:
+        db.session.add(ProjectResource(
+            project_id=active_project.id,
+            resource_type='cdn_dist',
+            external_id=str(dist.id),
+            label=f'{provider} → {origin_host}',
+            tagged_by_id=current_user.id,
+        ))
+        db.session.commit()
 
     # Dispatch background task and store task_id in external_id for status polling
     from app.tasks.cdn_tasks import create_cdn_distribution_task
