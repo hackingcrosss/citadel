@@ -163,6 +163,11 @@ def cdn_create_distribution():
     if not provider or not origin_host:
         return jsonify({'error': 'provider and origin_host are required'}), 400
 
+    import re
+    _HOSTNAME_RE = re.compile(r'^(?!-)([a-zA-Z0-9-]{1,63}(?<!-)\.)+[a-zA-Z]{2,}$')
+    if not _HOSTNAME_RE.match(origin_host):
+        return jsonify({'error': f'Invalid origin host: {origin_host}'}), 400
+
     if provider not in ('cloudfront', 'azure_front_door'):
         return jsonify({'error': 'provider must be cloudfront or azure_front_door'}), 400
 
