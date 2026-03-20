@@ -528,6 +528,28 @@
         .task-entry-meta  { font-size: 0.72rem; color: var(--ir-text-dim); margin-top: 3px; }
         .task-entry-error { font-size: 0.72rem; color: var(--ir-red); margin-top: 2px; word-break: break-word; }
 
+        /* ── Notifications (in bell offcanvas) ──────────────────────────────── */
+        .notif-entry {
+            display: flex; align-items: flex-start; gap: 10px;
+            padding: 10px 16px;
+            border-bottom: 1px solid var(--ir-border);
+            cursor: pointer; transition: background 0.1s;
+            text-decoration: none; color: inherit;
+        }
+        .notif-entry:hover { background: rgba(255,255,255,0.04); color: inherit; }
+        .notif-entry-icon { width: 18px; flex-shrink: 0; padding-top: 1px; text-align: center; }
+        .notif-entry-body { flex: 1; min-width: 0; }
+        .notif-entry-msg  { font-size: 0.8rem; color: var(--ir-text); }
+        .notif-entry-time { font-size: 0.68rem; color: var(--ir-text-dim); margin-top: 2px; }
+        .notif-entry .btn-dismiss { opacity: 0; transition: opacity 0.15s; }
+        .notif-entry:hover .btn-dismiss { opacity: 1; }
+        .notif-section-header {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 8px 16px 6px; font-size: 0.72rem; font-weight: 600;
+            color: var(--ir-text-dim); text-transform: uppercase; letter-spacing: 0.05em;
+            border-bottom: 1px solid var(--ir-border); background: rgba(255,255,255,0.015);
+        }
+
         /* ── Misc ────────────────────────────────────────────────────────────── */
         .clickable-row { cursor: pointer; }
         .clickable-row:hover td { background: rgba(255,255,255,0.03) !important; }
@@ -848,10 +870,22 @@
             </div>
         </div>
         <div class="offcanvas-body p-0" style="overflow-y:auto;">
+            <!-- Notifications section -->
+            <div id="notif-section" style="display:none;">
+                <div class="notif-section-header">
+                    <span><i class="bi bi-bell me-1"></i> Notifications</span>
+                    <button class="btn btn-sm p-0 text-muted" style="font-size:0.7rem;" onclick="clearNotifications()">Clear all</button>
+                </div>
+                <div id="notif-list"></div>
+            </div>
+            <!-- Tasks section -->
+            <div id="task-section-header" class="notif-section-header" style="display:none;">
+                <span><i class="bi bi-list-task me-1"></i> Background Tasks</span>
+            </div>
             <div id="task-log-list"></div>
             <div id="task-log-empty" class="text-center text-muted py-5">
                 <i class="bi bi-check-all" style="font-size:2.2rem;opacity:0.35;"></i>
-                <div class="mt-2 small">No tasks yet</div>
+                <div class="mt-2 small">No tasks or notifications</div>
             </div>
         </div>
     </div>
@@ -885,6 +919,110 @@
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
+    // ── Notifications (global, persisted in localStorage) ──────────────────
+    (function() {
+        var STORAGE_KEY = 'infrared:notifications';
+        var MAX_NOTIFS = 30;
+
+        function _load() {
+            try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || []; }
+            catch(e) { return []; }
+        }
+        function _save(list) {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(list.slice(0, MAX_NOTIFS)));
+        }
+
+        function _iconFor(type) {
+            if (type === 'success') return '<i class="bi bi-check-circle-fill text-success"></i>';
+            if (type === 'danger')  return '<i class="bi bi-x-circle-fill text-danger"></i>';
+            if (type === 'warning') return '<i class="bi bi-exclamation-triangle-fill text-warning"></i>';
+            return '<i class="bi bi-info-circle-fill text-info"></i>';
+        }
+        function _esc(str) {
+            var d = document.createElement('div');
+            d.appendChild(document.createTextNode(String(str == null ? '' : str)));
+            return d.innerHTML;
+        }
+        function _timeAgo(ts) {
+            var diff = Math.round((Date.now() - ts) / 1000);
+            if (diff < 60) return 'just now';
+            if (diff < 3600) return Math.floor(diff / 60) + 'm ago';
+            if (diff < 86400) return Math.floor(diff / 3600) + 'h ago';
+            return new Date(ts).toLocaleDateString();
+        }
+
+        function renderNotifications() {
+            var list = _load();
+            var section = document.getElementById('notif-section');
+            var container = document.getElementById('notif-list');
+            var taskHeader = document.getElementById('task-section-header');
+            if (!section || !container) return;
+
+            if (list.length === 0) {
+                section.style.display = 'none';
+                if (taskHeader) taskHeader.style.display = 'none';
+            } else {
+                section.style.display = '';
+                if (taskHeader) taskHeader.style.display = '';
+                container.innerHTML = list.map(function(n, idx) {
+                    var href = n.href || '#';
+                    return '<a class="notif-entry" href="' + _esc(href) + '">' +
+                        '<div class="notif-entry-icon">' + _iconFor(n.type) + '</div>' +
+                        '<div class="notif-entry-body">' +
+                            '<div class="notif-entry-msg">' + _esc(n.message) + '</div>' +
+                            '<div class="notif-entry-time">' + _timeAgo(n.ts) + '</div>' +
+                        '</div>' +
+                        '<button class="btn btn-sm p-0 btn-dismiss" title="Dismiss" ' +
+                            'onclick="event.preventDefault();event.stopPropagation();dismissNotification(' + idx + ');">' +
+                            '<i class="bi bi-x text-muted" style="font-size:0.9rem"></i>' +
+                        '</button>' +
+                    '</a>';
+                }).join('');
+            }
+
+            _updateBadge();
+        }
+
+        function _updateBadge() {
+            var badge = document.getElementById('task-badge');
+            if (!badge) return;
+            var notifCount = _load().length;
+            // Read active task count from badge's current data (set by task log)
+            var taskCount = parseInt(badge.getAttribute('data-task-count') || '0', 10);
+            var total = notifCount + taskCount;
+            if (total > 0) {
+                badge.textContent = total;
+                badge.classList.remove('d-none');
+            } else {
+                badge.classList.add('d-none');
+            }
+        }
+
+        window.addNotification = function(message, type, href) {
+            var list = _load();
+            list.unshift({ message: message, type: type || 'info', href: href || '', ts: Date.now() });
+            _save(list);
+            renderNotifications();
+        };
+
+        window.dismissNotification = function(idx) {
+            var list = _load();
+            list.splice(idx, 1);
+            _save(list);
+            renderNotifications();
+        };
+
+        window.clearNotifications = function() {
+            _save([]);
+            renderNotifications();
+        };
+
+        // Expose for task log to call after it updates badge
+        window._notifUpdateBadge = _updateBadge;
+
+        document.addEventListener('DOMContentLoaded', renderNotifications);
+    })();
+
     // ── Task Log (global, runs on every page) ──────────────────────────────
     (function() {
         var _tlTimer = null;
@@ -995,23 +1133,31 @@
             var list  = document.getElementById('task-log-list');
             var empty = document.getElementById('task-log-empty');
             var badge = document.getElementById('task-badge');
+            var taskHeader = document.getElementById('task-section-header');
             if (!list) return;
 
             var active = tasks.filter(function(t) { return TERMINAL.indexOf(t.status) === -1; });
+            var hasNotifs = (document.getElementById('notif-list') || {}).childElementCount > 0;
 
             if (tasks.length === 0) {
                 list.innerHTML = '';
-                empty.style.display = '';
-                badge.classList.add('d-none');
+                if (taskHeader) taskHeader.style.display = 'none';
+                empty.style.display = hasNotifs ? 'none' : '';
             } else {
                 empty.style.display = 'none';
+                if (taskHeader) taskHeader.style.display = hasNotifs ? '' : 'none';
                 list.innerHTML = tasks.map(_renderTask).join('');
-                if (active.length > 0) {
-                    badge.textContent = active.length;
-                    badge.classList.remove('d-none');
-                } else {
-                    badge.classList.add('d-none');
-                }
+            }
+
+            // Store active task count for badge coordination with notifications
+            badge.setAttribute('data-task-count', active.length);
+            if (typeof window._notifUpdateBadge === 'function') {
+                window._notifUpdateBadge();
+            } else if (active.length > 0) {
+                badge.textContent = active.length;
+                badge.classList.remove('d-none');
+            } else {
+                badge.classList.add('d-none');
             }
 
             // Re-poll faster when tasks are active
