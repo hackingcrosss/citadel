@@ -100,8 +100,14 @@ def cdn_list_distributions():
                 result = []
             else:
                 project_domains = get_project_domain_names(active_project.id)
-                result = [d for d in result
-                          if d.get('origin_host') and d['origin_host'] in project_domains]
+                def _belongs_to_project(host):
+                    if not host:
+                        return False
+                    for dom in project_domains:
+                        if host == dom or host.endswith('.' + dom):
+                            return True
+                    return False
+                result = [d for d in result if _belongs_to_project(d.get('origin_host'))]
 
         return jsonify({'distributions': result})
     except Exception as e:
