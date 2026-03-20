@@ -520,10 +520,12 @@ async function checkoutDomain(idx, domainName) {
         // If the domain isn't yet tracked locally, pass zone info in the body
         // so the checkout endpoint can auto-create the local record (no admin call needed).
         const domainId = entry.domainId || 0;
-        const body = !entry.domainId ? JSON.stringify({
-            name: entry.name,
-            cloudflare_zone_id: entry.zoneId,
-        }) : null;
+        const payload = {credential_label: entry.account_label || 'default'};
+        if (!entry.domainId) {
+            payload.name = entry.name;
+            payload.cloudflare_zone_id = entry.zoneId;
+        }
+        const body = JSON.stringify(payload);
 
         const res = await fetch(`/api/projects/${_checkoutProjectId}/domains/${domainId}/checkout`, {
             method: 'POST',
