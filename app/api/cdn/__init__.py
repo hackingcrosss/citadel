@@ -7,8 +7,7 @@ from app.services import cdn_service
 from app.models.cdn_distribution import CdnDistribution
 from app import db
 from app.utils.decorators import feature_required
-from app.services.project_service import build_project_tag_map, get_active_project, get_project_resource_external_ids, get_project_domain_names
-from app.models.project_resource import ProjectResource
+from app.services.project_service import build_project_tag_map, get_active_project, get_project_domain_names
 
 _log = logging.getLogger(__name__)
 
@@ -100,18 +99,9 @@ def cdn_list_distributions():
             if active_project is None:
                 result = []
             else:
-                cdn_dist_ids = get_project_resource_external_ids(active_project.id, 'cdn_dist')
-                cs_listener_names = get_project_resource_external_ids(active_project.id, 'cs_listener')
                 project_domains = get_project_domain_names(active_project.id)
-                filtered = []
-                for d in result:
-                    if str(d.get('id') or '') in cdn_dist_ids:
-                        filtered.append(d)
-                    elif d.get('comment') and d['comment'] in cs_listener_names:
-                        filtered.append(d)
-                    elif d.get('origin_host') and d['origin_host'] in project_domains:
-                        filtered.append(d)
-                result = filtered
+                result = [d for d in result
+                          if d.get('origin_host') and d['origin_host'] in project_domains]
 
         return jsonify({'distributions': result})
     except Exception as e:
@@ -186,19 +176,6 @@ def cdn_create_distribution():
     )
     db.session.add(dist)
     db.session.commit()
-
-    # Auto-tag to the creator's active project so operators can see their own CDN
-    active_project = get_active_project(current_user)
-    if active_project:
-        tag = ProjectResource(
-            project_id=active_project.id,
-            resource_type='cdn_dist',
-            external_id=str(dist.id),
-            label=f'{provider} → {origin_host}',
-            tagged_by_id=current_user.id,
-        )
-        db.session.add(tag)
-        db.session.commit()
 
     # Dispatch background task and store task_id in external_id for status polling
     from app.tasks.cdn_tasks import create_cdn_distribution_task
