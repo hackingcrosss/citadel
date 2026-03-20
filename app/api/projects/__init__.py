@@ -354,6 +354,12 @@ def checkout_domain(project_id, domain_id):
             'checkout_project_id': domain.checkout_project_id,
         }), 409
 
+    # Fix credential_label if still 'default' but the caller knows the real account
+    data = request.get_json(silent=True) or {}
+    req_label = data.get('credential_label') or ''
+    if req_label and domain.credential_label == 'default' and req_label != 'default':
+        domain.credential_label = req_label
+
     domain.checkout_project_id = project_id
     domain.checked_out_at = datetime.utcnow()
     domain.checked_out_by_id = current_user.id
