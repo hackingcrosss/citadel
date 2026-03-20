@@ -640,17 +640,42 @@
                 const prevStatus = dist ? dist.status : null;
                 if (dist) dist.status = data.status;
                 updateStats(allDists);
+
+                // Notify on every state transition
+                if (prevStatus && data.status !== prevStatus) {
+                    const label = dist ? (dist.domain || dist.origin_host || `#${id}`) : `#${id}`;
+                    let msg, type;
+                    if (data.status === 'error') {
+                        msg = `CDN ${label} failed: ${data.error || 'unknown error'}`;
+                        type = 'danger';
+                    } else if (data.status === 'deployed') {
+                        msg = `CDN ${label} is now deployed`;
+                        type = 'success';
+                    } else if (data.status === 'deploying' && prevStatus === 'creating') {
+                        msg = `CDN ${label} created — now deploying globally`;
+                        type = 'info';
+                    } else if (data.status === 'disabled') {
+                        msg = `CDN ${label} has been disabled`;
+                        type = 'warning';
+                    } else {
+                        msg = `CDN ${label}: ${prevStatus} → ${data.status}`;
+                        type = 'info';
+                    }
+                    showToast(msg, type);
+                    if (typeof addNotification === 'function') addNotification(msg, type, '/cdn');
+                }
+
                 if (data.status === 'deployed' || data.status === 'error' || data.status === 'disabled') {
                     stopStatusPoll(id);
-                    // Refresh the full row so domain + actions column appear correctly
                     loadDistributions();
                 } else if (data.status === 'deploying' && prevStatus === 'creating') {
-                    // Task finished — switch from fast 10s poll to slower 30s deploy poll
                     stopStatusPoll(id);
                     startStatusPoll(id, 30000);
                 }
             })
-            .catch(() => {});
+            .catch(err => {
+                showToast(`CDN #${id} status check failed: ${err}`, 'danger');
+            });
     }
 
     // ─────────────────────────────────────────
