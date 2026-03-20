@@ -34,29 +34,36 @@ def _zone_label(zone_id):
     """Return the credential label to use for a given zone_id.
 
     Resolution order:
-    0. Explicit ``label`` query parameter from the client (most reliable — the
-       frontend knows which account owns the zone from the zone listing).
-    1. Local domain record (most authoritative — set when a domain is imported).
-    2. The in-memory cache populated by list_zones_all_accounts() — covers zones
-       that are visible in the selector but not yet imported locally.
-    3. First available Cloudflare account label — safe fallback when neither of
-       the above is populated (e.g. direct API calls before any zone listing).
+    0. Explicit ``label`` query parameter from the client — accepted only if it
+       matches a configured Cloudflare account.
+    1. The in-memory cache populated by list_zones_all_accounts() — authoritative
+       because it comes directly from the Cloudflare API.
+    2. Local domain record — set when a domain is imported/checked-out.
+    3. First available Cloudflare account label — safe fallback.
+
+    Every candidate is validated against the set of configured accounts so that
+    stale ``credential_label='default'`` values (common on legacy domain records)
+    never produce a "not configured" error when the real account has a named label.
     """
-    # Allow the caller to pass the label explicitly via ?label=
+    valid_labels = set(get_account_labels('cloudflare'))
+
+    # Explicit ?label= from the client
     explicit = request.args.get('label') or (request.get_json(silent=True) or {}).get('label')
-    if explicit:
+    if explicit and explicit in valid_labels:
         return explicit
 
-    domain = Domain.query.filter_by(cloudflare_zone_id=zone_id).first()
-    if domain:
-        return domain.credential_label
-
+    # In-memory cache from list_zones_all_accounts() — most reliable
     cached = dns_service._zone_account_cache.get(zone_id)
-    if cached:
+    if cached and cached in valid_labels:
         return cached
 
-    labels = get_account_labels('cloudflare')
-    return labels[0] if labels else 'default'
+    # Local domain record
+    domain = Domain.query.filter_by(cloudflare_zone_id=zone_id).first()
+    if domain and domain.credential_label in valid_labels:
+        return domain.credential_label
+
+    # Fallback: first configured account
+    return next(iter(valid_labels), 'default')
 
 
 def _assert_zone_accessible(zone_id, write=False):
@@ -373,15 +380,22 @@ def list_zones():
         Domain.cloudflare_zone_id.isnot(None),
     ).order_by(Domain.name).all()
 
-    zones = [
-        {
+    valid_labels = set(get_account_labels('cloudflare'))
+    zones = []
+    for d in checked_out:
+        # Prefer the cache (authoritative, from CF API) over the local record
+        label = (
+            dns_service._zone_account_cache.get(d.cloudflare_zone_id)
+            or d.credential_label
+        )
+        if label not in valid_labels:
+            label = next(iter(valid_labels), 'default')
+        zones.append({
             'id': d.cloudflare_zone_id,
             'name': d.name,
             'status': d.status or 'active',
-            'account_label': d.credential_label,
-        }
-        for d in checked_out
-    ]
+            'account_label': label,
+        })
     return jsonify({'zones': zones, 'page_info': {'total_count': len(zones)}})
 
 
