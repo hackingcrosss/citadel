@@ -164,6 +164,8 @@
 
 {% block extra_js %}
 <script>
+    function esc(s) { var d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
     let refreshTimer = null;
 
     document.addEventListener('DOMContentLoaded', function() {
@@ -197,7 +199,7 @@
         };
         var cls = map[state] || 'badge-pending';
         var label = state.charAt(0).toUpperCase() + state.slice(1);
-        return '<span class="badge-status ' + cls + '">' + label + '</span>';
+        return '<span class="badge-status ' + cls + '">' + esc(label) + '</span>';
     }
 
     // --- EC2 Instances ---
@@ -231,9 +233,9 @@
                 tbody.innerHTML = instances.slice(0, 5).map(function(inst) {
                     var region = inst.az ? inst.az.replace(/[a-z]$/, '') : '-';
                     return '<tr class="clickable-row" onclick="window.location.href=\'' + "{{ url_for('aws') }}" + '\'">' +
-                        '<td><i class="bi bi-server"></i> ' + (inst.name || inst.id) + '</td>' +
-                        '<td>' + inst.type + '</td>' +
-                        '<td>' + region + '</td>' +
+                        '<td><i class="bi bi-server"></i> ' + esc(inst.name || inst.id) + '</td>' +
+                        '<td>' + esc(inst.type) + '</td>' +
+                        '<td>' + esc(region) + '</td>' +
                         '<td>' + stateBadge(inst.state) + '</td>' +
                     '</tr>';
                 }).join('');
@@ -275,9 +277,9 @@
                         portDisplay = hostParts[hostParts.length - 1];
                     }
                     return '<tr class="clickable-row" onclick="window.location.href=\'' + "{{ url_for('containers') }}" + '\'">' +
-                        '<td><i class="bi bi-box"></i> ' + c.name + '</td>' +
-                        '<td>' + c.image.split(':')[0].split('/').pop() + '</td>' +
-                        '<td>' + portDisplay + '</td>' +
+                        '<td><i class="bi bi-box"></i> ' + esc(c.name) + '</td>' +
+                        '<td>' + esc(c.image.split(':')[0].split('/').pop()) + '</td>' +
+                        '<td>' + esc(portDisplay) + '</td>' +
                         '<td>' + stateBadge(c.state) + '</td>' +
                     '</tr>';
                 }).join('');
@@ -316,14 +318,14 @@
                 tbody.innerHTML = zones.map(function(z) {
                     var statusBadge = z.status === 'active'
                         ? '<span class="badge-status badge-running">Active</span>'
-                        : '<span class="badge-status badge-pending">' + z.status + '</span>';
-                    var ns = (z.name_servers || []).slice(0, 2).join(', ');
+                        : '<span class="badge-status badge-pending">' + esc(z.status) + '</span>';
+                    var ns = (z.name_servers || []).slice(0, 2).map(esc).join(', ');
                     var plan = z.plan ? (z.plan.name || '-') : '-';
                     return '<tr>' +
-                        '<td><strong>' + z.name + '</strong></td>' +
+                        '<td><strong>' + esc(z.name) + '</strong></td>' +
                         '<td>' + statusBadge + '</td>' +
                         '<td><small>' + ns + '</small></td>' +
-                        '<td>' + plan + '</td>' +
+                        '<td>' + esc(plan) + '</td>' +
                         '<td>' +
                             '<a href="' + "{{ url_for('domains') }}" + '" class="btn btn-sm btn-outline-primary" title="Manage DNS">' +
                                 '<i class="bi bi-pencil"></i>' +
@@ -410,7 +412,7 @@
         var countEl = document.getElementById(section + '-count');
         var subEl = document.getElementById(section + '-subtitle');
         if (countEl) countEl.textContent = '!';
-        if (subEl) subEl.innerHTML = '<span class="text-danger" title="' + message + '">Not configured</span>';
+        if (subEl) subEl.innerHTML = '<span class="text-danger" title="' + esc(message) + '">Not configured</span>';
 
         var tableMap = {
             'ec2': {id: 'ec2-table', cols: 4},
@@ -422,7 +424,7 @@
             var tbody = document.getElementById(table.id);
             if (tbody) {
                 tbody.innerHTML = '<tr><td colspan="' + table.cols + '" class="text-center py-3">' +
-                    '<span class="text-danger"><i class="bi bi-exclamation-triangle"></i> ' + message + '</span>' +
+                    '<span class="text-danger"><i class="bi bi-exclamation-triangle"></i> ' + esc(message) + '</span>' +
                     '<br><small><a href="' + "{{ url_for('settings') }}" + '">Configure in Settings</a></small>' +
                     '</td></tr>';
             }

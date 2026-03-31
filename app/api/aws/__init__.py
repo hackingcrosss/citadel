@@ -8,6 +8,7 @@ from app.models.instance_ssh_config import InstanceSSHConfig
 from app.services.credential_service import _get_fernet, get_account_labels
 from app.services import ssh_service
 from app.services.project_service import build_project_tag_map, assert_resource_writable
+from app.utils.decorators import admin_required
 from app.services import audit_service
 
 
@@ -301,6 +302,7 @@ def aws_get_ssh_config(instance_id):
 
 @api_bp.route('/aws/ssh-configs', methods=['POST'])
 @login_required
+@admin_required
 def aws_save_ssh_config():
     data = request.get_json()
     if not data:
@@ -352,6 +354,7 @@ def aws_save_ssh_config():
 
 @api_bp.route('/aws/ssh-configs/<instance_id>', methods=['DELETE'])
 @login_required
+@admin_required
 def aws_delete_ssh_config(instance_id):
     try:
         config = InstanceSSHConfig.query.filter_by(instance_id=instance_id).first()
