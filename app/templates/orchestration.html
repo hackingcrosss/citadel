@@ -337,7 +337,7 @@
     const IS_WHITE_TEAM = {{ 'true' if current_user.role == 'white_team' else 'false' }};
     const IS_READONLY = IS_AUDITOR || IS_WHITE_TEAM;
     const ACTIVE_PROJECT_ID = {{ active_project.id if active_project else 'null' }};
-    const ACTIVE_PROJECT_CODE = {{ ("'" + active_project.code + "'") if active_project and active_project.code else 'null' }};
+    const ACTIVE_PROJECT_CODE = {{ active_project.code|tojson if active_project and active_project.code else 'null' }};
     var allZones = [];
     var allListeners = [];
     var allNpmHosts = [];
@@ -445,7 +445,6 @@
             fetch('/api/domains/zones').then(function(r) { return r.json(); }).catch(function() { return {zones: []}; }),
             loadCdnDists()
         ]).then(function(results) {
-            if (results[0].upgrade_required || results[1].upgrade_required || results[2].upgrade_required) return;
             allListeners = results[0].listeners || [];
             allNpmHosts = results[1].hosts || [];
             allZones = results[2].zones || [];
