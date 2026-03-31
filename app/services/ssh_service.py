@@ -139,7 +139,7 @@ def _parse_private_key(key_str):
     raise ValueError('Unsupported private key format. Supported: RSA, Ed25519, ECDSA')
 
 
-def execute_command(instance_id, command, region=None, timeout=30):
+def _execute_command(instance_id, command, region=None, timeout=30):
     config = _get_ssh_config(instance_id)
     key_str = _decrypt_key(config)
     ip = _get_target_ip(config, region)
@@ -183,7 +183,7 @@ def _is_default_service(name):
 
 def list_services(instance_id, region=None):
     # Get active units with their status
-    result = execute_command(
+    result = _execute_command(
         instance_id,
         'systemctl list-units --type=service --all --no-pager --no-legend',
         region,
@@ -192,7 +192,7 @@ def list_services(instance_id, region=None):
         raise RuntimeError(f"Failed to list services: {result['stderr']}")
 
     # Get unit file states (enabled/disabled)
-    uf_result = execute_command(
+    uf_result = _execute_command(
         instance_id,
         'systemctl list-unit-files --type=service --no-pager --no-legend',
         region,
@@ -268,13 +268,13 @@ def get_service_status(instance_id, service_name, region=None):
     if not all(c.isalnum() or c in '-_@.' for c in service_name):
         raise ValueError('Invalid service name')
 
-    status_result = execute_command(
+    status_result = _execute_command(
         instance_id,
         f'systemctl status {service_name}.service 2>&1 || true',
         region,
     )
 
-    config_result = execute_command(
+    config_result = _execute_command(
         instance_id,
         f'systemctl cat {service_name}.service 2>&1 || true',
         region,
@@ -295,7 +295,7 @@ def service_action(instance_id, service_name, action, region=None):
     if not all(c.isalnum() or c in '-_@.' for c in service_name):
         raise ValueError('Invalid service name')
 
-    result = execute_command(
+    result = _execute_command(
         instance_id,
         f'sudo systemctl {action} {service_name}.service',
         region,
