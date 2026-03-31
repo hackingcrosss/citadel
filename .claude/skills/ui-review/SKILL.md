@@ -3,7 +3,6 @@ name: ui-review
 description: Audit an InfraRed template for accessibility, responsive design, role gating, XSS, and visual consistency.
 argument-hint: "<template-name>"
 context: fork
-agent: Explore
 allowed-tools: Read, Grep, Glob
 ---
 

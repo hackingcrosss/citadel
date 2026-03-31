@@ -3,7 +3,6 @@ name: js-optimize
 description: Analyze a template's inline JavaScript for dead code, redundant DOM queries, missing error handling, and deduplication opportunities.
 argument-hint: "<template-name>"
 context: fork
-agent: Explore
 allowed-tools: Read, Grep, Glob
 ---
 
