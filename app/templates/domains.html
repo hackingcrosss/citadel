@@ -5,7 +5,7 @@
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-4">
     <h1 class="h3 mb-0">Domains Management</h1>
-    {% if current_user.role != 'viewer' and active_project_role != 'white_team' %}
+    {% if current_user.role not in ['viewer', 'auditor', 'white_team'] and active_project_role != 'white_team' %}
     <button class="btn btn-infrared" data-bs-toggle="modal" data-bs-target="#addRecordModal">
         <i class="bi bi-plus-circle"></i> Add Record
     </button>
@@ -62,7 +62,7 @@
             <div class="col-md-3">
                 <small class="text-muted d-block">SSL Mode</small>
                 <span id="zone-detail-ssl" class="fw-bold">-</span>
-                {% if current_user.role != 'viewer' and active_project_role != 'white_team' %}
+                {% if current_user.role not in ['viewer', 'auditor', 'white_team'] and active_project_role != 'white_team' %}
                 <button class="btn btn-sm btn-link p-0 ms-1" onclick="showSSLModal()" title="Change SSL">
                     <i class="bi bi-pencil-square"></i>
                 </button>
@@ -79,7 +79,7 @@
             <div class="col-md-2">
                 <small class="text-muted d-block">DMARC</small>
                 <span id="zone-detail-dmarc" class="fw-bold">-</span>
-                {% if current_user.role != 'viewer' and active_project_role != 'white_team' %}
+                {% if current_user.role not in ['viewer', 'auditor', 'white_team'] and active_project_role != 'white_team' %}
                 <button class="btn btn-sm btn-link p-0 ms-1" id="btn-enable-dmarc"
                         onclick="enableDMARC()" title="Enable Cloudflare DMARC Management" style="display:none">
                     <i class="bi bi-shield-plus"></i>
@@ -118,7 +118,7 @@
             <span><i class="bi bi-diagram-3"></i> DNS Records</span>
             <span class="badge bg-secondary" id="record-count">0 records</span>
         </div>
-        {% if current_user.role != 'viewer' and active_project_role != 'white_team' %}
+        {% if current_user.role not in ['viewer', 'auditor', 'white_team'] and active_project_role != 'white_team' %}
         <div class="d-flex gap-2">
             <button class="btn btn-sm btn-outline-secondary" onclick="selectAllDomainRecords()">
                 <i class="bi bi-check2-all"></i> Select All
@@ -158,11 +158,11 @@
 </div>
 
 <!-- Add Record Modal -->
-<div class="modal fade" id="addRecordModal" tabindex="-1">
+<div class="modal fade" id="addRecordModal" tabindex="-1" aria-labelledby="addRecordModalTitle">
     <div class="modal-dialog">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title">Add DNS Record</h5>
+                <h5 class="modal-title" id="addRecordModalTitle">Add DNS Record</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
@@ -212,11 +212,11 @@
 </div>
 
 <!-- Edit Record Modal -->
-<div class="modal fade" id="editRecordModal" tabindex="-1">
+<div class="modal fade" id="editRecordModal" tabindex="-1" aria-labelledby="editRecordModalTitle">
     <div class="modal-dialog">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title">Edit DNS Record</h5>
+                <h5 class="modal-title" id="editRecordModalTitle">Edit DNS Record</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
@@ -267,11 +267,11 @@
 </div>
 
 <!-- SSL Settings Modal -->
-<div class="modal fade" id="sslModal" tabindex="-1">
+<div class="modal fade" id="sslModal" tabindex="-1" aria-labelledby="sslModalTitle">
     <div class="modal-dialog modal-sm">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title">SSL/TLS Mode</h5>
+                <h5 class="modal-title" id="sslModalTitle">SSL/TLS Mode</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
@@ -296,6 +296,11 @@
     const IS_AUDITOR = {{ 'true' if current_user.role == 'auditor' else 'false' }};
     const IS_WHITE_TEAM = {{ 'true' if current_user.role == 'white_team' else 'false' }};
     const IS_READONLY = IS_AUDITOR || IS_WHITE_TEAM;
+    const ACTIVE_PROJECT_ID = {{ active_project.id if active_project else 'null' }};
+    const ACTIVE_PROJECT_CODE = {{ active_project.code|tojson if active_project and active_project.code else 'null' }};
+
+    function esc(s) { var d = document.createElement('div'); d.appendChild(document.createTextNode(String(s || ''))); return d.innerHTML; }
+
     let currentZoneId = null;
     let currentZoneName = null;
     let currentZoneLabel = null;
@@ -325,9 +330,10 @@
             .then(r => r.json())
             .then(data => {
                 _setZonesLoading(false);
+                if (data.upgrade_required) { showToast(esc(data.error || 'Upgrade required'), 'warning'); return; }
                 if (data.error) {
                     document.getElementById('zone-select').innerHTML =
-                        '<option value="">Error: ' + data.error + '</option>';
+                        '<option value="">Error: ' + esc(data.error) + '</option>';
                     return;
                 }
                 const select = document.getElementById('zone-select');
@@ -401,7 +407,7 @@
                 document.getElementById('zone-detail-status').innerHTML =
                     z.status === 'active'
                         ? '<span class="badge bg-success">Active</span>'
-                        : '<span class="badge bg-warning">' + z.status + '</span>';
+                        : '<span class="badge bg-warning">' + esc(z.status) + '</span>';
                 document.getElementById('zone-detail-ns').textContent =
                     (z.name_servers || []).join(', ');
                 document.getElementById('zone-detail-plan').textContent =
@@ -414,7 +420,7 @@
             .then(data => {
                 if (data.error) {
                     document.getElementById('zone-detail-ssl').innerHTML =
-                        '<span class="text-muted" title="' + data.error + '">N/A</span>';
+                        '<span class="text-muted" title="' + esc(data.error) + '">N/A</span>';
                     return;
                 }
                 if (data.ssl) {
@@ -507,8 +513,9 @@
         fetch(url)
             .then(r => r.json())
             .then(data => {
+                if (data.upgrade_required) { showToast(esc(data.error || 'Upgrade required'), 'warning'); return; }
                 if (data.error) {
-                    tbody.innerHTML = '<tr><td colspan="8" class="text-danger text-center py-4">' + data.error + '</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="8" class="text-danger text-center py-4">' + esc(data.error) + '</td></tr>';
                     updateDomainSelection();
                     return;
                 }
@@ -544,11 +551,11 @@
                     const escapedRecord = encodeURIComponent(JSON.stringify(r));
 
                     return '<tr>' +
-                        '<td><input type="checkbox" class="domain-rec-cb" data-record-id="' + r.id + '" onchange="updateDomainSelection()"></td>' +
+                        '<td><input type="checkbox" class="domain-rec-cb" data-record-id="' + esc(r.id) + '" onchange="updateDomainSelection()"></td>' +
                         '<td><span class="badge bg-secondary">Cloudflare</span></td>' +
-                        '<td><span class="badge bg-' + color + '">' + r.type + '</span></td>' +
-                        '<td>' + r.name + '</td>' +
-                        '<td class="text-truncate" style="max-width:250px" title="' + r.content + '">' + r.content + '</td>' +
+                        '<td><span class="badge bg-' + color + '">' + esc(r.type) + '</span></td>' +
+                        '<td>' + esc(r.name) + '</td>' +
+                        '<td class="text-truncate" style="max-width:250px" title="' + esc(r.content) + '">' + esc(r.content) + '</td>' +
                         '<td>' + ttl + '</td>' +
                         '<td>' + proxy + '</td>' +
                         '<td>' +
@@ -556,7 +563,7 @@
                                 (!IS_READONLY ? '<button class="btn btn-outline-primary" title="Edit" onclick="editRecord(\'' + escapedRecord + '\')">' +
                                     '<i class="bi bi-pencil"></i>' +
                                 '</button>' : '') +
-                                (!IS_READONLY ? '<button class="btn btn-outline-danger" title="Delete" onclick="deleteRecord(\'' + r.id + '\')">' +
+                                (!IS_READONLY ? '<button class="btn btn-outline-danger" title="Delete" onclick="deleteRecord(\'' + esc(r.id) + '\')">' +
                                     '<i class="bi bi-trash"></i>' +
                                 '</button>' : '') +
                             '</div>' +
@@ -604,6 +611,7 @@
         })
         .then(r => r.json())
         .then(data => {
+            if (data.upgrade_required) { showToast(esc(data.error || 'Upgrade required'), 'warning'); return; }
             if (data.error) { alert(data.error); return; }
             bootstrap.Modal.getInstance(document.getElementById('addRecordModal')).hide();
             document.getElementById('new-record-name').value = '';
@@ -651,6 +659,7 @@
         })
         .then(r => r.json())
         .then(data => {
+            if (data.upgrade_required) { showToast(esc(data.error || 'Upgrade required'), 'warning'); return; }
             if (data.error) { alert(data.error); return; }
             bootstrap.Modal.getInstance(document.getElementById('editRecordModal')).hide();
             loadDNSRecords();
@@ -663,10 +672,11 @@
             fetch(zoneUrl('/records/' + recordId), {method: 'DELETE'})
                 .then(r => r.json())
                 .then(data => {
-                    if (data.error) { showToast(data.error, 'danger'); return; }
+                    if (data.upgrade_required) { showToast(esc(data.error || 'Upgrade required'), 'warning'); return; }
+                    if (data.error) { showToast(esc(data.error), 'danger'); return; }
                     loadDNSRecords();
                 })
-                .catch(err => showToast('Error: ' + err, 'danger'));
+                .catch(err => showToast('Error: ' + esc(String(err)), 'danger'));
         });
     }
 
@@ -689,6 +699,7 @@
         })
         .then(r => r.json())
         .then(data => {
+            if (data.upgrade_required) { showToast(esc(data.error || 'Upgrade required'), 'warning'); return; }
             if (data.error) { alert(data.error); return; }
             bootstrap.Modal.getInstance(document.getElementById('sslModal')).hide();
             document.getElementById('zone-detail-ssl').textContent = value;
@@ -736,8 +747,9 @@
                 .then(r => r.json())
                 .then(data => {
                     if (btn) { btn.disabled = false; btn.innerHTML = '<i class="bi bi-shield-plus"></i>'; }
-                    if (data.error) { showToast(data.error, 'danger'); return; }
-                    if (data.warning) { showToast(data.warning, 'warning'); }
+                    if (data.upgrade_required) { showToast(esc(data.error || 'Upgrade required'), 'warning'); return; }
+                    if (data.error) { showToast(esc(data.error), 'danger'); return; }
+                    if (data.warning) { showToast(esc(data.warning), 'warning'); }
                     showToast('DMARC management enabled and _dmarc record created', 'success');
                     document.getElementById('zone-detail-dmarc').innerHTML = '<span class="badge bg-success">Active</span>';
                     if (btn) btn.style.display = 'none';
