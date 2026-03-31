@@ -1200,8 +1200,10 @@
         });
     })();
 
-    // ── Sidebar credential status dots ─────────────────────────────────────────
+    // ── Sidebar credential status dots (admin only) ────────────────────────────
     (function() {
+        if (window._INFRARED_USER_ROLE !== 'admin') return;
+
         var SECTION_PROVIDERS = {
             'infra':    ['docker', 'aws', 'npm', 'cloudflare'],
             'phishing': ['mailgun', 'gophish'],

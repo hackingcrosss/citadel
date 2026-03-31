@@ -1,8 +1,9 @@
 import logging
 from flask import request, jsonify
-from flask_login import login_required
+from flask_login import login_required, current_user
 from app.api import api_bp
 from app.services import credential_service
+from app.utils.decorators import admin_required
 
 _log = logging.getLogger(__name__)
 
@@ -12,6 +13,7 @@ _MULTI_ACCOUNT_PROVIDERS = {'cloudflare', 'aws', 'azure', 'cobaltstrike'}
 
 @api_bp.route('/credentials/<provider>', methods=['GET'])
 @login_required
+@admin_required
 def get_credentials(provider):
     data = credential_service.get_all_for_provider(provider)
     if provider in _MULTI_ACCOUNT_PROVIDERS:
@@ -28,6 +30,7 @@ def get_credentials(provider):
 
 @api_bp.route('/credentials/<provider>', methods=['POST'])
 @login_required
+@admin_required
 def save_credentials(provider):
     payload = request.get_json()
     if not payload:
@@ -53,6 +56,7 @@ def save_credentials(provider):
 
 @api_bp.route('/credentials/cloudflare/account/<label>', methods=['DELETE'])
 @login_required
+@admin_required
 def delete_cloudflare_account(label):
     labels = credential_service.get_account_labels('cloudflare')
     if len(labels) <= 1:
@@ -65,6 +69,7 @@ def delete_cloudflare_account(label):
 
 @api_bp.route('/credentials/aws/account/<label>', methods=['DELETE'])
 @login_required
+@admin_required
 def delete_aws_account(label):
     labels = credential_service.get_account_labels('aws')
     if len(labels) <= 1:
@@ -77,6 +82,7 @@ def delete_aws_account(label):
 
 @api_bp.route('/credentials/azure/account/<label>', methods=['DELETE'])
 @login_required
+@admin_required
 def delete_azure_account(label):
     labels = credential_service.get_account_labels('azure')
     if len(labels) <= 1:
@@ -89,6 +95,7 @@ def delete_azure_account(label):
 
 @api_bp.route('/credentials/cobaltstrike/account/<label>', methods=['DELETE'])
 @login_required
+@admin_required
 def delete_cobaltstrike_account(label):
     labels = credential_service.get_account_labels('cobaltstrike')
     if len(labels) <= 1:
@@ -128,10 +135,21 @@ def test_credentials(provider):
         return jsonify({'success': False, 'error': 'Connection test failed'}), 400
 
 
+_PUBLIC_CREDENTIAL_KEYS = {
+    ('npm', 'public_ip'),
+    ('cobaltstrike', 'listener_ip'),
+    ('cobaltstrike', 'redirector_ip'),
+}
+
+
 @api_bp.route('/credentials/<provider>/<key_name>', methods=['GET'])
 @login_required
 def get_single_credential(provider, key_name):
-    """Get a single credential value (unmasked). Used for non-secret config like NPM public IP."""
+    """Get a single credential value. Non-secret keys are readable by all
+    authenticated users; everything else requires admin."""
+    if (provider, key_name) not in _PUBLIC_CREDENTIAL_KEYS:
+        if not current_user.is_admin:
+            return jsonify({'error': 'Administrator access required'}), 403
     value = credential_service.get_credential(provider, key_name)
     if value is None:
         return jsonify({'error': 'Not found'}), 404
@@ -140,6 +158,7 @@ def get_single_credential(provider, key_name):
 
 @api_bp.route('/credentials/<provider>/<key_name>', methods=['DELETE'])
 @login_required
+@admin_required
 def delete_credential(provider, key_name):
     deleted = credential_service.delete_credential(provider, key_name)
     if deleted:
