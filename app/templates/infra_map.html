@@ -27,12 +27,12 @@
 </div>
 
 <!-- Sync DB Modal -->
-<div class="modal fade" id="syncModal" tabindex="-1">
+<div class="modal fade" id="syncModal" tabindex="-1" aria-labelledby="syncModalLabel">
     <div class="modal-dialog modal-lg">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title"><i class="bi bi-database-gear"></i> Sync DB from External Sources</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                <h5 class="modal-title" id="syncModalLabel"><i class="bi bi-database-gear"></i> Sync DB from External Sources</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
                 <p class="text-muted small mb-3">
@@ -41,7 +41,7 @@
                 </p>
                 <div id="sync-log" class="border rounded p-2"
                      style="min-height:120px; max-height:380px; overflow-y:auto;
-                            background:#111827; font-size:0.82rem; font-family:monospace;">
+                            background: var(--ir-bg); font-size:0.82rem; font-family:monospace;">
                     <span class="text-muted">Click <strong>Start Sync</strong> to begin…</span>
                 </div>
             </div>
@@ -83,7 +83,7 @@
         <span class="text-muted small">Containers</span>
     </div>
     <div class="card-custom px-3 py-2 d-flex align-items-center gap-2">
-        <i class="bi bi-cloud-fill" style="color:#38bdf8"></i>
+        <i class="bi bi-cloud-fill" style="color: var(--ir-blue, #38bdf8)"></i>
         <span id="count-cdn" class="fw-bold">—</span>
         <span class="text-muted small">CDN Distributions</span>
     </div>
@@ -151,6 +151,7 @@
         <span><i class="bi bi-cloud-slash text-muted me-1"></i> EC2 Instances Without DNS Records</span>
         <input type="text" id="ec2-orphan-filter" class="form-control form-control-sm w-auto"
                placeholder="name contains…" style="min-width:180px;"
+               aria-label="Filter orphan EC2 instances by name"
                oninput="renderOrphanEc2Filtered()">
     </div>
     <div class="card-body p-0">
@@ -222,6 +223,7 @@
                     <tr>
                         <th style="width:2%">
                             <input type="checkbox" id="dns-cb-all" title="Toggle all"
+                                   aria-label="Select all DNS records"
                                    onchange="toggleAllDnsCheckboxes(this.checked)">
                         </th>
                         <th>FQDN</th>
@@ -241,7 +243,7 @@
 <!-- CDN Distributions -->
 <div class="card-custom mb-4">
     <div class="card-header">
-        <i class="bi bi-cloud-fill me-1" style="color:#38bdf8"></i> CDN Distributions
+        <i class="bi bi-cloud-fill me-1" style="color: var(--ir-blue, #38bdf8)"></i> CDN Distributions
     </div>
     <div class="card-body p-0">
         <div class="table-responsive">
@@ -281,7 +283,7 @@
             </div>
         </div>
         <div class="card-body p-0">
-            <div id="diagram-container" style="height:650px; background:#111827; border-radius:0 0 8px 8px;"></div>
+            <div id="diagram-container" style="min-height:400px; height:60vh; background: var(--ir-bg); border-radius:0 0 8px 8px;"></div>
         </div>
     </div>
     <!-- Legend -->
@@ -319,7 +321,8 @@
     var IS_AUDITOR        = {{ 'true' if current_user.role == 'auditor' else 'false' }};
     var IS_WHITE_TEAM     = {{ 'true' if current_user.role == 'white_team' else 'false' }};
     var IS_READONLY       = IS_AUDITOR || IS_WHITE_TEAM;
-    var ACTIVE_PROJECT_ID = {{ active_project.id if active_project else 'null' }};
+    var ACTIVE_PROJECT_ID   = {{ active_project.id if active_project else 'null' }};
+    var ACTIVE_PROJECT_CODE = {{ active_project.code|tojson if active_project and active_project.code else 'null' }};
 
     var allDomains              = [];
     var allDnsRecords           = {}; // domainId -> records[] (normalised: always .type field)
@@ -400,6 +403,9 @@
 
             buildLookupMaps();
             loadDnsRecords();
+        }).catch(function(err) {
+            console.error('loadAll_Full error:', err);
+            showToast('Failed to load infrastructure data', 'danger');
         });
     }
 
@@ -432,6 +438,9 @@
 
             buildLookupMaps();
             loadDnsRecords();
+        }).catch(function(err) {
+            console.error('loadAll_Scoped error:', err);
+            showToast('Failed to load infrastructure data', 'danger');
         });
     }
 
@@ -986,7 +995,8 @@
             var item = items[i];
             fetch('/api/domains/zones/' + item.zoneId + '/records/' + item.recId, { method: 'DELETE' })
                 .then(function(r) { return r.json(); })
-                .then(function() {
+                .then(function(data) {
+                    if (data.error) { console.warn('DNS delete failed:', data.error); deleteNext(i + 1); return; }
                     if (allDnsRecords[item.domainId]) {
                         allDnsRecords[item.domainId] = allDnsRecords[item.domainId].filter(function(r) {
                             return r.id !== item.recId;
@@ -1049,6 +1059,7 @@
     function syncWarn(msg) { syncLog('bi-hourglass-split',    'text-warning', msg); }
 
     function runSync() {
+        if (IS_READONLY) { showToast('Read-only users cannot sync.', 'warning'); return; }
         var btn = document.getElementById('btn-sync-start');
         btn.disabled = true;
         document.getElementById('sync-log').innerHTML = '';
