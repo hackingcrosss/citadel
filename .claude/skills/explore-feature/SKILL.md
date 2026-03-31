@@ -3,7 +3,6 @@ name: explore-feature
 description: Map all files related to a feature and return a concise summary. Keeps heavy exploration out of main context.
 argument-hint: "<feature-name>"
 context: fork
-agent: Explore
 allowed-tools: Read, Grep, Glob
 ---
 

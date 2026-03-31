@@ -3,7 +3,6 @@ name: sec-review
 description: Deep security review of branch changes against develop. Checks OWASP Top 10, auth bypasses, credential leaks, XSS, SQLi, and InfraRed-specific patterns.
 argument-hint: "[base-branch]"
 context: fork
-agent: Explore
 allowed-tools: Bash(git *), Read, Grep, Glob
 ---
 
@@ -13,14 +12,14 @@ Review all code changes on the current branch for security vulnerabilities.
 
 ## Context
 
-- Base branch: $ARGUMENTS (default: `develop`)
 - Current branch: !`git branch --show-current`
-- Changed files: !`git diff ${ARGUMENTS:-develop} --name-only`
-- Diff stats: !`git diff ${ARGUMENTS:-develop} --stat`
+- Diff stats: !`git diff origin/develop --stat`
+
+If the user provided a base branch argument, use that instead of `develop` for all git diff commands below.
 
 ## Full diff
 
-!`git diff ${ARGUMENTS:-develop}`
+!`git diff origin/develop`
 
 ## Review Checklist
 

@@ -4,7 +4,6 @@ description: Pre-PR quality gate — security scan, code hygiene, migration chec
 disable-model-invocation: true
 argument-hint: "[base-branch]"
 context: fork
-agent: Explore
 allowed-tools: Bash(git *), Read, Grep, Glob
 ---
 
@@ -14,11 +13,12 @@ Validate the current branch is ready for a pull request against `$ARGUMENTS` (de
 
 ## Context
 
-- Base branch: ${ARGUMENTS:-develop}
 - Current branch: !`git branch --show-current`
-- Commits on branch: !`git log ${ARGUMENTS:-develop}..HEAD --oneline`
-- Changed files: !`git diff ${ARGUMENTS:-develop} --name-only`
-- Diff stats: !`git diff ${ARGUMENTS:-develop} --stat`
+- Commits on branch: !`git log origin/develop..HEAD --oneline`
+- Changed files: !`git diff origin/develop --name-only`
+- Diff stats: !`git diff origin/develop --stat`
+
+If the user provided a base branch argument, use that instead of `develop` for all git diff/log commands.
 
 ## Checks
 
