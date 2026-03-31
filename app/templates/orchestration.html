@@ -37,6 +37,7 @@
 <div id="pane-c2" {% if not current_plan.is_enabled('cobaltstrike') %}class="d-none"{% endif %}>
     <div class="card-custom">
         <div class="card-body p-0">
+            <div class="table-responsive">
             <table class="table table-hover mb-0">
                 <thead>
                     <tr>
@@ -53,12 +54,13 @@
                 </thead>
                 <tbody id="deployments-table">
                     <tr>
-                        <td colspan="8" class="text-center text-muted py-4">
+                        <td colspan="9" class="text-center text-muted py-4">
                             <span class="spinner-border spinner-border-sm"></span> Loading...
                         </td>
                     </tr>
                 </tbody>
             </table>
+            </div>
         </div>
     </div>
 </div>
@@ -67,6 +69,7 @@
 <div id="pane-groomed" {% if current_plan.is_enabled('cobaltstrike') %}class="d-none"{% endif %}>
     <div class="card-custom">
         <div class="card-body p-0">
+            <div class="table-responsive">
             <table class="table table-hover mb-0">
                 <thead>
                     <tr>
@@ -84,6 +87,7 @@
                     </tr>
                 </tbody>
             </table>
+            </div>
         </div>
     </div>
 </div>
@@ -144,10 +148,12 @@
 
     <!-- Action buttons -->
     <div class="d-flex gap-2 mb-3">
+        {% if not (current_user.role == 'auditor' or current_user.role == 'white_team') %}
         <button class="btn btn-outline-success btn-sm" onclick="runGroomingCycle()" id="btn-run-cycle"
                 title="Send all remaining daily emails for every active config">
             <i class="bi bi-play-circle"></i> Send All Now
         </button>
+        {% endif %}
         <button class="btn btn-outline-info btn-sm" onclick="toggleSendLogs()">
             <i class="bi bi-journal-text"></i> Send Logs
         </button>
@@ -159,6 +165,7 @@
     <!-- Config table -->
     <div class="card-custom">
         <div class="card-body p-0">
+            <div class="table-responsive">
             <table class="table table-hover mb-0">
                 <thead>
                     <tr>
@@ -180,6 +187,7 @@
                     </tr>
                 </tbody>
             </table>
+            </div>
         </div>
     </div>
 
@@ -193,6 +201,7 @@
                 </button>
             </div>
             <div class="card-body p-0">
+                <div class="table-responsive">
                 <table class="table table-sm table-hover mb-0" style="font-size: 0.85rem;">
                     <thead>
                         <tr>
@@ -208,6 +217,7 @@
                         <tr><td colspan="6" class="text-center text-muted py-3">Loading...</td></tr>
                     </tbody>
                 </table>
+                </div>
             </div>
         </div>
     </div>
@@ -222,6 +232,7 @@
                 </button>
             </div>
             <div class="card-body p-0">
+                <div class="table-responsive">
                 <table class="table table-sm table-hover mb-0" style="font-size: 0.85rem;">
                     <thead>
                         <tr>
@@ -236,21 +247,22 @@
                         <tr><td colspan="5" class="text-center text-muted py-3">Loading...</td></tr>
                     </tbody>
                 </table>
+                </div>
             </div>
         </div>
     </div>
 </div>
 
 <!-- JSON Inspect Modal -->
-<div class="modal fade" id="jsonModal" tabindex="-1">
+<div class="modal fade" id="jsonModal" tabindex="-1" aria-labelledby="jsonModalLabel">
     <div class="modal-dialog modal-lg">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title"><i class="bi bi-code-slash"></i> Deployment Details</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                <h5 class="modal-title" id="jsonModalLabel"><i class="bi bi-code-slash"></i> Deployment Details</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
-                <pre id="json-content" style="max-height: 500px; overflow-y: auto; background: #1f2937; color: #f9fafb; padding: 15px; border-radius: 6px; font-size: 0.85rem;"></pre>
+                <pre id="json-content" style="max-height: 500px; overflow-y: auto; background: var(--ir-surface-2); color: var(--ir-text); padding: 15px; border-radius: 6px; font-size: 0.85rem;"></pre>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
@@ -260,12 +272,12 @@
 </div>
 
 <!-- Teardown Confirmation Modal (C2) -->
-<div class="modal fade" id="teardownModal" tabindex="-1">
+<div class="modal fade" id="teardownModal" tabindex="-1" aria-labelledby="teardownModalLabel">
     <div class="modal-dialog">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title text-danger"><i class="bi bi-exclamation-triangle"></i> Teardown Deployment</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                <h5 class="modal-title text-danger" id="teardownModalLabel"><i class="bi bi-exclamation-triangle"></i> Teardown Deployment</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
                 <p>This will delete the following resources for <strong id="teardown-name"></strong>:</p>
@@ -282,12 +294,12 @@
 </div>
 
 <!-- Teardown Confirmation Modal (Groomed Site) -->
-<div class="modal fade" id="groomedTeardownModal" tabindex="-1">
+<div class="modal fade" id="groomedTeardownModal" tabindex="-1" aria-labelledby="groomedTeardownModalLabel">
     <div class="modal-dialog">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title text-danger"><i class="bi bi-exclamation-triangle"></i> Teardown Groomed Site</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                <h5 class="modal-title text-danger" id="groomedTeardownModalLabel"><i class="bi bi-exclamation-triangle"></i> Teardown Groomed Site</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
                 <p>This will delete the following resources for <strong id="groomed-teardown-name"></strong>:</p>
@@ -313,7 +325,7 @@
             </button>
         </div>
         <div class="card-body">
-            <div id="teardown-log" class="border rounded p-2" style="max-height: 250px; overflow-y: auto; background: #0d1117; border-color: #374151 !important; color: #e2e8f0; min-height: 40px; font-family: monospace; font-size: 0.82rem;"></div>
+            <div id="teardown-log" class="border rounded p-2" style="max-height: 250px; overflow-y: auto; background: var(--ir-bg); border-color: var(--ir-border-2) !important; color: var(--ir-text); min-height: 40px; font-family: monospace; font-size: 0.82rem;"></div>
         </div>
     </div>
 </div>
@@ -324,6 +336,8 @@
     const IS_AUDITOR = {{ 'true' if current_user.role == 'auditor' else 'false' }};
     const IS_WHITE_TEAM = {{ 'true' if current_user.role == 'white_team' else 'false' }};
     const IS_READONLY = IS_AUDITOR || IS_WHITE_TEAM;
+    const ACTIVE_PROJECT_ID = {{ active_project.id if active_project else 'null' }};
+    const ACTIVE_PROJECT_CODE = {{ ("'" + active_project.code + "'") if active_project and active_project.code else 'null' }};
     var allZones = [];
     var allListeners = [];
     var allNpmHosts = [];
@@ -346,7 +360,10 @@
     function loadCdnDists() {
         return fetch('/api/cdn/distributions')
             .then(function(r) { return r.json(); })
-            .then(function(data) { allCdnDists = (data.distributions || []).filter(function(d) { return d.tracked !== false; }); })
+            .then(function(data) {
+                if (data.error) { allCdnDists = []; return; }
+                allCdnDists = (data.distributions || []).filter(function(d) { return d.tracked !== false; });
+            })
             .catch(function() { allCdnDists = []; });
     }
 
@@ -428,6 +445,7 @@
             fetch('/api/domains/zones').then(function(r) { return r.json(); }).catch(function() { return {zones: []}; }),
             loadCdnDists()
         ]).then(function(results) {
+            if (results[0].upgrade_required || results[1].upgrade_required || results[2].upgrade_required) return;
             allListeners = results[0].listeners || [];
             allNpmHosts = results[1].hosts || [];
             allZones = results[2].zones || [];
@@ -599,11 +617,11 @@
 
             html += '<td>' + dnsInfo + '</td>';
             html += '<td class="text-nowrap">';
-            html += '<button class="btn btn-sm btn-outline-info me-1" onclick="inspectDeployment(' + idx + ')" title="Inspect">';
+            html += '<button class="btn btn-sm btn-outline-info me-1" onclick="inspectDeployment(' + idx + ')" title="Inspect" aria-label="Inspect">';
             html += '<i class="bi bi-code-slash"></i>';
             html += '</button>';
             if (!IS_READONLY) {
-                html += '<button class="btn btn-sm btn-outline-danger" onclick="confirmTeardown(' + idx + ')" title="Teardown">';
+                html += '<button class="btn btn-sm btn-outline-danger" onclick="confirmTeardown(' + idx + ')" title="Teardown" aria-label="Teardown">';
                 html += '<i class="bi bi-trash"></i>';
                 html += '</button>';
             }
@@ -801,7 +819,7 @@
             html += '<td><code class="small">' + escapeHtml(site.folder || '—') + '</code></td>';
             html += '<td class="text-nowrap">';
             if (!IS_READONLY) {
-                html += '<button class="btn btn-sm btn-outline-danger" onclick="confirmGroomedTeardown(' + idx + ')" title="Teardown infrastructure">';
+                html += '<button class="btn btn-sm btn-outline-danger" onclick="confirmGroomedTeardown(' + idx + ')" title="Teardown infrastructure" aria-label="Teardown infrastructure">';
                 html += '<i class="bi bi-trash"></i>';
                 html += '</button>';
             }
@@ -921,6 +939,11 @@
         .then(function(results) {
             var data = results[0];
             var logData = results[1];
+            if (data.error) {
+                if (data.upgrade_required) return;
+                document.getElementById('eg-table').innerHTML = '<tr><td colspan="8" class="text-center text-danger py-3">' + escapeHtml(data.error) + '</td></tr>';
+                return;
+            }
             var configs = data.configs || [];
             var stats = data.stats || {};
 
@@ -965,13 +988,13 @@
             var statusIcon = c.status === 'active' ? 'bi-circle-fill' : 'bi-pause-circle-fill';
             var lastSent = c.last_sent_at ? timeAgo(c.last_sent_at) : '<span class="text-muted">Never</span>';
             var profileLabel = c.gophish_profile_id
-                ? '<span class="badge bg-info" style="font-size:0.7rem" title="Profile #' + c.gophish_profile_id + '">' + (c.gophish_profile_from || 'Profile #' + c.gophish_profile_id) + '</span>'
+                ? '<span class="badge bg-info" style="font-size:0.7rem" title="Profile #' + escapeHtml(String(c.gophish_profile_id)) + '">' + escapeHtml(c.gophish_profile_from || 'Profile #' + c.gophish_profile_id) + '</span>'
                 : '<span class="badge bg-secondary" style="font-size:0.7rem">Rotate</span>';
-            var sendBtn = '<button class="btn btn-outline-primary btn-sm py-0 px-1" onclick="sendEgNow(' + c.id + ',this)" title="Send one now"><i class="bi bi-send"></i></button>';
+            var sendBtn = '<button class="btn btn-outline-primary btn-sm py-0 px-1" onclick="sendEgNow(' + c.id + ',this)" title="Send one now" aria-label="Send one now"><i class="bi bi-send"></i></button>';
             var toggleBtn = c.status === 'active'
-                ? '<button class="btn btn-outline-warning btn-sm py-0 px-1 ms-1" onclick="toggleEgStatus(' + c.id + ',\'paused\')" title="Pause"><i class="bi bi-pause-fill"></i></button>'
-                : '<button class="btn btn-outline-success btn-sm py-0 px-1 ms-1" onclick="toggleEgStatus(' + c.id + ',\'active\')" title="Resume"><i class="bi bi-play-fill"></i></button>';
-            var deleteBtn = '<button class="btn btn-outline-danger btn-sm py-0 px-1 ms-1" onclick="deleteEgConfig(' + c.id + ')" title="Delete"><i class="bi bi-trash"></i></button>';
+                ? '<button class="btn btn-outline-warning btn-sm py-0 px-1 ms-1" onclick="toggleEgStatus(' + c.id + ',\'paused\')" title="Pause" aria-label="Pause"><i class="bi bi-pause-fill"></i></button>'
+                : '<button class="btn btn-outline-success btn-sm py-0 px-1 ms-1" onclick="toggleEgStatus(' + c.id + ',\'active\')" title="Resume" aria-label="Resume"><i class="bi bi-play-fill"></i></button>';
+            var deleteBtn = '<button class="btn btn-outline-danger btn-sm py-0 px-1 ms-1" onclick="deleteEgConfig(' + c.id + ')" title="Delete" aria-label="Delete"><i class="bi bi-trash"></i></button>';
 
             return '<tr>'
                 + '<td>' + escapeHtml(c.domain_name || '?') + '</td>'
@@ -1001,8 +1024,11 @@
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({status: newStatus})
         })
-        .then(_jsonOrError)
-        .then(function() { loadEmailGrooming(); })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            if (data.error) { if (data.upgrade_required) return; alert('Failed: ' + data.error); return; }
+            loadEmailGrooming();
+        })
         .catch(function(err) { alert('Failed: ' + err.message); });
     }
 
@@ -1022,10 +1048,12 @@
     function sendEgNow(configId, btn) {
         if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>'; }
         fetch('/api/email-grooming/' + configId + '/send', { method: 'POST' })
-            .then(_jsonOrError)
+            .then(function(r) { return r.json(); })
             .then(function(data) {
                 if (data.error) {
+                    if (data.upgrade_required) return;
                     alert('Send failed: ' + data.error);
+                    return;
                 }
                 // Refresh after a short delay to let the task complete
                 setTimeout(function() { loadEmailGrooming(); loadSendLogs(); }, 3000);
@@ -1038,12 +1066,14 @@
 
     function runGroomingCycle() {
         var btn = document.getElementById('btn-run-cycle');
+        if (!btn) return;
         btn.disabled = true;
         btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Sending all remaining emails...';
         fetch('/api/email-grooming/run-cycle', { method: 'POST' })
-            .then(_jsonOrError)
+            .then(function(r) { return r.json(); })
             .then(function(data) {
                 if (data.error) {
+                    if (data.upgrade_required) return;
                     alert('Cycle failed: ' + data.error);
                     return;
                 }
@@ -1084,6 +1114,11 @@
         fetch('/api/email-grooming/logs?limit=50')
             .then(function(r) { return r.json(); })
             .then(function(data) {
+                if (data.error) {
+                    if (data.upgrade_required) return;
+                    document.getElementById('eg-logs-table').innerHTML = '<tr><td colspan="5" class="text-center text-danger py-3">' + escapeHtml(data.error) + '</td></tr>';
+                    return;
+                }
                 var logs = data.logs || [];
                 var tbody = document.getElementById('eg-logs-table');
                 if (!logs.length) {
@@ -1122,6 +1157,11 @@
         fetch('/api/email-grooming/domain-stats')
             .then(function(r) { return r.json(); })
             .then(function(data) {
+                if (data.error) {
+                    if (data.upgrade_required) return;
+                    document.getElementById('eg-domain-stats-table').innerHTML = '<tr><td colspan="6" class="text-center text-danger py-3">' + escapeHtml(data.error) + '</td></tr>';
+                    return;
+                }
                 var domains = data.domains || [];
                 var tbody = document.getElementById('eg-domain-stats-table');
                 if (!domains.length) {
