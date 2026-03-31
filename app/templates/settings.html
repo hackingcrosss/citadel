@@ -1081,7 +1081,7 @@
         .then(r => r.json())
         .then(data => {
             if (data.saved) {
-                showToast(`Account '${label}' saved.`);
+                showToast('Account \'' + escHtml(label) + '\' saved.');
                 document.getElementById('aws-new-label').value = '';
                 document.getElementById('aws-new-access-key').value = '';
                 document.getElementById('aws-new-secret-key').value = '';
@@ -1090,10 +1090,10 @@
                 loadAwsAccounts();
                 loadConfigBadges();
             } else {
-                showToast(data.error || 'Failed to save.', 'danger');
+                showToast(escHtml(data.error || 'Failed to save.'), 'danger');
             }
         })
-        .catch(err => showToast('Error: ' + err, 'danger'));
+        .catch(err => showToast('Error: ' + escHtml(String(err)), 'danger'));
     }
 
     function testAwsAccount(label, btn) {
@@ -1111,7 +1111,7 @@
             if (btn) btn.disabled = false;
             if (resultEl) {
                 resultEl.innerHTML = data.success
-                    ? `<span class="text-success"><i class="bi bi-check-circle-fill"></i> ${escHtml(data.result?.account || 'OK')}</span>`
+                    ? '<span class="text-success"><i class="bi bi-check-circle-fill"></i> ' + escHtml(data.result?.account || 'OK') + '</span>'
                     : '<span class="text-danger"><i class="bi bi-x-circle-fill"></i></span>';
             }
         })
@@ -1128,14 +1128,14 @@
             .then(r => r.json())
             .then(data => {
                 if (data.deleted) {
-                    showToast(`Account '${label}' deleted.`);
+                    showToast('Account \'' + escHtml(label) + '\' deleted.');
                     loadAwsAccounts();
                     loadConfigBadges();
                 } else {
-                    showToast(data.error || 'Failed to delete.', 'danger');
+                    showToast(escHtml(data.error || 'Failed to delete.'), 'danger');
                 }
             })
-            .catch(err => showToast('Error: ' + err, 'danger'));
+            .catch(err => showToast('Error: ' + escHtml(String(err)), 'danger'));
     }
 
     // --- Azure ---
@@ -1215,7 +1215,7 @@
         .then(r => r.json())
         .then(data => {
             if (data.saved) {
-                showToast(`Account '${label}' saved.`);
+                showToast('Account \'' + escHtml(label) + '\' saved.');
                 document.getElementById('azure-new-label').value = '';
                 document.getElementById('azure-new-tenant-id').value = '';
                 document.getElementById('azure-new-client-id').value = '';
@@ -1225,10 +1225,10 @@
                 loadAzureAccounts();
                 loadConfigBadges();
             } else {
-                showToast(data.error || 'Failed to save.', 'danger');
+                showToast(escHtml(data.error || 'Failed to save.'), 'danger');
             }
         })
-        .catch(err => showToast('Error: ' + err, 'danger'));
+        .catch(err => showToast('Error: ' + escHtml(String(err)), 'danger'));
     }
 
     function testAzureAccount(label, btn) {
@@ -1263,14 +1263,14 @@
             .then(r => r.json())
             .then(data => {
                 if (data.deleted) {
-                    showToast(`Account '${label}' deleted.`);
+                    showToast('Account \'' + escHtml(label) + '\' deleted.');
                     loadAzureAccounts();
                     loadConfigBadges();
                 } else {
-                    showToast(data.error || 'Failed to delete.', 'danger');
+                    showToast(escHtml(data.error || 'Failed to delete.'), 'danger');
                 }
             })
-            .catch(err => showToast('Error: ' + err, 'danger'));
+            .catch(err => showToast('Error: ' + escHtml(String(err)), 'danger'));
     }
 
     function loadCloudflareStatus() { loadCloudflareAccounts(); }
@@ -1341,17 +1341,17 @@
         .then(r => r.json())
         .then(data => {
             if (data.saved) {
-                showToast(`Account '${label}' saved.`);
+                showToast('Account \'' + escHtml(label) + '\' saved.');
                 document.getElementById('cf-new-label').value = '';
                 document.getElementById('cf-new-token').value = '';
                 document.getElementById('cf-add-form').style.cssText = 'display:none!important';
                 loadCloudflareAccounts();
                 loadConfigBadges();
             } else {
-                showToast(data.error || 'Failed to save.', 'danger');
+                showToast(escHtml(data.error || 'Failed to save.'), 'danger');
             }
         })
-        .catch(err => showToast('Error: ' + err, 'danger'));
+        .catch(err => showToast('Error: ' + escHtml(String(err)), 'danger'));
     }
 
     function testCloudflareAccount(label, btn) {
@@ -1386,14 +1386,14 @@
             .then(r => r.json())
             .then(data => {
                 if (data.deleted) {
-                    showToast(`Account '${label}' deleted.`);
+                    showToast('Account \'' + escHtml(label) + '\' deleted.');
                     loadCloudflareAccounts();
                     loadConfigBadges();
                 } else {
-                    showToast(data.error || 'Failed to delete.', 'danger');
+                    showToast(escHtml(data.error || 'Failed to delete.'), 'danger');
                 }
             })
-            .catch(err => showToast('Error: ' + err, 'danger'));
+            .catch(err => showToast('Error: ' + escHtml(String(err)), 'danger'));
     }
 
     function loadMailgunStatus() {
@@ -1443,9 +1443,11 @@
                 document.getElementById('mg-domain').value = '';
                 loadMailgunStatus();
                 loadConfigBadges();
+            } else {
+                showToast(escHtml(data.error || 'Failed to save.'), 'danger');
             }
         })
-        .catch(err => showToast('Error saving: ' + err, 'danger'));
+        .catch(err => showToast('Error saving: ' + escHtml(String(err)), 'danger'));
     }
 
     function testMailgunConnection() {
@@ -1456,9 +1458,9 @@
             .then(r => r.json())
             .then(data => {
                 if (data.success) {
-                    resultEl.innerHTML = '<span class="text-success"><i class="bi bi-check-circle-fill"></i> Connected (' + (data.result.total_count || 0) + ' domains)</span>';
+                    resultEl.innerHTML = '<span class="text-success"><i class="bi bi-check-circle-fill"></i> Connected (' + escHtml(String(data.result.total_count || 0)) + ' domains)</span>';
                 } else {
-                    resultEl.innerHTML = '<span class="text-danger"><i class="bi bi-x-circle-fill"></i> ' + data.error + '</span>';
+                    resultEl.innerHTML = '<span class="text-danger"><i class="bi bi-x-circle-fill"></i> ' + escHtml(data.error) + '</span>';
                 }
             })
             .catch(err => {
@@ -1528,9 +1530,11 @@
                 document.getElementById('npm-public-ip').value = '';
                 loadNpmStatus();
                 loadConfigBadges();
+            } else {
+                showToast(escHtml(data.error || 'Failed to save.'), 'danger');
             }
         })
-        .catch(err => showToast('Error saving: ' + err, 'danger'));
+        .catch(err => showToast('Error saving: ' + escHtml(String(err)), 'danger'));
     }
 
     function testNpmConnection() {
@@ -1541,9 +1545,9 @@
             .then(r => r.json())
             .then(data => {
                 if (data.success) {
-                    resultEl.innerHTML = '<span class="text-success"><i class="bi bi-check-circle-fill"></i> Connected (' + (data.result.host_count || 0) + ' hosts)</span>';
+                    resultEl.innerHTML = '<span class="text-success"><i class="bi bi-check-circle-fill"></i> Connected (' + escHtml(String(data.result.host_count || 0)) + ' hosts)</span>';
                 } else {
-                    resultEl.innerHTML = '<span class="text-danger"><i class="bi bi-x-circle-fill"></i> ' + data.error + '</span>';
+                    resultEl.innerHTML = '<span class="text-danger"><i class="bi bi-x-circle-fill"></i> ' + escHtml(data.error) + '</span>';
                 }
             })
             .catch(err => {
@@ -1599,9 +1603,11 @@
                 document.getElementById('docker-tls-key').value = '';
                 loadDockerStatus();
                 loadConfigBadges();
+            } else {
+                showToast(escHtml(data.error || 'Failed to save.'), 'danger');
             }
         })
-        .catch(err => showToast('Error saving: ' + err, 'danger'));
+        .catch(err => showToast('Error saving: ' + escHtml(String(err)), 'danger'));
     }
 
     function testDockerConnection() {
@@ -1612,9 +1618,9 @@
             .then(r => r.json())
             .then(data => {
                 if (data.success) {
-                    resultEl.innerHTML = '<span class="text-success"><i class="bi bi-check-circle-fill"></i> Connected (' + (data.result.container_count || 0) + ' containers)</span>';
+                    resultEl.innerHTML = '<span class="text-success"><i class="bi bi-check-circle-fill"></i> Connected (' + escHtml(String(data.result.container_count || 0)) + ' containers)</span>';
                 } else {
-                    resultEl.innerHTML = '<span class="text-danger"><i class="bi bi-x-circle-fill"></i> ' + data.error + '</span>';
+                    resultEl.innerHTML = '<span class="text-danger"><i class="bi bi-x-circle-fill"></i> ' + escHtml(data.error) + '</span>';
                 }
             })
             .catch(err => {
@@ -1669,9 +1675,11 @@
                 document.getElementById('gophish-api-key').value = '';
                 loadGophishStatus();
                 loadConfigBadges();
+            } else {
+                showToast(escHtml(data.error || 'Failed to save.'), 'danger');
             }
         })
-        .catch(err => showToast('Error saving: ' + err, 'danger'));
+        .catch(err => showToast('Error saving: ' + escHtml(String(err)), 'danger'));
     }
 
     function testGophishConnection() {
@@ -1682,9 +1690,9 @@
             .then(r => r.json())
             .then(data => {
                 if (data.success) {
-                    resultEl.innerHTML = '<span class="text-success"><i class="bi bi-check-circle-fill"></i> Connected (' + (data.result.profile_count || 0) + ' profiles)</span>';
+                    resultEl.innerHTML = '<span class="text-success"><i class="bi bi-check-circle-fill"></i> Connected (' + escHtml(String(data.result.profile_count || 0)) + ' profiles)</span>';
                 } else {
-                    resultEl.innerHTML = '<span class="text-danger"><i class="bi bi-x-circle-fill"></i> ' + data.error + '</span>';
+                    resultEl.innerHTML = '<span class="text-danger"><i class="bi bi-x-circle-fill"></i> ' + escHtml(data.error) + '</span>';
                 }
             })
             .catch(err => {
@@ -1827,7 +1835,7 @@
         .then(r => r.json())
         .then(data => {
             if (data.saved) {
-                showToast(`C2 server '${label}' saved.`);
+                showToast('C2 server \'' + escHtml(label) + '\' saved.');
                 // Clear form
                 ['c2-new-label', 'c2-new-api-url', 'c2-new-username', 'c2-new-password',
                  'c2-new-listener-ip', 'c2-new-redirector-ip', 'c2-new-profile'].forEach(id => {
@@ -1891,7 +1899,7 @@
         .then(r => r.json())
         .then(data => {
             if (data.saved) {
-                showToast(`C2 server '${label}' updated.`);
+                showToast('C2 server \'' + escHtml(label) + '\' updated.');
                 closeC2Edit();
                 loadC2Servers();
                 loadConfigBadges();
@@ -1917,7 +1925,7 @@
             if (btn) btn.disabled = false;
             if (resultEl) {
                 resultEl.innerHTML = data.success
-                    ? `<span class="text-success"><i class="bi bi-check-circle-fill"></i> ${data.result?.listener_count ?? 0} listeners</span>`
+                    ? '<span class="text-success"><i class="bi bi-check-circle-fill"></i> ' + escHtml(String(data.result?.listener_count ?? 0)) + ' listeners</span>'
                     : '<span class="text-danger"><i class="bi bi-x-circle-fill"></i> Failed</span>';
             }
         })
@@ -1934,14 +1942,14 @@
             .then(r => r.json())
             .then(data => {
                 if (data.deleted) {
-                    showToast(`C2 server '${label}' deleted.`);
+                    showToast('C2 server \'' + escHtml(label) + '\' deleted.');
                     loadC2Servers();
                     loadConfigBadges();
                 } else {
-                    showToast(data.error || 'Failed to delete.', 'danger');
+                    showToast(escHtml(data.error || 'Failed to delete.'), 'danger');
                 }
             })
-            .catch(err => showToast('Error: ' + err, 'danger'));
+            .catch(err => showToast('Error: ' + escHtml(String(err)), 'danger'));
     }
 
     // --- NPM EC2 Picker ---
@@ -2056,7 +2064,7 @@
             }
         })
         .catch(err => {
-            resultEl.innerHTML = '<span class="text-danger">Error: ' + err + '</span>';
+            resultEl.innerHTML = '<span class="text-danger">Error: ' + escHtml(String(err)) + '</span>';
         });
     }
 
@@ -2114,9 +2122,11 @@
                 document.getElementById('openai-deployment').value = '';
                 loadOpenAIStatus();
                 loadConfigBadges();
+            } else {
+                showToast(escHtml(data.error || 'Failed to save.'), 'danger');
             }
         })
-        .catch(err => showToast('Error saving: ' + err, 'danger'));
+        .catch(err => showToast('Error saving: ' + escHtml(String(err)), 'danger'));
     }
 
     function testOpenAIConnection() {
@@ -2127,9 +2137,9 @@
             .then(r => r.json())
             .then(data => {
                 if (data.success) {
-                    resultEl.innerHTML = '<span class="text-success"><i class="bi bi-check-circle-fill"></i> Connected (model: ' + (data.result.model || 'ok') + ')</span>';
+                    resultEl.innerHTML = '<span class="text-success"><i class="bi bi-check-circle-fill"></i> Connected (model: ' + escHtml(data.result.model || 'ok') + ')</span>';
                 } else {
-                    resultEl.innerHTML = '<span class="text-danger"><i class="bi bi-x-circle-fill"></i> ' + (data.error || 'Failed') + '</span>';
+                    resultEl.innerHTML = '<span class="text-danger"><i class="bi bi-x-circle-fill"></i> ' + escHtml(data.error || 'Failed') + '</span>';
                 }
             })
             .catch(() => {
@@ -2156,7 +2166,7 @@
                 loadNpmStatus();
                 loadConfigBadges();
             } else {
-                showToast('Login failed: ' + (data.error || 'Unknown error'), 'danger');
+                showToast('Login failed: ' + escHtml(data.error || 'Unknown error'), 'danger');
             }
         })
         .catch(err => showToast('Error: ' + err, 'danger'));
