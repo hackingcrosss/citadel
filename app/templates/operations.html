@@ -7,7 +7,7 @@
     <h1 class="h3 mb-0">Setup</h1>
     <div class="d-flex align-items-center gap-3">
         <div class="d-flex align-items-center gap-2">
-            <select id="zoneSelect" class="form-select form-select-sm" style="width: 300px;" onchange="onZoneChange()">
+            <select id="zoneSelect" class="form-select form-select-sm" style="min-width: 200px; max-width: 300px; width: 100%;" onchange="onZoneChange()">
                 <option value="">Select a Cloudflare zone...</option>
             </select>
             <span id="zones-loading-indicator" class="d-none text-muted">
@@ -83,7 +83,7 @@
                 {% endif %}
             </div>
             {% endif %}
-            <div id="email-log" class="border rounded p-2" style="max-height: 200px; overflow-y: auto; background: #0d1117; border-color: #374151 !important; color: #e2e8f0; min-height: 40px; font-family: monospace; font-size: 0.82rem;">
+            <div id="email-log" class="border rounded p-2" style="max-height: 200px; overflow-y: auto; background: var(--ir-bg); border-color: var(--ir-border-2) !important; color: var(--ir-text); min-height: 40px; font-family: monospace; font-size: 0.82rem;">
                 <small class="text-muted">Waiting for action...</small>
             </div>
         </div>
@@ -189,7 +189,7 @@
                 </button>
             </div>
             {% endif %}
-            <div id="point-log" class="border rounded p-2" style="max-height: 200px; overflow-y: auto; background: #0d1117; border-color: #374151 !important; color: #e2e8f0; min-height: 40px; font-family: monospace; font-size: 0.82rem;">
+            <div id="point-log" class="border rounded p-2" style="max-height: 200px; overflow-y: auto; background: var(--ir-bg); border-color: var(--ir-border-2) !important; color: var(--ir-text); min-height: 40px; font-family: monospace; font-size: 0.82rem;">
                 <small class="text-muted">Waiting for action...</small>
             </div>
         </div>
@@ -227,19 +227,19 @@
                 </button>
             </div>
             {% endif %}
-            <div id="c2-log" class="border rounded p-2" style="max-height: 300px; overflow-y: auto; background: #0d1117; border-color: #374151 !important; color: #e2e8f0; min-height: 40px; font-family: monospace; font-size: 0.82rem;">
+            <div id="c2-log" class="border rounded p-2" style="max-height: 300px; overflow-y: auto; background: var(--ir-bg); border-color: var(--ir-border-2) !important; color: var(--ir-text); min-height: 40px; font-family: monospace; font-size: 0.82rem;">
                 <small class="text-muted">Waiting for action...</small>
             </div>
         </div>
     </div>
 
     <!-- C2 Setup Modal -->
-    <div class="modal fade" id="c2Modal" tabindex="-1">
+    <div class="modal fade" id="c2Modal" tabindex="-1" aria-labelledby="c2ModalLabel">
         <div class="modal-dialog modal-lg">
             <div class="modal-content">
                 <div class="modal-header">
-                    <h5 class="modal-title"><i class="bi bi-crosshair"></i> New C2 Setup</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    <h5 class="modal-title" id="c2ModalLabel"><i class="bi bi-crosshair"></i> New C2 Setup</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
                     <!-- Type + Name -->
@@ -390,7 +390,7 @@
             <!-- Result -->
             <div id="wg-result" class="d-none">
                 <!-- Brand summary strip -->
-                <div class="d-flex align-items-center gap-3 mb-3 p-3 rounded" id="wg-brand-strip" style="background: var(--bs-dark, #1f2937);">
+                <div class="d-flex align-items-center gap-3 mb-3 p-3 rounded" id="wg-brand-strip" style="background: var(--ir-surface);">
                     <div id="wg-color-swatches" class="d-flex gap-1"></div>
                     <div>
                         <div class="fw-bold" id="wg-brand-name"></div>
@@ -412,7 +412,7 @@
                 <div class="spinner-border spinner-border-sm text-secondary" role="status"></div>
                 <span class="text-muted ms-2 small">Publishing website — uploading, relaunching containers, configuring NPM and DNS...</span>
             </div>
-            <div id="wg-publish-log" class="d-none mt-3" style="background:#0d1117;border:1px solid #374151;border-radius:6px;padding:12px;max-height:220px;overflow-y:auto;font-family:monospace;font-size:0.82rem;"></div>
+            <div id="wg-publish-log" class="d-none mt-3" style="background:var(--ir-bg);border:1px solid var(--ir-border-2);border-radius:6px;padding:12px;max-height:220px;overflow-y:auto;font-family:monospace;font-size:0.82rem;"></div>
         </div>
     </div>
     {% endif %}
@@ -460,7 +460,7 @@
             </button>
             {% endif %}
 
-            <div id="eg-log" class="border rounded p-2 mt-3" style="max-height: 200px; overflow-y: auto; background: #0d1117; border-color: #374151 !important; color: #e2e8f0; min-height: 40px; font-family: monospace; font-size: 0.82rem;">
+            <div id="eg-log" class="border rounded p-2 mt-3" style="max-height: 200px; overflow-y: auto; background: var(--ir-bg); border-color: var(--ir-border-2) !important; color: var(--ir-text); min-height: 40px; font-family: monospace; font-size: 0.82rem;">
                 <small class="text-muted">Configure target emails and save to begin grooming.</small>
             </div>
         </div>
@@ -475,6 +475,11 @@
     const IS_AUDITOR = {{ 'true' if current_user.role == 'auditor' else 'false' }};
     const IS_WHITE_TEAM = {{ 'true' if current_user.role == 'white_team' else 'false' }};
     const IS_READONLY = IS_AUDITOR || IS_WHITE_TEAM;
+    const ACTIVE_PROJECT_ID = {{ active_project.id if active_project else 'null' }};
+    const ACTIVE_PROJECT_CODE = {{ active_project.code | tojson if active_project else 'null' }};
+
+    function esc(s) { var d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
     var selectedZoneId = '';
     var selectedZoneName = '';
     var selectedZoneLabel = '';
@@ -581,7 +586,10 @@
             .then(function(r) { return r.json(); })
             .then(function(data) {
                 _setZonesLoading(false);
-                if (data.error) return;
+                if (data.error) {
+                    if (data.upgrade_required) showToast(data.error, 'warning');
+                    return;
+                }
                 var zones = data.zones || [];
                 var select = document.getElementById('zoneSelect');
                 var current = select.value;
@@ -651,6 +659,7 @@
             .then(function(r) { return r.json(); })
             .then(function(data) {
                 if (data.error) {
+                    if (data.upgrade_required) showToast(data.error, 'warning');
                     document.getElementById('dns-instance').innerHTML =
                         '<option value="">AWS not configured</option>';
                     return;
@@ -699,7 +708,7 @@
             mailgunDnsRecords = null;
 
             clearLog('email-log');
-            logWarn('email-log', 'Checking if <strong>' + domain + '</strong> exists in Mailgun (' + region.toUpperCase() + ')...');
+            logWarn('email-log', 'Checking if <strong>' + esc(domain) + '</strong> exists in Mailgun (' + esc(region.toUpperCase()) + ')...');
 
             // Reset buttons while checking
             document.getElementById('btn-add-mailgun').disabled = true;
@@ -715,7 +724,7 @@
                     if (!data || data.error) {
                         // Domain not found in Mailgun
                         clearLog('email-log');
-                        logInfo('email-log', '<strong>' + domain + '</strong> not found in Mailgun — ready to add');
+                        logInfo('email-log', '<strong>' + esc(domain) + '</strong> not found in Mailgun — ready to add');
                         document.getElementById('btn-add-mailgun').disabled = false;
                         document.getElementById('btn-push-dns').disabled = true;
                         document.getElementById('btn-verify-email').disabled = true;
@@ -730,7 +739,7 @@
                     var total = sending.length + receiving.length;
 
                     clearLog('email-log');
-                    logOk('email-log', '<strong>' + domain + '</strong> already exists in Mailgun');
+                    logOk('email-log', '<strong>' + esc(domain) + '</strong> already exists in Mailgun');
 
                     if (total > 0) {
                         logInfo('email-log', total + ' DNS records found:');
@@ -787,7 +796,7 @@
         .then(function(data) {
             if (data.error) {
                 setButtonLoading('btn-add-mailgun', false);
-                logErr('email-log', 'Failed: ' + data.error);
+                logErr('email-log', 'Failed: ' + esc(data.error));
                 return;
             }
             var domain = data.domain || data;
@@ -806,7 +815,7 @@
             setButtonLoading('btn-add-mailgun', false);
             if (!data) return;
             if (data.error) {
-                logErr('email-log', 'Failed to fetch DNS records: ' + data.error);
+                logErr('email-log', 'Failed to fetch DNS records: ' + esc(data.error));
                 return;
             }
 
@@ -854,7 +863,7 @@
                 .then(function(r) { return r.json(); })
                 .then(function(data) {
                     if (data.error) {
-                        logErr('email-log', 'Failed to fetch domain: ' + data.error);
+                        logErr('email-log', 'Failed to fetch domain: ' + esc(data.error));
                         return;
                     }
                     var sending = data.sending_dns_records || [];
@@ -937,7 +946,7 @@
                     if (data.error.toLowerCase().indexOf('already exists') !== -1) {
                         logWarn('email-log', rec.type + ' record already exists: ' + rec.name);
                     } else {
-                        logErr('email-log', 'Failed ' + rec.type + ' (' + rec.name + '): ' + data.error);
+                        logErr('email-log', 'Failed ' + rec.type + ' (' + rec.name + '): ' + esc(data.error));
                         failed++;
                     }
                 } else {
@@ -1031,7 +1040,7 @@
         .then(function(data) {
             if (data.error) {
                 setButtonLoading('btn-verify-email', false);
-                logErr('email-log', 'Verification failed: ' + data.error);
+                logErr('email-log', 'Verification failed: ' + esc(data.error));
                 return;
             }
             var domain = data.domain || data;
@@ -1123,7 +1132,7 @@
         .then(function(data) {
             if (data.error) {
                 setButtonLoading('btn-add-gophish', false);
-                logErr('email-log', 'Failed to create SMTP credential: ' + data.error);
+                logErr('email-log', 'Failed to create SMTP credential: ' + esc(data.error));
                 return Promise.reject('stop');
             }
             logOk('email-log', 'SMTP credential created: ' + fullLogin);
@@ -1149,7 +1158,7 @@
             setButtonLoading('btn-add-gophish', false);
             if (!data) return;
             if (data.error) {
-                logErr('email-log', 'Failed to create GoPhish profile: ' + data.error);
+                logErr('email-log', 'Failed to create GoPhish profile: ' + esc(data.error));
                 return;
             }
             logOk('email-log', 'GoPhish sending profile created: <strong>' + mailgunDomain + ' (' + username + ')</strong>');
@@ -1224,6 +1233,10 @@
         fetch('/api/cobaltstrike/servers')
             .then(function(r) { return r.json(); })
             .then(function(data) {
+                if (data.error) {
+                    if (data.upgrade_required) showToast(data.error, 'warning');
+                    return;
+                }
                 c2Servers = data.servers || [];
                 var sel = document.getElementById('c2-server-select');
                 if (!sel) return;
@@ -1271,8 +1284,8 @@
         infoEl.classList.remove('d-none');
 
         var parts = [];
-        if (csListenerIp) parts.push('Listener IP: <strong>' + csListenerIp + '</strong>');
-        if (redwardenIp) parts.push('Redirector: <strong>' + redwardenIp + '</strong>');
+        if (csListenerIp) parts.push('Listener IP: <strong>' + esc(csListenerIp) + '</strong>');
+        if (redwardenIp) parts.push('Redirector: <strong>' + esc(redwardenIp) + '</strong>');
         if (server.has_profile) parts.push('<i class="bi bi-check-circle text-success"></i> Malleable profile');
         document.getElementById('c2-server-info-text').innerHTML = parts.join(' &middot; ') || 'Server configured (no IPs set)';
     }
@@ -1342,7 +1355,7 @@
             .then(function(data) {
                 setButtonLoading('btn-point-domain', false);
                 if (data.error) {
-                    logErr('point-log', 'Failed: ' + data.error);
+                    logErr('point-log', 'Failed: ' + esc(data.error));
                 } else {
                     logOk('point-log', 'A record created: ' + recordName + ' &rarr; ' + publicIp);
                 }
@@ -1389,7 +1402,7 @@
                     if (data.error.toLowerCase().indexOf('already exists') !== -1) {
                         logWarn('point-log', 'A record already exists for ' + recordName + ' — continuing to proxy setup');
                     } else {
-                        logErr('point-log', 'Failed to create A record: ' + data.error);
+                        logErr('point-log', 'Failed to create A record: ' + esc(data.error));
                         setButtonLoading('btn-point-domain', false);
                         return;
                     }
@@ -1418,7 +1431,7 @@
                 setButtonLoading('btn-point-domain', false);
                 if (!data) return;
                 if (data.error) {
-                    logErr('point-log', 'Failed to create proxy: ' + data.error);
+                    logErr('point-log', 'Failed to create proxy: ' + esc(data.error));
                 } else {
                     logOk('point-log', 'Proxy host created: ' + recordName + ' &rarr; ' + scheme + '://' + forwardHost + ':' + forwardPort);
                     if (data.host && data.host.id) {
@@ -1786,7 +1799,7 @@
             .then(function(r) { return r.json(); })
             .then(function(data) {
                 if (data.error) {
-                    logErr(LOG, 'Failed to fetch listeners: ' + data.error);
+                    logErr(LOG, 'Failed to fetch listeners: ' + esc(data.error));
                     setButtonLoading('btn-c2-setup', false);
                     return Promise.reject('stop');
                 }
@@ -1920,7 +1933,7 @@
                 .then(function(r) { return r.json(); })
                 .then(function(data) {
                     if (data.error) {
-                        logErr(LOG, 'Failed to create CDN distribution: ' + data.error + ' — continuing with DNS setup');
+                        logErr(LOG, 'Failed to create CDN distribution: ' + esc(data.error) + ' — continuing with DNS setup');
                         return true;
                     }
                     cdnDistId = data.distribution.id;
@@ -1930,7 +1943,7 @@
                     waitForCdnDomain(cdnDistId)
                         .then(function(domain) {
                             cdnDomain = domain;
-                            logOk(LOG, 'CDN domain ready: <strong>' + domain + '</strong>');
+                            logOk(LOG, 'CDN domain ready: <strong>' + esc(domain) + '</strong>');
                         })
                         .catch(function(err) {
                             logWarn(LOG, 'CDN domain poll: ' + err);
@@ -2013,10 +2026,10 @@
         var text = document.getElementById('wg-resume-text');
         var fqdn = subdomain ? subdomain + '.[zone]' : '[zone]';
         var msg = 'Website generation task still pending';
-        if (category) msg += ' for <strong>' + category + '</strong>';
-        if (subdomain) msg += ' at <strong>' + subdomain + '.&lt;zone&gt;</strong>';
+        if (category) msg += ' for <strong>' + esc(category) + '</strong>';
+        if (subdomain) msg += ' at <strong>' + esc(subdomain) + '.&lt;zone&gt;</strong>';
         if (elapsed !== null) msg += ' (' + elapsed + 's ago)';
-        msg += ' — Task: <code>' + taskId + '</code>';
+        msg += ' — Task: <code>' + esc(taskId) + '</code>';
         text.innerHTML = msg;
         banner.classList.remove('d-none');
     })();
@@ -2137,6 +2150,7 @@
         .then(function(data) {
             if (data.error) {
                 document.getElementById('wg-btn-generate').disabled = false;
+                if (data.upgrade_required) { showToast(data.error, 'warning'); return; }
                 document.getElementById('wg-error').textContent = data.error;
                 document.getElementById('wg-error').classList.remove('d-none');
                 return;
@@ -2280,6 +2294,7 @@
             log.classList.remove('d-none');
 
             if (data.error) {
+                if (data.upgrade_required) { showToast(data.error, 'warning'); return; }
                 log.innerHTML = '<span class="text-danger"><i class="bi bi-x-circle-fill"></i> ' + escapeHtml(data.error) + '</span>';
                 return;
             }
@@ -2470,7 +2485,7 @@
             .then(function(r) { if (r) return r.json(); })
             .then(function(data) {
                 if (!data) return;
-                if (data.error) { logErr('eg-log', data.error); return; }
+                if (data.error) { logErr('eg-log', esc(data.error)); return; }
 
                 if (data.created && data.created.length) {
                     logOk('eg-log', data.created.length + ' target(s) configured: ' + data.created.join(', '));
