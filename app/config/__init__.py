@@ -14,7 +14,12 @@ class Config:
     SQLALCHEMY_DATABASE_URI = os.getenv('DATABASE_URL')
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     MASTER_ENCRYPTION_KEY = os.getenv('MASTER_ENCRYPTION_KEY')
-    
+
+    # Session cookie hardening
+    SESSION_COOKIE_HTTPONLY = True
+    SESSION_COOKIE_SAMESITE = 'Lax'
+    SESSION_COOKIE_SECURE = os.getenv('FLASK_ENV') != 'development'
+
     # Celery
     CELERY_BROKER_URL = os.getenv('CELERY_BROKER_URL')
     CELERY_RESULT_BACKEND = os.getenv('CELERY_RESULT_BACKEND')
