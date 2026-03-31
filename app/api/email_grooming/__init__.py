@@ -8,7 +8,7 @@ from app import db
 from app.models.domain import Domain
 from app.models.email_grooming import EmailGroomingConfig
 from app.models.email_grooming_log import EmailGroomingLog
-from app.services.project_service import get_active_project
+from app.services.project_service import get_active_project, assert_domain_accessible
 
 _EMAIL_RE = re.compile(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$')
 _OUTLOOK_DOMAINS = {
@@ -108,6 +108,12 @@ def create_email_grooming():
     if not domain:
         return jsonify({'error': 'Domain not found'}), 404
 
+    if not current_user.is_admin:
+        try:
+            assert_domain_accessible(domain_id, current_user, write=True)
+        except Exception:
+            return jsonify({'error': 'You do not have write access to this domain'}), 403
+
     targets = data.get('targets') or []
     if not targets:
         return jsonify({'error': 'At least one target email is required'}), 400
@@ -171,6 +177,11 @@ def update_email_grooming(config_id):
     config = EmailGroomingConfig.query.get(config_id)
     if not config:
         return jsonify({'error': 'Config not found'}), 404
+    if not current_user.is_admin:
+        try:
+            assert_domain_accessible(config.domain_id, current_user, write=True)
+        except Exception:
+            return jsonify({'error': 'You do not have write access to this domain'}), 403
     data = request.get_json(silent=True) or {}
 
     if 'status' in data:
@@ -202,6 +213,11 @@ def delete_email_grooming(config_id):
     config = EmailGroomingConfig.query.get(config_id)
     if not config:
         return jsonify({'error': 'Config not found'}), 404
+    if not current_user.is_admin:
+        try:
+            assert_domain_accessible(config.domain_id, current_user, write=True)
+        except Exception:
+            return jsonify({'error': 'You do not have write access to this domain'}), 403
     try:
         # Delete associated logs first (in case CASCADE isn't set at DB level)
         EmailGroomingLog.query.filter_by(config_id=config_id).delete()

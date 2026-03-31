@@ -57,6 +57,16 @@ def create_proxy_host():
         if field not in data:
             return jsonify({'error': f'Missing required field: {field}'}), 400
 
+    # Validate domain ownership for non-admin users
+    if not current_user.is_admin:
+        active_project = get_active_project(current_user)
+        if active_project:
+            project_domains = get_project_domain_names(active_project.id)
+            requested = [d.lower().strip() for d in data.get('domain_names', [])]
+            unauthorized = [d for d in requested if d not in project_domains]
+            if unauthorized:
+                return jsonify({'error': f'Not authorized for domain(s): {", ".join(unauthorized)}'}), 403
+
     try:
         host = npm_service.create_proxy_host(
             domain_names=data['domain_names'],

@@ -394,6 +394,7 @@ def aws_get_service_status(instance_id, service_name):
 
 @api_bp.route('/aws/instances/<instance_id>/services/<service_name>/<action>', methods=['POST'])
 @login_required
+@admin_required
 def aws_service_action(instance_id, service_name, action):
     if action not in ('start', 'stop', 'restart'):
         return jsonify({'error': 'Invalid action. Must be start, stop, or restart'}), 400
