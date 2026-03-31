@@ -6,7 +6,7 @@
 <div class="d-flex justify-content-between align-items-center mb-4">
     <h1 class="h3 mb-0">AWS EC2</h1>
     <div class="d-flex gap-2 align-items-center">
-        <select id="regionSelect" class="form-select form-select-sm" style="width: 200px;" onchange="loadInstances()">
+        <select id="regionSelect" class="form-select form-select-sm" style="min-width:160px;max-width:200px;width:100%;" onchange="loadInstances()">
             <option value="us-east-1">US East (N. Virginia)</option>
             <option value="us-east-2">US East (Ohio)</option>
             <option value="us-west-1">US West (N. California)</option>
@@ -137,10 +137,11 @@
                     <i class="bi bi-cloud text-muted" style="font-size: 2rem;"></i>
                     <div class="text-muted mt-2">No instances found in this region</div>
                 </div>
+                <div class="table-responsive">
                 <table class="table table-hover mb-0 d-none" id="instancesTable">
                     <thead class="table-light">
                         <tr>
-                            <th style="width: 30px;"><input type="checkbox" id="selectAll" onchange="toggleSelectAll()"></th>
+                            <th style="width: 30px;"><input type="checkbox" id="selectAll" onchange="toggleSelectAll()" aria-label="Select all instances"></th>
                             <th>Provider</th>
                             <th>Name</th>
                             <th>Instance ID</th>
@@ -156,6 +157,7 @@
                     </thead>
                     <tbody id="instancesBody"></tbody>
                 </table>
+                </div>
             </div>
         </div>
 
@@ -166,7 +168,7 @@
 
         <!-- Instance selector -->
         <div class="d-flex gap-2 align-items-center mb-3">
-            <select id="svcInstanceSelect" class="form-select form-select-sm" style="width: 380px;" onchange="onSvcInstanceChange()" disabled>
+            <select id="svcInstanceSelect" class="form-select form-select-sm" style="min-width:200px;max-width:380px;width:100%;" onchange="onSvcInstanceChange()" disabled>
                 <option value="">Select a running instance with SSH configured...</option>
             </select>
             <button class="btn btn-sm btn-outline-secondary" onclick="loadServices()" id="svcBtnRefresh" disabled>
@@ -219,12 +221,12 @@
 </div><!-- /tab-content -->
 
 <!-- Instance Detail Modal -->
-<div class="modal fade" id="detailModal" tabindex="-1">
+<div class="modal fade" id="detailModal" tabindex="-1" aria-labelledby="detailModalLabel">
     <div class="modal-dialog modal-lg">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title">Instance Details</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                <h5 class="modal-title" id="detailModalLabel">Instance Details</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body" id="detailBody">
                 <div class="text-center py-3">
@@ -236,12 +238,12 @@
 </div>
 
 <!-- Security Groups Modal -->
-<div class="modal fade" id="sgModal" tabindex="-1">
+<div class="modal fade" id="sgModal" tabindex="-1" aria-labelledby="sgModalLabel">
     <div class="modal-dialog modal-lg">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title">Security Group Details</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                <h5 class="modal-title" id="sgModalLabel">Security Group Details</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body" id="sgBody">
                 <div class="text-center py-3">
@@ -253,12 +255,12 @@
 </div>
 
 <!-- SSH Config Modal -->
-<div class="modal fade" id="sshConfigModal" tabindex="-1">
+<div class="modal fade" id="sshConfigModal" tabindex="-1" aria-labelledby="sshConfigModalLabel">
     <div class="modal-dialog">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title"><i class="bi bi-key"></i> SSH Configuration</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                <h5 class="modal-title" id="sshConfigModalLabel"><i class="bi bi-key"></i> SSH Configuration</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
                 <input type="hidden" id="sshConfigInstanceId">
@@ -314,12 +316,12 @@
 </div>
 
 <!-- Terminate Confirm Modal -->
-<div class="modal fade" id="terminateModal" tabindex="-1">
+<div class="modal fade" id="terminateModal" tabindex="-1" aria-labelledby="terminateModalLabel">
     <div class="modal-dialog">
         <div class="modal-content">
             <div class="modal-header bg-danger text-white">
-                <h5 class="modal-title"><i class="bi bi-exclamation-triangle"></i> Confirm Termination</h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                <h5 class="modal-title" id="terminateModalLabel"><i class="bi bi-exclamation-triangle"></i> Confirm Termination</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
                 <p>Are you sure you want to <strong>terminate</strong> this instance? This action <strong>cannot be undone</strong>.</p>
@@ -334,12 +336,12 @@
 </div>
 
 <!-- Status Checks Modal -->
-<div class="modal fade" id="statusChecksModal" tabindex="-1">
+<div class="modal fade" id="statusChecksModal" tabindex="-1" aria-labelledby="statusChecksModalLabel">
     <div class="modal-dialog modal-lg">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title"><i class="bi bi-shield-check"></i> Instance Status Checks — <span id="statusChecksTitle"></span></h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                <h5 class="modal-title" id="statusChecksModalLabel"><i class="bi bi-shield-check"></i> Instance Status Checks — <span id="statusChecksTitle"></span></h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body" id="statusChecksBody">
                 <div class="text-center py-4"><div class="spinner-border text-primary"></div></div>
@@ -353,12 +355,12 @@
 </div>
 
 <!-- Service Detail Modal -->
-<div class="modal fade" id="serviceDetailModal" tabindex="-1">
+<div class="modal fade" id="serviceDetailModal" tabindex="-1" aria-labelledby="serviceDetailModalLabel">
     <div class="modal-dialog modal-lg">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title"><i class="bi bi-file-text"></i> <span id="serviceDetailName"></span></h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                <h5 class="modal-title" id="serviceDetailModalLabel"><i class="bi bi-file-text"></i> <span id="serviceDetailName"></span></h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body" id="serviceDetailBody">
                 <div class="text-center py-3">
@@ -417,20 +419,24 @@
     }
 
     async function tagResource(rType, extId) {
-        const res = await fetch('/api/projects/' + ACTIVE_PROJECT_ID + '/resources', {
-            method: 'POST', headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({resource_type: rType, external_id: extId}),
-        });
-        if (!res.ok) { const d = await res.json(); showToast(d.error || 'Tag failed', 'danger'); return; }
-        loadInstances();
+        try {
+            const res = await fetch('/api/projects/' + ACTIVE_PROJECT_ID + '/resources', {
+                method: 'POST', headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({resource_type: rType, external_id: extId}),
+            });
+            if (!res.ok) { const d = await res.json(); showToast(d.error || 'Tag failed', 'danger'); return; }
+            loadInstances();
+        } catch (err) { showToast('Tag failed: ' + err, 'danger'); }
     }
 
     async function untagResource(projId, resId) {
-        const confirmed = await showConfirm('Remove project tag from this instance?');
-        if (!confirmed) return;
-        const res = await fetch('/api/projects/' + projId + '/resources/' + resId, {method: 'DELETE'});
-        if (!res.ok) { const d = await res.json(); showToast(d.error || 'Untag failed', 'danger'); return; }
-        loadInstances();
+        try {
+            const confirmed = await showConfirm('Remove project tag from this instance?');
+            if (!confirmed) return;
+            const res = await fetch('/api/projects/' + projId + '/resources/' + resId, {method: 'DELETE'});
+            if (!res.ok) { const d = await res.json(); showToast(d.error || 'Untag failed', 'danger'); return; }
+            loadInstances();
+        } catch (err) { showToast('Untag failed: ' + err, 'danger'); }
     }
 
     // ─────────────────────────────────────────
@@ -553,7 +559,7 @@
             const sshBtnClass = inst.ssh_configured ? 'btn-outline-success' : 'btn-outline-secondary';
             return `
             <tr>
-                <td><input type="checkbox" class="inst-check" value="${idAttr}" onchange="updateBulkButtons()"></td>
+                <td><input type="checkbox" class="inst-check" value="${idAttr}" onchange="updateBulkButtons()" aria-label="Select ${nameAttr}"></td>
                 <td><span class="badge bg-warning text-dark" title="${escapeHtml(inst.account_label || 'default')}">${escapeHtml(inst.account_label && inst.account_label !== 'default' ? inst.account_label : 'AWS')}</span></td>
                 <td>${nameHtml}</td>
                 <td><code class="text-primary" style="cursor:pointer" onclick="showDetail('${idAttr}')">${id}</code></td>
@@ -693,9 +699,10 @@
 
     function updateBulkButtons() {
         const selected = document.querySelectorAll('.inst-check:checked').length;
-        document.getElementById('btnBulkStart').disabled = selected === 0;
-        document.getElementById('btnBulkStop').disabled = selected === 0;
-        document.getElementById('btnBulkReboot').disabled = selected === 0;
+        var el;
+        el = document.getElementById('btnBulkStart');  if (el) el.disabled = selected === 0;
+        el = document.getElementById('btnBulkStop');   if (el) el.disabled = selected === 0;
+        el = document.getElementById('btnBulkReboot'); if (el) el.disabled = selected === 0;
     }
 
     function getSelectedIds() {
@@ -1046,6 +1053,7 @@
     }
 
     function saveSSHConfig() {
+        if (IS_READONLY) return;
         var instanceId = document.getElementById('sshConfigInstanceId').value;
         var username = document.getElementById('sshUsername').value.trim();
         var keyLabel = document.getElementById('sshKeyLabel').value.trim();
@@ -1088,6 +1096,7 @@
     }
 
     function deleteSSHConfig() {
+        if (IS_READONLY) return;
         var instanceId = document.getElementById('sshConfigInstanceId').value;
         if (!confirm('Remove SSH configuration for this instance?')) return;
 
@@ -1231,11 +1240,11 @@
                 '<td><small class="text-muted">' + escapeHtml(svc.description) + '</small></td>' +
                 '<td>' +
                     '<div class="btn-group btn-group-sm">' +
-                        (isStopped || isFailed ? '<button class="btn btn-outline-success btn-sm" title="Start" onclick="doServiceAction(\'' + escapeAttr(svc.name) + '\', \'start\')"><i class="bi bi-play-fill"></i></button>' : '') +
-                        (isRunning ? '<button class="btn btn-outline-warning btn-sm" title="Stop" onclick="doServiceAction(\'' + escapeAttr(svc.name) + '\', \'stop\')"><i class="bi bi-stop-fill"></i></button>' : '') +
-                        (isRunning ? '<button class="btn btn-outline-info btn-sm" title="Restart" onclick="doServiceAction(\'' + escapeAttr(svc.name) + '\', \'restart\')"><i class="bi bi-arrow-repeat"></i></button>' : '') +
-                        (canEnable  ? '<button class="btn btn-outline-success btn-sm" title="Enable" onclick="doServiceAction(\'' + escapeAttr(svc.name) + '\', \'enable\')"><i class="bi bi-check2-circle"></i></button>' : '') +
-                        (canDisable ? '<button class="btn btn-outline-danger btn-sm" title="Disable" onclick="doServiceAction(\'' + escapeAttr(svc.name) + '\', \'disable\')"><i class="bi bi-slash-circle"></i></button>' : '') +
+                        (!IS_READONLY && (isStopped || isFailed) ? '<button class="btn btn-outline-success btn-sm" title="Start" onclick="doServiceAction(\'' + escapeAttr(svc.name) + '\', \'start\')"><i class="bi bi-play-fill"></i></button>' : '') +
+                        (!IS_READONLY && isRunning ? '<button class="btn btn-outline-warning btn-sm" title="Stop" onclick="doServiceAction(\'' + escapeAttr(svc.name) + '\', \'stop\')"><i class="bi bi-stop-fill"></i></button>' : '') +
+                        (!IS_READONLY && isRunning ? '<button class="btn btn-outline-info btn-sm" title="Restart" onclick="doServiceAction(\'' + escapeAttr(svc.name) + '\', \'restart\')"><i class="bi bi-arrow-repeat"></i></button>' : '') +
+                        (!IS_READONLY && canEnable  ? '<button class="btn btn-outline-success btn-sm" title="Enable" onclick="doServiceAction(\'' + escapeAttr(svc.name) + '\', \'enable\')"><i class="bi bi-check2-circle"></i></button>' : '') +
+                        (!IS_READONLY && canDisable ? '<button class="btn btn-outline-danger btn-sm" title="Disable" onclick="doServiceAction(\'' + escapeAttr(svc.name) + '\', \'disable\')"><i class="bi bi-slash-circle"></i></button>' : '') +
                         '<button class="btn btn-outline-secondary btn-sm" title="View Configuration" onclick="showServiceDetail(\'' + escapeAttr(svc.name) + '\', \'config\')"><i class="bi bi-file-code"></i></button>' +
                     '</div>' +
                 '</td>' +
