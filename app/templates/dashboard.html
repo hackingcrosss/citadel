@@ -19,7 +19,8 @@
     </div>
 </div>
 
-<!-- First-run guidance banner -->
+<!-- First-run guidance banner (admin only) -->
+{% if current_user.is_admin %}
 <div id="first-run-banner" class="alert alert-warning alert-dismissible mb-4 d-none" role="alert">
     <i class="bi bi-exclamation-triangle-fill me-2"></i>
     <strong>Getting started:</strong> The following services need credentials configured in
@@ -27,6 +28,7 @@
     <span id="unconfigured-list" class="ms-1"></span>
     <button type="button" class="btn-close" onclick="dismissBanner()"></button>
 </div>
+{% endif %}
 
 <!-- Stats Row -->
 <div class="row g-3 mb-4">
@@ -363,6 +365,7 @@
 
     // --- First-run banner ---
     function checkFirstRun() {
+        if (!document.getElementById('first-run-banner')) return;
         if (sessionStorage.getItem('infrared_banner_dismissed')) return;
 
         var providers = [
