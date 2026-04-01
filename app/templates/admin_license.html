@@ -171,7 +171,7 @@ function renderTierCards(d) {
             ? '<li class="text-muted small">Core infrastructure only</li>'
             : (t.features || []).map(function(f) {
                 return '<li class="small"><i class="bi bi-check text-success me-1"></i>' +
-                    (ALL_FEATURE_LABELS[f] || f) + '</li>';
+                    escapeHtml(ALL_FEATURE_LABELS[f] || f) + '</li>';
               }).join('');
 
         return '<div class="col-md-3">' +
@@ -181,7 +181,7 @@ function renderTierCards(d) {
                 'onclick="selectTier(\'' + tierKey + '\')">' +
                 '<div class="card-body">' +
                     '<div class="d-flex align-items-center gap-2 mb-2">' +
-                        '<span class="badge ' + color + '">' + t.display_name + '</span>' +
+                        '<span class="badge ' + color + '">' + escapeHtml(t.display_name) + '</span>' +
                         (isActive ? '<span class="badge bg-danger ms-auto"><i class="bi bi-check2"></i> Active</span>' : '') +
                     '</div>' +
                     '<div class="small text-muted mb-1"><i class="bi bi-people me-1"></i>' + maxU + '</div>' +
