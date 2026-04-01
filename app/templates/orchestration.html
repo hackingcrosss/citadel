@@ -148,7 +148,7 @@
 
     <!-- Action buttons -->
     <div class="d-flex gap-2 mb-3">
-        {% if not (current_user.role == 'auditor' or current_user.role == 'white_team') %}
+        {% if current_user.role not in ['viewer', 'auditor', 'white_team'] %}
         <button class="btn btn-outline-success btn-sm" onclick="runGroomingCycle()" id="btn-run-cycle"
                 title="Send all remaining daily emails for every active config">
             <i class="bi bi-play-circle"></i> Send All Now
@@ -387,12 +387,6 @@
     }
 
     // --- Helpers ---
-
-    function escapeHtml(str) {
-        var div = document.createElement('div');
-        div.appendChild(document.createTextNode(str));
-        return div.innerHTML;
-    }
 
     function logStep(logId, icon, colorClass, message) {
         var log = document.getElementById(logId);
@@ -698,7 +692,7 @@
             .then(function(r) { return r.json(); })
             .then(function(data) {
                 if (data.error) {
-                    logErr(LOG, 'Failed to delete CS listener: ' + data.error);
+                    logErr(LOG, 'Failed to delete CS listener: ' + escapeHtml(data.error));
                 } else {
                     logOk(LOG, 'CS listener deleted: ' + escapeHtml(listenerName));
                 }
@@ -710,12 +704,12 @@
                         .then(function(r) { return r.json(); })
                         .then(function(data) {
                             if (data.error) {
-                                logErr(LOG, 'Failed to delete NPM host ' + escapeHtml(target) + ': ' + data.error);
+                                logErr(LOG, 'Failed to delete NPM host ' + escapeHtml(target) + ': ' + escapeHtml(data.error));
                             } else {
                                 logOk(LOG, 'NPM proxy host deleted: ' + escapeHtml(target));
                             }
                         })
-                        .catch(function(err) { logErr(LOG, 'NPM delete failed: ' + err); });
+                        .catch(function(err) { logErr(LOG, 'NPM delete failed: ' + escapeHtml(String(err))); });
                 });
 
                 return Promise.all(npmPromises);
@@ -739,7 +733,7 @@
                             logOk(LOG, 'CDN distribution deleted');
                         }
                     })
-                    .catch(function(err) { logErr(LOG, 'CDN delete error: ' + err); });
+                    .catch(function(err) { logErr(LOG, 'CDN delete error: ' + escapeHtml(String(err))); });
             })
             .then(function() {
                 if (dep.matchedDns.length === 0) {
@@ -753,12 +747,12 @@
                         .then(function(resp) { return resp.json(); })
                         .then(function(data) {
                             if (data.error) {
-                                logErr(LOG, 'Failed to delete DNS record ' + r.name + ': ' + data.error);
+                                logErr(LOG, 'Failed to delete DNS record ' + escapeHtml(r.name) + ': ' + escapeHtml(data.error));
                             } else {
                                 logOk(LOG, 'DNS record deleted: ' + escapeHtml(r.name));
                             }
                         })
-                        .catch(function(err) { logErr(LOG, 'DNS delete failed: ' + err); });
+                        .catch(function(err) { logErr(LOG, 'DNS delete failed: ' + escapeHtml(String(err))); });
                 });
 
                 return Promise.all(dnsPromises);
@@ -768,7 +762,7 @@
                 loadDeployments();
             })
             .catch(function(err) {
-                logErr(LOG, 'Unexpected error: ' + err);
+                logErr(LOG, 'Unexpected error: ' + escapeHtml(String(err)));
             });
     }
 
@@ -870,7 +864,7 @@
                 if (d.error) logErr(LOG, 'Container cleanup failed: ' + escapeHtml(d.error));
                 else logOk(LOG, 'Container stopped and removed from docker-compose');
             })
-            .catch(function(err) { logErr(LOG, 'Container cleanup error: ' + err); })
+            .catch(function(err) { logErr(LOG, 'Container cleanup error: ' + escapeHtml(String(err))); })
 
             // Step 2: delete NPM proxy host
             .then(function() {
@@ -885,7 +879,7 @@
                         if (d.error) logErr(LOG, 'NPM delete failed: ' + escapeHtml(d.error));
                         else logOk(LOG, 'NPM proxy host deleted');
                     })
-                    .catch(function(err) { logErr(LOG, 'NPM delete error: ' + err); });
+                    .catch(function(err) { logErr(LOG, 'NPM delete error: ' + escapeHtml(String(err))); });
             })
 
             // Step 3: find zone from allZones and delete Cloudflare A record
@@ -913,7 +907,7 @@
                                     if (d.error) logErr(LOG, 'DNS delete failed: ' + escapeHtml(d.error));
                                     else logOk(LOG, 'DNS A record deleted: ' + escapeHtml(r.name));
                                 })
-                                .catch(function(err) { logErr(LOG, 'DNS delete error: ' + err); });
+                                .catch(function(err) { logErr(LOG, 'DNS delete error: ' + escapeHtml(String(err))); });
                         }));
                     });
             })
@@ -923,7 +917,7 @@
                 loadGroomedSites();
             })
             .catch(function(err) {
-                logErr(LOG, 'Unexpected error: ' + err);
+                logErr(LOG, 'Unexpected error: ' + escapeHtml(String(err)));
             });
     }
 
@@ -1025,10 +1019,10 @@
         })
         .then(function(r) { return r.json(); })
         .then(function(data) {
-            if (data.error) { if (data.upgrade_required) return; alert('Failed: ' + data.error); return; }
+            if (data.error) { if (data.upgrade_required) return; showToast('Failed: ' + escapeHtml(data.error), 'danger'); return; }
             loadEmailGrooming();
         })
-        .catch(function(err) { alert('Failed: ' + err.message); });
+        .catch(function(err) { showToast('Failed: ' + escapeHtml(String(err)), 'danger'); });
     }
 
     function deleteEgConfig(configId) {
@@ -1036,7 +1030,7 @@
         fetch('/api/email-grooming/' + configId, {method: 'DELETE'})
             .then(_jsonOrError)
             .then(function() { loadEmailGrooming(); })
-            .catch(function(err) { alert('Failed: ' + err.message); });
+            .catch(function(err) { showToast('Failed: ' + escapeHtml(String(err)), 'danger'); });
     }
 
     function _jsonOrError(r) {
@@ -1051,13 +1045,13 @@
             .then(function(data) {
                 if (data.error) {
                     if (data.upgrade_required) return;
-                    alert('Send failed: ' + data.error);
+                    showToast('Send failed: ' + escapeHtml(data.error), 'danger');
                     return;
                 }
                 // Refresh after a short delay to let the task complete
                 setTimeout(function() { loadEmailGrooming(); loadSendLogs(); }, 3000);
             })
-            .catch(function(err) { alert('Failed: ' + err.message); })
+            .catch(function(err) { showToast('Failed: ' + escapeHtml(String(err)), 'danger'); })
             .finally(function() {
                 if (btn) { btn.disabled = false; btn.innerHTML = '<i class="bi bi-send"></i>'; }
             });
@@ -1073,7 +1067,7 @@
             .then(function(data) {
                 if (data.error) {
                     if (data.upgrade_required) return;
-                    alert('Cycle failed: ' + data.error);
+                    showToast('Cycle failed: ' + escapeHtml(data.error), 'danger');
                     return;
                 }
                 // Poll logs every 10s while task runs — task sends all remaining daily emails
@@ -1093,7 +1087,7 @@
                     loadSendLogs();
                 }, 15000);
             })
-            .catch(function(err) { alert('Failed: ' + err.message); })
+            .catch(function(err) { showToast('Failed: ' + escapeHtml(String(err)), 'danger'); })
             .finally(function() {
                 setTimeout(function() {
                     btn.disabled = false;
