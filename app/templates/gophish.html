@@ -9,7 +9,7 @@
         <button class="btn btn-sm btn-outline-secondary" onclick="refreshCurrentTab()">
             <i class="bi bi-arrow-clockwise"></i> Refresh
         </button>
-        {% if current_user.role != 'viewer' and active_project_role != 'white_team' %}
+        {% if current_user.role not in ['viewer', 'auditor', 'white_team'] and active_project_role != 'white_team' %}
         <button class="btn btn-sm btn-infrared d-none" id="btn-new-profile" data-bs-toggle="modal" data-bs-target="#createProfileModal">
             <i class="bi bi-plus-circle"></i> New Profile
         </button>
@@ -45,6 +45,7 @@
 <div id="pane-profiles">
     <div class="card-custom">
         <div class="card-body p-0">
+            <div class="table-responsive">
             <table class="table table-hover mb-0">
                 <thead>
                     <tr>
@@ -66,6 +67,7 @@
                     </tr>
                 </tbody>
             </table>
+            </div>
         </div>
     </div>
 </div>
@@ -74,6 +76,7 @@
 <div id="pane-templates" class="d-none">
     <div class="card-custom">
         <div class="card-body p-0">
+            <div class="table-responsive">
             <table class="table table-hover mb-0">
                 <thead>
                     <tr>
@@ -92,16 +95,17 @@
                     </tr>
                 </tbody>
             </table>
+            </div>
         </div>
     </div>
 </div>
 
 <!-- Create Profile Modal -->
-<div class="modal fade" id="createProfileModal" tabindex="-1">
+<div class="modal fade" id="createProfileModal" tabindex="-1" aria-labelledby="createProfileModalLabel">
     <div class="modal-dialog">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title"><i class="bi bi-plus-circle"></i> New Sending Profile</h5>
+                <h5 class="modal-title" id="createProfileModalLabel"><i class="bi bi-plus-circle"></i> New Sending Profile</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
@@ -147,7 +151,7 @@
 </div>
 
 <!-- Create/Edit Template Modal -->
-<div class="modal fade" id="createTemplateModal" tabindex="-1">
+<div class="modal fade" id="createTemplateModal" tabindex="-1" aria-labelledby="tpl-modal-title">
     <div class="modal-dialog modal-lg">
         <div class="modal-content">
             <div class="modal-header">
@@ -192,7 +196,7 @@
                     </button>
                 </div>
                 <div id="tpl-editor-preview" class="d-none">
-                    <iframe id="tpl-preview-frame" style="width:100%;height:300px;border:1px solid #374151;border-radius:6px;background:#fff"></iframe>
+                    <iframe id="tpl-preview-frame" style="width:100%;height:300px;border:1px solid var(--ir-border-2, #374151);border-radius:6px;background:#fff"></iframe>
                 </div>
             </div>
             <div class="modal-footer">
@@ -206,16 +210,16 @@
 </div>
 
 <!-- View Template Modal -->
-<div class="modal fade" id="viewTemplateModal" tabindex="-1">
+<div class="modal fade" id="viewTemplateModal" tabindex="-1" aria-labelledby="viewTemplateModalLabel">
     <div class="modal-dialog modal-lg">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title"><i class="bi bi-eye"></i> <span id="view-tpl-name"></span></h5>
+                <h5 class="modal-title" id="viewTemplateModalLabel"><i class="bi bi-eye"></i> <span id="view-tpl-name"></span></h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
                 <div class="mb-2"><strong>Subject:</strong> <span id="view-tpl-subject"></span></div>
-                <iframe id="view-tpl-frame" style="width:100%;height:350px;border:1px solid #374151;border-radius:6px;background:#fff"></iframe>
+                <iframe id="view-tpl-frame" style="width:100%;height:350px;border:1px solid var(--ir-border-2, #374151);border-radius:6px;background:#fff"></iframe>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
@@ -310,6 +314,7 @@
         fetch('/api/gophish/profiles')
             .then(function(r) { return r.json(); })
             .then(function(data) {
+                if (data.upgrade_required) { showUpgradeRequired(data.error); return; }
                 if (data.error) {
                     document.getElementById('not-configured').classList.remove('d-none');
                     document.getElementById('pane-profiles').classList.add('d-none');
@@ -344,7 +349,7 @@
                     html += '<td>' + projectBadge('gophish_sender', String(p.id), p.project_id, p.project_code, p.project_resource_id) + '</td>';
                     html += '<td>';
                     if (!IS_READONLY) {
-                        html += '<button class="btn btn-sm btn-outline-danger" onclick="deleteProfile(' + p.id + ', \'' + escapeHtml(p.name).replace(/'/g, "\\'") + '\')" title="Delete">';
+                        html += '<button class="btn btn-sm btn-outline-danger" onclick="deleteProfile(' + p.id + ', \'' + escapeAttr(p.name) + '\')" title="Delete">';
                         html += '<i class="bi bi-trash"></i></button>';
                     }
                     html += '</td></tr>';
@@ -388,6 +393,7 @@
         .then(function(data) {
             btn.disabled = false;
             btn.innerHTML = '<i class="bi bi-plus-circle"></i> Create Profile';
+            if (data.upgrade_required) { showUpgradeRequired(data.error); return; }
             if (data.error) { alert('Failed: ' + data.error); return; }
             bootstrap.Modal.getInstance(document.getElementById('createProfileModal')).hide();
             document.getElementById('new-name').value = '';
@@ -407,7 +413,7 @@
     }
 
     function deleteProfile(id, name) {
-        showConfirm('Delete Profile', 'Delete sending profile <strong>' + name + '</strong>?', 'Delete', function() {
+        showConfirm('Delete Profile', 'Delete sending profile <strong>' + escapeHtml(name) + '</strong>?', 'Delete', function() {
             fetch('/api/gophish/profiles/' + id, {method: 'DELETE'})
                 .then(function(r) { return r.json(); })
                 .then(function(data) {
@@ -424,6 +430,7 @@
         fetch('/api/gophish/templates')
             .then(function(r) { return r.json(); })
             .then(function(data) {
+                if (data.upgrade_required) { showUpgradeRequired(data.error); return; }
                 if (data.error) return;
                 var templates = data.templates || [];
                 var badge = document.getElementById('templates-badge');
@@ -442,7 +449,7 @@
                     actions += '<button class="btn btn-sm btn-outline-info me-1" onclick="viewTemplate(' + t.id + ')" title="Preview"><i class="bi bi-eye"></i></button>';
                     if (!IS_READONLY) {
                         actions += '<button class="btn btn-sm btn-outline-warning me-1" onclick="editTemplate(' + t.id + ')" title="Edit"><i class="bi bi-pencil"></i></button>';
-                        actions += '<button class="btn btn-sm btn-outline-danger" onclick="deleteTemplate(' + t.id + ',\'' + escapeHtml(t.name).replace(/'/g, "\\'") + '\')" title="Delete"><i class="bi bi-trash"></i></button>';
+                        actions += '<button class="btn btn-sm btn-outline-danger" onclick="deleteTemplate(' + t.id + ',\'' + escapeAttr(t.name) + '\')" title="Delete"><i class="bi bi-trash"></i></button>';
                     }
                     return '<tr>'
                         + '<td>' + t.id + '</td>'
@@ -453,7 +460,7 @@
                         + '</tr>';
                 }).join('');
             })
-            .catch(function() {});
+            .catch(function() { showToast('Failed to load templates', 'danger'); });
     }
 
     function viewTemplate(id) {
@@ -580,7 +587,7 @@
     }
 
     function deleteTemplate(id, name) {
-        showConfirm('Delete Template', 'Delete email template <strong>' + name + '</strong>?', 'Delete', function() {
+        showConfirm('Delete Template', 'Delete email template <strong>' + escapeHtml(name) + '</strong>?', 'Delete', function() {
             fetch('/api/gophish/templates/' + id, {method: 'DELETE'})
                 .then(function(r) { return r.json(); })
                 .then(function(data) {
