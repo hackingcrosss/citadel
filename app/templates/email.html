@@ -5,7 +5,7 @@
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-4">
     <h1 class="h3 mb-0">Email / Mailgun</h1>
-    {% if current_user.role != 'viewer' and active_project_role != 'white_team' %}
+    {% if current_user.role not in ['viewer', 'auditor', 'white_team'] and active_project_role != 'white_team' %}
     <button class="btn btn-infrared" data-bs-toggle="modal" data-bs-target="#addDomainModal">
         <i class="bi bi-plus-circle"></i> Add Domain
     </button>
@@ -105,7 +105,7 @@
     <div class="card-custom mb-4">
         <div class="card-header d-flex justify-content-between align-items-center">
             <span><i class="bi bi-key"></i> SMTP Credentials</span>
-            {% if current_user.role != 'viewer' and active_project_role != 'white_team' %}
+            {% if current_user.role not in ['viewer', 'auditor', 'white_team'] and active_project_role != 'white_team' %}
             <button class="btn btn-sm btn-infrared" data-bs-toggle="modal" data-bs-target="#addCredentialModal">
                 <i class="bi bi-plus-circle"></i> Add Credential
             </button>
@@ -131,11 +131,11 @@
 </div>
 
 <!-- Add Domain Modal -->
-<div class="modal fade" id="addDomainModal" tabindex="-1">
+<div class="modal fade" id="addDomainModal" tabindex="-1" aria-labelledby="addDomainModalLabel">
     <div class="modal-dialog">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title">Add Sending Domain</h5>
+                <h5 class="modal-title" id="addDomainModalLabel">Add Sending Domain</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
@@ -161,11 +161,11 @@
 </div>
 
 <!-- Add SMTP Credential Modal -->
-<div class="modal fade" id="addCredentialModal" tabindex="-1">
+<div class="modal fade" id="addCredentialModal" tabindex="-1" aria-labelledby="addCredentialModalLabel">
     <div class="modal-dialog">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title">Add SMTP Credential</h5>
+                <h5 class="modal-title" id="addCredentialModalLabel">Add SMTP Credential</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
@@ -225,20 +225,24 @@
     }
 
     async function tagMailgunDomain(rType, extId) {
-        const res = await fetch('/api/projects/' + ACTIVE_PROJECT_ID + '/resources', {
-            method: 'POST', headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({resource_type: rType, external_id: extId}),
-        });
-        if (!res.ok) { const d = await res.json(); showToast(d.error || 'Tag failed', 'danger'); return; }
-        loadDomains();
+        try {
+            const res = await fetch('/api/projects/' + ACTIVE_PROJECT_ID + '/resources', {
+                method: 'POST', headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({resource_type: rType, external_id: extId}),
+            });
+            if (!res.ok) { const d = await res.json(); showToast(d.error || 'Tag failed', 'danger'); return; }
+            loadDomains();
+        } catch(e) { showToast('Network error', 'danger'); }
     }
 
     async function untagResource(projId, resId) {
         const confirmed = await showConfirm('Remove project tag from this domain?');
         if (!confirmed) return;
-        const res = await fetch('/api/projects/' + projId + '/resources/' + resId, {method: 'DELETE'});
-        if (!res.ok) { const d = await res.json(); showToast(d.error || 'Untag failed', 'danger'); return; }
-        loadDomains();
+        try {
+            const res = await fetch('/api/projects/' + projId + '/resources/' + resId, {method: 'DELETE'});
+            if (!res.ok) { const d = await res.json(); showToast(d.error || 'Untag failed', 'danger'); return; }
+            loadDomains();
+        } catch(e) { showToast('Network error', 'danger'); }
     }
 
     let currentDomain = null;
@@ -256,7 +260,7 @@
             .then(data => {
                 if (data.error) {
                     document.getElementById('domains-tbody').innerHTML =
-                        '<tr><td colspan="8" class="text-danger text-center py-4">' + data.error + '</td></tr>';
+                        '<tr><td colspan="8" class="text-danger text-center py-4">' + escapeHtml(data.error) + '</td></tr>';
                     return;
                 }
 
@@ -279,18 +283,18 @@
                     const regionClass = region === 'EU' ? 'bg-info' : 'bg-primary';
                     return '<tr>' +
                         '<td><span class="badge bg-danger">Mailgun</span></td>' +
-                        '<td><strong>' + d.name + '</strong></td>' +
-                        '<td><span class="badge ' + regionClass + '">' + region + '</span></td>' +
-                        '<td><span class="badge-status ' + stateClass + '">' + (d.state || 'unknown') + '</span></td>' +
-                        '<td>' + (d.type || 'custom') + '</td>' +
-                        '<td>' + created + '</td>' +
+                        '<td><strong>' + escapeHtml(d.name) + '</strong></td>' +
+                        '<td><span class="badge ' + regionClass + '">' + escapeHtml(region) + '</span></td>' +
+                        '<td><span class="badge-status ' + stateClass + '">' + escapeHtml(d.state || 'unknown') + '</span></td>' +
+                        '<td>' + escapeHtml(d.type || 'custom') + '</td>' +
+                        '<td>' + escapeHtml(created) + '</td>' +
                         '<td>' + projectBadge('mailgun_domain', d.name, d.project_id, d.project_code, d.project_resource_id) + '</td>' +
                         '<td>' +
                             '<div class="btn-group btn-group-sm">' +
-                                '<button class="btn btn-outline-info" title="DNS & Credentials" onclick="selectDomain(\'' + d.name + '\', \'' + region.toLowerCase() + '\')">' +
+                                '<button class="btn btn-outline-info" title="DNS & Credentials" onclick="selectDomain(\'' + escapeAttr(d.name) + '\', \'' + escapeAttr(region.toLowerCase()) + '\')">' +
                                     '<i class="bi bi-shield-check"></i>' +
                                 '</button>' +
-                                (!IS_READONLY ? '<button class="btn btn-outline-danger" title="Delete" onclick="deleteDomain(\'' + d.name + '\', \'' + region.toLowerCase() + '\')">' +
+                                (!IS_READONLY ? '<button class="btn btn-outline-danger" title="Delete" onclick="deleteDomain(\'' + escapeAttr(d.name) + '\', \'' + escapeAttr(region.toLowerCase()) + '\')">' +
                                     '<i class="bi bi-trash"></i>' +
                                 '</button>' : '') +
                             '</div>' +
@@ -326,7 +330,7 @@
     }
 
     function deleteDomain(name, region) {
-        showConfirm('Delete Domain', 'Delete domain <strong>' + name + '</strong>? This cannot be undone.', 'Delete', function() {
+        showConfirm('Delete Domain', 'Delete domain <strong>' + escapeHtml(name) + '</strong>? This cannot be undone.', 'Delete', function() {
             fetch('/api/email/domains/' + name + '?region=' + region, {method: 'DELETE'})
                 .then(r => r.json())
                 .then(data => {
@@ -365,7 +369,7 @@
             .then(data => {
                 if (data.error) {
                     document.getElementById('sending-records-tbody').innerHTML =
-                        '<tr><td colspan="5" class="text-danger">' + data.error + '</td></tr>';
+                        '<tr><td colspan="5" class="text-danger">' + escapeHtml(data.error) + '</td></tr>';
                     return;
                 }
 
@@ -382,11 +386,11 @@
                             ? '<span class="badge bg-success">Verified</span>'
                             : '<span class="badge bg-warning text-dark">Pending</span>';
                         return '<tr>' +
-                            '<td><span class="badge bg-secondary">' + r.record_type + '</span></td>' +
-                            '<td class="small">' + (r.name || '-') + '</td>' +
-                            '<td class="small text-truncate" style="max-width:300px" title="' + r.value + '">' + r.value + '</td>' +
+                            '<td><span class="badge bg-secondary">' + escapeHtml(r.record_type) + '</span></td>' +
+                            '<td class="small">' + escapeHtml(r.name || '-') + '</td>' +
+                            '<td class="small text-truncate" style="max-width:300px" title="' + escapeAttr(r.value) + '">' + escapeHtml(r.value) + '</td>' +
                             '<td>' + statusBadge + '</td>' +
-                            '<td><button class="btn btn-sm btn-outline-secondary" onclick="copyText(\'' + escapeForAttr(r.value) + '\')" title="Copy value"><i class="bi bi-clipboard"></i></button></td>' +
+                            '<td><button class="btn btn-sm btn-outline-secondary" onclick="copyText(\'' + escapeAttr(r.value) + '\')" title="Copy value"><i class="bi bi-clipboard"></i></button></td>' +
                         '</tr>';
                     }).join('');
                 }
@@ -401,11 +405,11 @@
                             ? '<span class="badge bg-success">Verified</span>'
                             : '<span class="badge bg-warning text-dark">Pending</span>';
                         return '<tr>' +
-                            '<td><span class="badge bg-secondary">' + r.record_type + '</span></td>' +
-                            '<td>' + (r.priority || '-') + '</td>' +
-                            '<td class="small">' + r.value + '</td>' +
+                            '<td><span class="badge bg-secondary">' + escapeHtml(r.record_type) + '</span></td>' +
+                            '<td>' + escapeHtml(r.priority || '-') + '</td>' +
+                            '<td class="small">' + escapeHtml(r.value) + '</td>' +
                             '<td>' + statusBadge + '</td>' +
-                            '<td><button class="btn btn-sm btn-outline-secondary" onclick="copyText(\'' + escapeForAttr(r.value) + '\')" title="Copy value"><i class="bi bi-clipboard"></i></button></td>' +
+                            '<td><button class="btn btn-sm btn-outline-secondary" onclick="copyText(\'' + escapeAttr(r.value) + '\')" title="Copy value"><i class="bi bi-clipboard"></i></button></td>' +
                         '</tr>';
                     }).join('');
                 }
@@ -446,7 +450,7 @@
             .then(data => {
                 if (data.error) {
                     document.getElementById('smtp-creds-tbody').innerHTML =
-                        '<tr><td colspan="3" class="text-danger text-center py-3">' + data.error + '</td></tr>';
+                        '<tr><td colspan="3" class="text-danger text-center py-3">' + escapeHtml(data.error) + '</td></tr>';
                     return;
                 }
 
@@ -460,10 +464,10 @@
                 document.getElementById('smtp-creds-tbody').innerHTML = creds.map(c => {
                     const created = c.created_at ? new Date(c.created_at).toLocaleDateString() : '-';
                     return '<tr>' +
-                        '<td><code>' + c.login + '</code></td>' +
-                        '<td>' + created + '</td>' +
+                        '<td><code>' + escapeHtml(c.login) + '</code></td>' +
+                        '<td>' + escapeHtml(created) + '</td>' +
                         '<td>' +
-                            (!IS_READONLY ? '<button class="btn btn-sm btn-outline-danger" onclick="deleteSmtpCredential(\'' + c.login + '\')">' +
+                            (!IS_READONLY ? '<button class="btn btn-sm btn-outline-danger" onclick="deleteSmtpCredential(\'' + escapeAttr(c.login) + '\')">' +
                                 '<i class="bi bi-trash"></i>' +
                             '</button>' : '') +
                         '</td>' +
@@ -509,7 +513,7 @@
     }
 
     function deleteSmtpCredential(login) {
-        showConfirm('Delete SMTP Credential', 'Delete SMTP credential <strong>' + login + '</strong>?', 'Delete', function() {
+        showConfirm('Delete SMTP Credential', 'Delete SMTP credential <strong>' + escapeHtml(login) + '</strong>?', 'Delete', function() {
             fetch('/api/email/domains/' + currentDomain + '/credentials/' + login + '?region=' + currentDomainRegion, {method: 'DELETE'})
                 .then(r => r.json())
                 .then(data => {
@@ -521,10 +525,6 @@
     }
 
     // --- Helpers ---
-
-    function escapeForAttr(str) {
-        return str.replace(/'/g, "\\'").replace(/"/g, '&quot;');
-    }
 
     function copyText(text) {
         navigator.clipboard.writeText(text).then(() => {}).catch(() => {
