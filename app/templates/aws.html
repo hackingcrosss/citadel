@@ -114,7 +114,7 @@
         <div class="card-custom mb-4">
             <div class="card-header d-flex justify-content-between align-items-center">
                 <span><i class="bi bi-hdd-stack"></i> EC2 Instances</span>
-                {% if current_user.role != 'viewer' and active_project_role != 'white_team' %}
+                {% if current_user.role not in ['viewer', 'auditor', 'white_team'] and active_project_role != 'white_team' %}
                 <div>
                     <button class="btn btn-sm btn-outline-success" onclick="bulkAction('start')" id="btnBulkStart" disabled>
                         <i class="bi bi-play-fill"></i> Start
@@ -200,6 +200,7 @@
                     <i class="bi bi-terminal text-muted" style="font-size: 2rem;"></i>
                     <div class="text-muted mt-2">Select a running instance with SSH configured to view services</div>
                 </div>
+                <div class="table-responsive">
                 <table class="table table-hover mb-0 d-none" id="svcTable">
                     <thead class="table-light">
                         <tr>
@@ -213,6 +214,7 @@
                     </thead>
                     <tbody id="svcBody"></tbody>
                 </table>
+                </div>
             </div>
         </div>
 
@@ -387,12 +389,6 @@
 
     document.addEventListener('DOMContentLoaded', loadInstances);
 
-    function escapeHtml(str) {
-        var div = document.createElement('div');
-        div.appendChild(document.createTextNode(str));
-        return div.innerHTML;
-    }
-
     function escapeAttr(str) {
         return String(str)
             .replace(/&/g, '&amp;')
@@ -424,9 +420,9 @@
                 method: 'POST', headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify({resource_type: rType, external_id: extId}),
             });
-            if (!res.ok) { const d = await res.json(); showToast(d.error || 'Tag failed', 'danger'); return; }
+            if (!res.ok) { const d = await res.json(); showToast(escapeHtml(d.error || 'Tag failed'), 'danger'); return; }
             loadInstances();
-        } catch (err) { showToast('Tag failed: ' + err, 'danger'); }
+        } catch (err) { showToast('Tag failed: ' + escapeHtml(String(err)), 'danger'); }
     }
 
     async function untagResource(projId, resId) {
@@ -434,9 +430,9 @@
             const confirmed = await showConfirm('Remove project tag from this instance?');
             if (!confirmed) return;
             const res = await fetch('/api/projects/' + projId + '/resources/' + resId, {method: 'DELETE'});
-            if (!res.ok) { const d = await res.json(); showToast(d.error || 'Untag failed', 'danger'); return; }
+            if (!res.ok) { const d = await res.json(); showToast(escapeHtml(d.error || 'Untag failed'), 'danger'); return; }
             loadInstances();
-        } catch (err) { showToast('Untag failed: ' + err, 'danger'); }
+        } catch (err) { showToast('Untag failed: ' + escapeHtml(String(err)), 'danger'); }
     }
 
     // ─────────────────────────────────────────
@@ -641,7 +637,7 @@
         .then(r => r.json())
         .then(data => {
             if (data.error) {
-                alert('Error: ' + data.error);
+                showToast('Error: ' + escapeHtml(data.error), 'danger');
                 return;
             }
             var inst = allInstances.find(i => i.id === instanceId);
@@ -652,7 +648,7 @@
             refreshTagFilter();
             applyFilters();
         })
-        .catch(err => alert('Error: ' + err));
+        .catch(err => showToast('Error: ' + escapeHtml(String(err)), 'danger'));
     }
 
     function removeTag(instanceId, tag) {
@@ -664,7 +660,7 @@
         .then(r => r.json())
         .then(data => {
             if (data.error) {
-                alert('Error: ' + data.error);
+                showToast('Error: ' + escapeHtml(data.error), 'danger');
                 return;
             }
             var inst = allInstances.find(i => i.id === instanceId);
@@ -674,7 +670,7 @@
             refreshTagFilter();
             applyFilters();
         })
-        .catch(err => alert('Error: ' + err));
+        .catch(err => showToast('Error: ' + escapeHtml(String(err)), 'danger'));
     }
 
     function stateBadge(state) {
@@ -726,12 +722,12 @@
                 .then(r => r.json())
                 .then(data => {
                     if (data.error) {
-                        showToast('Error: ' + data.error, 'danger');
+                        showToast('Error: ' + escapeHtml(data.error), 'danger');
                     } else {
                         setTimeout(loadInstances, 2000);
                     }
                 })
-                .catch(err => showToast('Error: ' + err, 'danger'));
+                .catch(err => showToast('Error: ' + escapeHtml(String(err)), 'danger'));
             }
         );
     }
@@ -747,12 +743,12 @@
         .then(r => r.json())
         .then(data => {
             if (data.error) {
-                alert('Error: ' + data.error);
+                showToast('Error: ' + escapeHtml(data.error), 'danger');
             } else {
                 setTimeout(loadInstances, 2000);
             }
         })
-        .catch(err => alert('Error: ' + err));
+        .catch(err => showToast('Error: ' + escapeHtml(String(err)), 'danger'));
     }
 
     // --- Terminate ---
@@ -776,12 +772,12 @@
         .then(data => {
             bootstrap.Modal.getInstance(document.getElementById('terminateModal')).hide();
             if (data.error) {
-                alert('Error: ' + data.error);
+                showToast('Error: ' + escapeHtml(data.error), 'danger');
             } else {
                 setTimeout(loadInstances, 2000);
             }
         })
-        .catch(err => alert('Error: ' + err));
+        .catch(err => showToast('Error: ' + escapeHtml(String(err)), 'danger'));
     });
 
     // --- Status Checks ---
@@ -1031,7 +1027,7 @@
                 new bootstrap.Modal(document.getElementById('sshConfigModal')).show();
             })
             .catch(err => {
-                alert('Error loading SSH config: ' + err);
+                showToast('Error loading SSH config: ' + escapeHtml(String(err)), 'danger');
             });
     }
 
@@ -1061,7 +1057,7 @@
         var privateKey = document.getElementById('sshPrivateKey').value.trim();
 
         if (!username) {
-            alert('SSH username is required');
+            showToast('SSH username is required', 'warning');
             return;
         }
 
@@ -1083,7 +1079,7 @@
         .then(r => r.json())
         .then(data => {
             if (data.error) {
-                alert('Error: ' + data.error);
+                showToast('Error: ' + escapeHtml(data.error), 'danger');
                 return;
             }
             bootstrap.Modal.getInstance(document.getElementById('sshConfigModal')).hide();
@@ -1092,7 +1088,7 @@
             applyFilters();
             populateServicesInstanceSelect();
         })
-        .catch(err => alert('Error: ' + err));
+        .catch(err => showToast('Error: ' + escapeHtml(String(err)), 'danger'));
     }
 
     function deleteSSHConfig() {
@@ -1107,7 +1103,7 @@
         .then(r => r.json())
         .then(data => {
             if (data.error) {
-                alert('Error: ' + data.error);
+                showToast('Error: ' + escapeHtml(data.error), 'danger');
                 return;
             }
             bootstrap.Modal.getInstance(document.getElementById('sshConfigModal')).hide();
@@ -1116,7 +1112,7 @@
             applyFilters();
             populateServicesInstanceSelect();
         })
-        .catch(err => alert('Error: ' + err));
+        .catch(err => showToast('Error: ' + escapeHtml(String(err)), 'danger'));
     }
 
     // ─────────────────────────────────────────
