@@ -51,7 +51,7 @@
                         <option value="eu">EU</option>
                     </select>
                 </div>
-                {% if current_user.role != 'viewer' and active_project_role != 'white_team' %}
+                {% if current_user.role not in ['viewer', 'auditor', 'white_team'] and active_project_role != 'white_team' %}
                 <div class="col-md-6 d-flex align-items-end gap-2 flex-wrap">
                     <button class="btn btn-infrared" id="btn-add-mailgun" onclick="setupEmail()">
                         <i class="bi bi-1-circle"></i> Add to Mailgun
@@ -74,7 +74,7 @@
                         <span class="input-group-text" id="email-smtp-suffix">@example.com</span>
                     </div>
                 </div>
-                {% if current_user.role != 'viewer' and active_project_role != 'white_team' %}
+                {% if current_user.role not in ['viewer', 'auditor', 'white_team'] and active_project_role != 'white_team' %}
                 <div class="col-md-3 d-flex align-items-end">
                     <button class="btn btn-outline-warning" id="btn-add-gophish" onclick="addToGophish()" disabled>
                         <i class="bi bi-4-circle"></i> Add to GoPhish
@@ -182,7 +182,7 @@
                 </div>
             </div>
 
-            {% if current_user.role != 'viewer' and active_project_role != 'white_team' %}
+            {% if current_user.role not in ['viewer', 'auditor', 'white_team'] and active_project_role != 'white_team' %}
             <div class="mb-3">
                 <button class="btn btn-infrared" id="btn-point-domain" onclick="pointDomain()">
                     <i class="bi bi-plus-circle"></i> Create
@@ -220,7 +220,7 @@
                 </div>
             </div>
 
-            {% if current_user.role != 'viewer' and active_project_role != 'white_team' %}
+            {% if current_user.role not in ['viewer', 'auditor', 'white_team'] and active_project_role != 'white_team' %}
             <div class="mb-3">
                 <button class="btn btn-infrared" data-bs-toggle="modal" data-bs-target="#c2Modal">
                     <i class="bi bi-plus-circle"></i> New C2 Setup
@@ -354,7 +354,7 @@
                     <label class="form-label">Business Category / Industry</label>
                     <input type="text" class="form-control" id="wg-category" placeholder="e.g. healthcare, fintech, law firm...">
                 </div>
-                {% if current_user.role != 'viewer' and active_project_role != 'white_team' %}
+                {% if current_user.role not in ['viewer', 'auditor', 'white_team'] and active_project_role != 'white_team' %}
                 <div class="col-md-6 d-flex align-items-end gap-2 flex-wrap">
                     <button class="btn btn-infrared" id="wg-btn-generate" onclick="generateWebsite()">
                         <i class="bi bi-stars"></i> Generate Website
@@ -403,7 +403,7 @@
                 <!-- Preview iframe -->
                 <iframe id="wg-preview"
                         sandbox="allow-scripts allow-same-origin"
-                        style="width: 100%; height: 620px; border: 1px solid #374151; border-radius: 6px; background: #fff;">
+                        style="width: 100%; height: 620px; border: 1px solid var(--ir-border-2, #374151); border-radius: 6px; background: #fff;">
                 </iframe>
             </div>
 
@@ -454,7 +454,7 @@
                 <small class="text-muted">Outlook/Hotmail addresses recommended for best deliverability warming results.</small>
             </div>
 
-            {% if current_user.role != 'viewer' and active_project_role != 'white_team' %}
+            {% if current_user.role not in ['viewer', 'auditor', 'white_team'] and active_project_role != 'white_team' %}
             <button class="btn btn-infrared" id="btn-eg-save" onclick="saveEmailGrooming()">
                 <i class="bi bi-save"></i> Save Configuration
             </button>
@@ -785,7 +785,7 @@
         document.getElementById('btn-verify-email').disabled = true;
         document.getElementById('btn-add-gophish').disabled = true;
 
-        logWarn('email-log', 'Adding <strong>' + mailgunDomain + '</strong> to Mailgun (' + mailgunRegion.toUpperCase() + ')...');
+        logWarn('email-log', 'Adding <strong>' + esc(mailgunDomain) + '</strong> to Mailgun (' + esc(mailgunRegion.toUpperCase()) + ')...');
 
         fetch('/api/email/domains', {
             method: 'POST',
@@ -850,7 +850,7 @@
         })
         .catch(function(err) {
             setButtonLoading('btn-add-mailgun', false);
-            logErr('email-log', 'Request failed: ' + err);
+            logErr('email-log', 'Request failed: ' + esc(err));
         });
     }
 
@@ -858,7 +858,7 @@
         if (!selectedZoneId) { alert('Select a zone first'); return; }
         if (!mailgunDnsRecords) {
             // Try fetching records from existing domain
-            logWarn('email-log', 'Fetching DNS records from Mailgun for ' + mailgunDomain + '...');
+            logWarn('email-log', 'Fetching DNS records from Mailgun for ' + esc(mailgunDomain) + '...');
             fetch('/api/email/domains/' + encodeURIComponent(mailgunDomain) + '?region=' + mailgunRegion)
                 .then(function(r) { return r.json(); })
                 .then(function(data) {
@@ -875,7 +875,7 @@
                         logErr('email-log', 'No DNS records found for this domain');
                     }
                 })
-                .catch(function(err) { logErr('email-log', 'Failed: ' + err); });
+                .catch(function(err) { logErr('email-log', 'Failed: ' + esc(err)); });
             return;
         }
         doPushDnsRecords();
@@ -922,7 +922,7 @@
 
             var rec = recordsToPush[index];
 
-            logWarn('email-log', 'Creating ' + rec.type + ' record: ' + rec.name + '...');
+            logWarn('email-log', 'Creating ' + esc(rec.type) + ' record: ' + esc(rec.name) + '...');
 
             var body = {
                 type: rec.type,
@@ -944,20 +944,20 @@
             .then(function(data) {
                 if (data.error) {
                     if (data.error.toLowerCase().indexOf('already exists') !== -1) {
-                        logWarn('email-log', rec.type + ' record already exists: ' + rec.name);
+                        logWarn('email-log', esc(rec.type) + ' record already exists: ' + esc(rec.name));
                     } else {
-                        logErr('email-log', 'Failed ' + rec.type + ' (' + rec.name + '): ' + esc(data.error));
+                        logErr('email-log', 'Failed ' + esc(rec.type) + ' (' + esc(rec.name) + '): ' + esc(data.error));
                         failed++;
                     }
                 } else {
-                    logOk('email-log', 'Created ' + rec.type + ' record: ' + rec.name);
+                    logOk('email-log', 'Created ' + esc(rec.type) + ' record: ' + esc(rec.name));
                     created++;
                 }
                 index++;
                 pushNext();
             })
             .catch(function(err) {
-                logErr('email-log', 'Failed ' + rec.type + ' (' + rec.name + '): ' + err);
+                logErr('email-log', 'Failed ' + esc(rec.type) + ' (' + esc(rec.name) + '): ' + esc(err));
                 failed++;
                 index++;
                 pushNext();
@@ -970,7 +970,7 @@
                 .then(function(r) { return r.json(); })
                 .then(function(dmarcData) {
                     if (dmarcData.error) {
-                        logWarn('email-log', 'DMARC Management: ' + dmarcData.error + ' — skipping DMARC record');
+                        logWarn('email-log', 'DMARC Management: ' + esc(dmarcData.error) + ' — skipping DMARC record');
                         finalisePush();
                         return;
                     }
@@ -999,7 +999,7 @@
                             if (recData.error.toLowerCase().indexOf('already exists') !== -1) {
                                 logWarn('email-log', 'DMARC record already exists — skipped');
                             } else {
-                                logErr('email-log', 'Failed to create DMARC record: ' + recData.error);
+                                logErr('email-log', 'Failed to create DMARC record: ' + esc(recData.error));
                             }
                         } else {
                             logOk('email-log', 'DMARC record created: ' + dmarcName + (rua ? ' (rua: ' + rua + ')' : ''));
@@ -1007,12 +1007,12 @@
                         finalisePush();
                     })
                     .catch(function(err) {
-                        logErr('email-log', 'DMARC record request failed: ' + err);
+                        logErr('email-log', 'DMARC record request failed: ' + esc(err));
                         finalisePush();
                     });
                 })
                 .catch(function(err) {
-                    logErr('email-log', 'DMARC Management request failed: ' + err);
+                    logErr('email-log', 'DMARC Management request failed: ' + esc(err));
                     finalisePush();
                 });
         }
@@ -1029,7 +1029,7 @@
         if (!mailgunDomain) { alert('Run step 1 first'); return; }
 
         setButtonLoading('btn-verify-email', true);
-        logWarn('email-log', 'Verifying domain ' + mailgunDomain + ' with Mailgun...');
+        logWarn('email-log', 'Verifying domain ' + esc(mailgunDomain) + ' with Mailgun...');
 
         fetch('/api/email/domains/' + encodeURIComponent(mailgunDomain) + '/verify', {
             method: 'POST',
@@ -1066,7 +1066,7 @@
         })
         .catch(function(err) {
             setButtonLoading('btn-verify-email', false);
-            logErr('email-log', 'Request failed: ' + err);
+            logErr('email-log', 'Request failed: ' + esc(err));
         });
     }
 
@@ -1117,7 +1117,7 @@
         setButtonLoading('btn-add-gophish', true);
 
         // Step 1: Create SMTP credential on Mailgun
-        logWarn('email-log', 'Creating SMTP credential <strong>' + fullLogin + '</strong> on Mailgun...');
+        logWarn('email-log', 'Creating SMTP credential <strong>' + esc(fullLogin) + '</strong> on Mailgun...');
 
         fetch('/api/email/domains/' + encodeURIComponent(mailgunDomain) + '/credentials', {
             method: 'POST',
@@ -1135,7 +1135,7 @@
                 logErr('email-log', 'Failed to create SMTP credential: ' + esc(data.error));
                 return Promise.reject('stop');
             }
-            logOk('email-log', 'SMTP credential created: ' + fullLogin);
+            logOk('email-log', 'SMTP credential created: ' + esc(fullLogin));
 
             // Step 2: Create GoPhish sending profile
             logWarn('email-log', 'Creating GoPhish sending profile...');
@@ -1161,13 +1161,13 @@
                 logErr('email-log', 'Failed to create GoPhish profile: ' + esc(data.error));
                 return;
             }
-            logOk('email-log', 'GoPhish sending profile created: <strong>' + mailgunDomain + ' (' + username + ')</strong>');
-            logInfo('email-log', 'SMTP: ' + fullLogin + ' via ' + smtpHostPort);
+            logOk('email-log', 'GoPhish sending profile created: <strong>' + esc(mailgunDomain) + ' (' + esc(username) + ')</strong>');
+            logInfo('email-log', 'SMTP: ' + esc(fullLogin) + ' via ' + esc(smtpHostPort));
         })
         .catch(function(err) {
             setButtonLoading('btn-add-gophish', false);
             if (err !== 'stop') {
-                logErr('email-log', 'Request failed: ' + err);
+                logErr('email-log', 'Request failed: ' + esc(err));
             }
         });
     }
@@ -1362,7 +1362,7 @@
             })
             .catch(function(err) {
                 setButtonLoading('btn-point-domain', false);
-                logErr('point-log', 'Request failed: ' + err);
+                logErr('point-log', 'Request failed: ' + esc(err));
             });
         } else {
             // Service via NPM — create A record to NPM host + proxy host
@@ -1441,7 +1441,7 @@
             })
             .catch(function(err) {
                 setButtonLoading('btn-point-domain', false);
-                logErr('point-log', 'Request failed: ' + err);
+                logErr('point-log', 'Request failed: ' + esc(err));
             });
         }
     }
@@ -1840,7 +1840,7 @@
                 .then(function(r) { return r.json(); })
                 .then(function(csData) {
                     if (csData.error) {
-                        logErr(LOG, 'Failed to create CS listener: ' + csData.error);
+                        logErr(LOG, 'Failed to create CS listener: ' + esc(csData.error));
                         setButtonLoading('btn-c2-setup', false);
                         return Promise.reject('stop');
                     }
@@ -1897,7 +1897,7 @@
                     .then(function(r) { return r.json(); })
                     .then(function(npmData) {
                         if (npmData.error) {
-                            logErr(LOG, 'Failed to create NPM proxy: ' + npmData.error);
+                            logErr(LOG, 'Failed to create NPM proxy: ' + esc(npmData.error));
                             setButtonLoading('btn-c2-setup', false);
                             return Promise.reject('stop');
                         }
@@ -1946,12 +1946,12 @@
                             logOk(LOG, 'CDN domain ready: <strong>' + esc(domain) + '</strong>');
                         })
                         .catch(function(err) {
-                            logWarn(LOG, 'CDN domain poll: ' + err);
+                            logWarn(LOG, 'CDN domain poll: ' + esc(err));
                         });
                     return true;
                 })
                 .catch(function(err) {
-                    logErr(LOG, 'CDN request failed: ' + err + ' — continuing with DNS setup');
+                    logErr(LOG, 'CDN request failed: ' + esc(err) + ' — continuing with DNS setup');
                     return true;
                 });
             })
@@ -1981,7 +1981,7 @@
                             if (dnsData.error.toLowerCase().indexOf('already exists') !== -1) {
                                 logWarn(LOG, 'A record already exists for ' + host + ' — skipped');
                             } else {
-                                logErr(LOG, 'Failed to create A record for ' + host + ': ' + dnsData.error);
+                                logErr(LOG, 'Failed to create A record for ' + esc(host) + ': ' + esc(dnsData.error));
                             }
                         } else {
                             logOk(LOG, 'A record created: ' + host + ' &rarr; ' + redwardenIp + ' (proxied)');
@@ -2000,7 +2000,7 @@
             .catch(function(err) {
                 setButtonLoading('btn-c2-setup', false);
                 if (err !== 'stop') {
-                    logErr(LOG, 'Unexpected error: ' + err);
+                    logErr(LOG, 'Unexpected error: ' + esc(err));
                 }
             });
     }
@@ -2333,10 +2333,8 @@
         });
     }
 
-    function escapeHtml(str) {
-        var d = document.createElement('div');
-        d.appendChild(document.createTextNode(String(str)));
-        return d.innerHTML;
+    function escapeAttr(s) {
+        return String(s || '').replace(/&/g,'&amp;').replace(/'/g,'&#x27;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
     }
 
     function downloadGeneratedHtml() {
@@ -2506,7 +2504,7 @@
                 renderEgTargets();
             })
             .catch(function(err) {
-                logErr('eg-log', 'Request failed: ' + err);
+                logErr('eg-log', 'Request failed: ' + esc(err));
             });
     }
 </script>
