@@ -34,7 +34,7 @@
     </div>
 
     <div id="listeners-content">
-        {% if current_user.role != 'viewer' and active_project_role != 'white_team' %}
+        {% if current_user.role not in ['viewer', 'auditor', 'white_team'] and active_project_role != 'white_team' %}
         <div class="mb-3">
             <button class="btn btn-sm btn-infrared" data-bs-toggle="modal" data-bs-target="#createModal">
                 <i class="bi bi-plus-circle"></i> New Listener
@@ -43,6 +43,7 @@
         {% endif %}
         <div class="card-custom">
             <div class="card-body p-0">
+                <div class="table-responsive">
                 <table class="table table-hover mb-0">
                     <thead>
                         <tr>
@@ -67,6 +68,7 @@
                         </tr>
                     </tbody>
                 </table>
+                </div>
             </div>
         </div>
     </div>
@@ -89,7 +91,7 @@
                 </div>
                 <div class="card-body p-2">
                     <textarea id="profile-text" class="form-control" rows="22"
-                              style="font-family: 'Fira Code', 'Consolas', monospace; font-size: 0.82rem; background: #0d1117; color: #e2e8f0; border-color: #374151;"
+                              style="font-family: 'Fira Code', 'Consolas', monospace; font-size: 0.82rem; background: var(--ir-bg, #0d1117); color: var(--ir-text, #e2e8f0); border-color: var(--ir-border-2, #374151);"
                               placeholder="Paste your Malleable C2 profile here, or upload a .profile file..."></textarea>
                 </div>
                 <div class="card-footer d-flex justify-content-between align-items-center">
@@ -134,11 +136,11 @@
 </div>
 
 <!-- Create Listener Modal -->
-<div class="modal fade" id="createModal" tabindex="-1">
+<div class="modal fade" id="createModal" tabindex="-1" aria-labelledby="createModalLabel">
     <div class="modal-dialog modal-lg">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title"><i class="bi bi-plus-circle"></i> New Listener</h5>
+                <h5 class="modal-title" id="createModalLabel"><i class="bi bi-plus-circle"></i> New Listener</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
@@ -179,11 +181,11 @@
     </div>
 </div>
 <!-- Edit Callback Hosts Modal -->
-<div class="modal fade" id="editHostsModal" tabindex="-1">
+<div class="modal fade" id="editHostsModal" tabindex="-1" aria-labelledby="editHostsModalLabel">
     <div class="modal-dialog">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title"><i class="bi bi-pencil-square"></i> Edit Callback Hosts</h5>
+                <h5 class="modal-title" id="editHostsModalLabel"><i class="bi bi-pencil-square"></i> Edit Callback Hosts</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
@@ -211,15 +213,15 @@
 </div>
 
 <!-- JSON Inspect Modal -->
-<div class="modal fade" id="jsonModal" tabindex="-1">
+<div class="modal fade" id="jsonModal" tabindex="-1" aria-labelledby="jsonModalLabel">
     <div class="modal-dialog modal-lg">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title"><i class="bi bi-code-slash"></i> Listener Raw JSON</h5>
+                <h5 class="modal-title" id="jsonModalLabel"><i class="bi bi-code-slash"></i> Listener Raw JSON</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
-                <pre id="json-content" style="max-height: 500px; overflow-y: auto; background: #1f2937; color: #f9fafb; padding: 15px; border-radius: 6px; font-size: 0.85rem;"></pre>
+                <pre id="json-content" style="max-height: 500px; overflow-y: auto; background: var(--ir-surface, #1f2937); color: var(--ir-text, #f9fafb); padding: 15px; border-radius: 6px; font-size: 0.85rem;"></pre>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
@@ -440,6 +442,7 @@
         fetch('/api/credentials/cobaltstrike/listener_ip')
             .then(function(r) { return r.json(); })
             .then(function(data) {
+                if (data.error) return;
                 if (data && data.value) {
                     csListenerIp = data.value;
                 }
@@ -451,6 +454,7 @@
         fetch('/api/cobaltstrike/listeners')
             .then(function(r) { return r.json(); })
             .then(function(data) {
+                if (data.upgrade_required) { showUpgradeRequired(data.error); return; }
                 if (data.error) {
                     document.getElementById('not-configured').classList.remove('d-none');
                     document.getElementById('listeners-content').classList.add('d-none');
@@ -629,6 +633,7 @@
             btn.disabled = false;
             btn.innerHTML = '<i class="bi bi-plus-circle"></i> Create Listener';
 
+            if (data.upgrade_required) { showUpgradeRequired(data.error); return; }
             if (data.error) {
                 alert('Failed: ' + data.error);
                 return;
@@ -654,6 +659,7 @@
             fetch('/api/cobaltstrike/listeners/' + encodeURIComponent(name), {method: 'DELETE'})
                 .then(function(r) { return r.json(); })
                 .then(function(data) {
+                    if (data.upgrade_required) { showUpgradeRequired(data.error); return; }
                     if (data.error) {
                         showToast('Failed: ' + data.error, 'danger');
                         return;
@@ -790,6 +796,7 @@
             btn.disabled = false;
             btn.innerHTML = '<i class="bi bi-gear"></i> Parse & Generate Nginx Config';
 
+            if (data.upgrade_required) { showUpgradeRequired(data.error); return; }
             if (data.error) {
                 document.getElementById('parsed-output').innerHTML =
                     '<div class="alert alert-danger mb-0">' + escapeHtml(data.error) + '</div>';
@@ -814,7 +821,7 @@
         if (parsed.user_agent) {
             html += '<div class="mb-3">';
             html += '<strong class="text-muted d-block mb-1"><i class="bi bi-globe me-1"></i>User-Agent</strong>';
-            html += '<code class="d-block p-2 rounded" style="background:#1f2937;color:#f9fafb;font-size:0.82rem;word-break:break-all;">' + escapeHtml(parsed.user_agent) + '</code>';
+            html += '<code class="d-block p-2 rounded" style="background:var(--ir-surface, #1f2937);color:var(--ir-text, #f9fafb);font-size:0.82rem;word-break:break-all;">' + escapeHtml(parsed.user_agent) + '</code>';
             html += '</div>';
         }
 
@@ -872,7 +879,7 @@
         var html = '<div class="mb-3">';
         html += '<strong class="text-muted d-block mb-1"><i class="bi ' + icon + ' me-1"></i>' + escapeHtml(title) + '</strong>';
         items.forEach(function(u) {
-            html += '<code class="d-inline-block me-2 mb-1 px-2 py-1 rounded" style="background:#1f2937;color:#86efac;font-size:0.82rem;">' + escapeHtml(u) + '</code>';
+            html += '<code class="d-inline-block me-2 mb-1 px-2 py-1 rounded" style="background:var(--ir-surface, #1f2937);color:var(--ir-green, #86efac);font-size:0.82rem;">' + escapeHtml(u) + '</code>';
         });
         html += '</div>';
         return html;
@@ -914,7 +921,7 @@
     function renderNginxConfig(config) {
         _lastNginxConfig = config;
         var container = document.getElementById('nginx-output');
-        container.innerHTML = '<pre style="max-height:400px;overflow-y:auto;background:#0d1117;color:#e2e8f0;padding:15px;border-radius:6px;font-size:0.8rem;margin:0;white-space:pre-wrap;">' + escapeHtml(config) + '</pre>';
+        container.innerHTML = '<pre style="max-height:400px;overflow-y:auto;background:var(--ir-bg, #0d1117);color:var(--ir-text, #e2e8f0);padding:15px;border-radius:6px;font-size:0.8rem;margin:0;white-space:pre-wrap;">' + escapeHtml(config) + '</pre>';
         document.getElementById('btn-copy-nginx').classList.remove('d-none');
     }
 
@@ -958,20 +965,24 @@
     }
 
     async function tagResource(rType, extId) {
-        const res = await fetch('/api/projects/' + ACTIVE_PROJECT_ID + '/resources', {
-            method: 'POST', headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({resource_type: rType, external_id: extId}),
-        });
-        if (!res.ok) { const d = await res.json(); showToast(d.error || 'Tag failed', 'danger'); return; }
-        loadListeners();
+        try {
+            const res = await fetch('/api/projects/' + ACTIVE_PROJECT_ID + '/resources', {
+                method: 'POST', headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({resource_type: rType, external_id: extId}),
+            });
+            if (!res.ok) { const d = await res.json(); showToast(d.error || 'Tag failed', 'danger'); return; }
+            loadListeners();
+        } catch(e) { showToast('Network error', 'danger'); }
     }
 
     async function untagResource(projId, resId) {
         const confirmed = await showConfirm('Remove project tag from this listener?');
         if (!confirmed) return;
-        const res = await fetch('/api/projects/' + projId + '/resources/' + resId, {method: 'DELETE'});
-        if (!res.ok) { const d = await res.json(); showToast(d.error || 'Untag failed', 'danger'); return; }
-        loadListeners();
+        try {
+            const res = await fetch('/api/projects/' + projId + '/resources/' + resId, {method: 'DELETE'});
+            if (!res.ok) { const d = await res.json(); showToast(d.error || 'Untag failed', 'danger'); return; }
+            loadListeners();
+        } catch(e) { showToast('Network error', 'danger'); }
     }
 </script>
 {% endblock %}
