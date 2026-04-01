@@ -105,7 +105,7 @@
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title" id="logsModalLabel"><i class="bi bi-file-text"></i> Container Logs: <span id="logs-container-name"></span></h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
                 <div class="d-flex justify-content-between mb-2">
@@ -133,7 +133,7 @@
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title" id="detailModalLabel"><i class="bi bi-box"></i> Container Details: <span id="detail-container-name"></span></h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body" id="detail-content">
                 <i class="bi bi-hourglass-split"></i> Loading...
@@ -192,12 +192,6 @@
         return days + 'd ago';
     }
 
-    function escapeHtml(str) {
-        var div = document.createElement('div');
-        div.textContent = str;
-        return div.innerHTML;
-    }
-
     function escapeAttr(str) {
         return String(str).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/'/g,'&#x27;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
     }
@@ -221,7 +215,7 @@
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify({resource_type: rType, external_id: extId}),
             });
-            if (!res.ok) { const d = await res.json(); showToast(d.error || 'Tag failed', 'danger'); return; }
+            if (!res.ok) { const d = await res.json(); showToast(escapeHtml(d.error || 'Tag failed'), 'danger'); return; }
             loadContainers();
         } catch(e) { showToast('Network error', 'danger'); }
     }
@@ -231,7 +225,7 @@
         if (!confirmed) return;
         try {
             const res = await fetch('/api/projects/' + projId + '/resources/' + resId, {method: 'DELETE'});
-            if (!res.ok) { const d = await res.json(); showToast(d.error || 'Untag failed', 'danger'); return; }
+            if (!res.ok) { const d = await res.json(); showToast(escapeHtml(d.error || 'Untag failed'), 'danger'); return; }
             loadContainers();
         } catch(e) { showToast('Network error', 'danger'); }
     }
@@ -317,15 +311,15 @@
             if (!IS_READONLY) {
                 if (isRunning) {
                     actions =
-                        '<button class="btn btn-outline-danger" title="Stop" onclick="containerAction(\'' + c.id + '\', \'stop\')">' +
+                        '<button class="btn btn-outline-danger" title="Stop" onclick="containerAction(\'' + escapeAttr(c.id) + '\', \'stop\')">' +
                             '<i class="bi bi-stop-fill"></i>' +
                         '</button>' +
-                        '<button class="btn btn-outline-warning" title="Restart" onclick="containerAction(\'' + c.id + '\', \'restart\')">' +
+                        '<button class="btn btn-outline-warning" title="Restart" onclick="containerAction(\'' + escapeAttr(c.id) + '\', \'restart\')">' +
                             '<i class="bi bi-arrow-clockwise"></i>' +
                         '</button>';
                 } else {
                     actions =
-                        '<button class="btn btn-outline-success" title="Start" onclick="containerAction(\'' + c.id + '\', \'start\')">' +
+                        '<button class="btn btn-outline-success" title="Start" onclick="containerAction(\'' + escapeAttr(c.id) + '\', \'start\')">' +
                             '<i class="bi bi-play-fill"></i>' +
                         '</button>';
                 }
@@ -369,7 +363,7 @@
                 .then(function(r) { return r.json(); })
                 .then(function(data) {
                     if (data.error) {
-                        showToast('Error: ' + data.error, 'danger');
+                        showToast('Error: ' + escapeHtml(data.error), 'danger');
                     } else {
                         refreshAll();
                     }
@@ -384,12 +378,12 @@
             .then(function(r) { return r.json(); })
             .then(function(data) {
                 if (data.error) {
-                    alert('Error: ' + data.error);
+                    showToast('Error: ' + escapeHtml(data.error), 'danger');
                 } else {
                     refreshAll();
                 }
             })
-            .catch(function() { alert('Request failed'); });
+            .catch(function() { showToast('Request failed', 'danger'); });
     }
 
     // --- Logs ---
