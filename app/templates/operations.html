@@ -614,6 +614,14 @@
             .catch(function() { _setZonesLoading(false); });
     }
 
+    // Cached refs for Jinja-conditional elements (may be null for restricted roles/plans)
+    var $btnMailgun = document.getElementById('btn-add-mailgun');
+    var $btnPushDns = document.getElementById('btn-push-dns');
+    var $btnVerify  = document.getElementById('btn-verify-email');
+    var $btnGophish = document.getElementById('btn-add-gophish');
+    var $smtpSuffix = document.getElementById('email-smtp-suffix');
+    var $wgSuffix   = document.getElementById('wg-zone-suffix');
+
     function onZoneChange() {
         var val = document.getElementById('zoneSelect').value;
         if (!val) {
@@ -634,20 +642,20 @@
 
         // Update zone suffix labels
         document.getElementById('email-zone-suffix').textContent = '.' + selectedZoneName;
-        document.getElementById('email-smtp-suffix').textContent = '@' + selectedZoneName;
+        if ($smtpSuffix) $smtpSuffix.textContent = '@' + selectedZoneName;
         document.querySelectorAll('.dns-zone-suffix').forEach(function(el) {
             el.textContent = '.' + selectedZoneName;
         });
-        document.getElementById('wg-zone-suffix').textContent = '.' + selectedZoneName;
+        if ($wgSuffix) $wgSuffix.textContent = '.' + selectedZoneName;
 
         // Reset email workflow state and check if domain exists in Mailgun
         mailgunDnsRecords = null;
         mailgunDomain = '';
         lastCheckedKey = '';
-        document.getElementById('btn-add-mailgun').disabled = false;
-        document.getElementById('btn-push-dns').disabled = true;
-        document.getElementById('btn-verify-email').disabled = true;
-        document.getElementById('btn-add-gophish').disabled = true;
+        if ($btnMailgun) $btnMailgun.disabled = false;
+        if ($btnPushDns) $btnPushDns.disabled = true;
+        if ($btnVerify) $btnVerify.disabled = true;
+        if ($btnGophish) $btnGophish.disabled = true;
         checkMailgunDomain();
         loadEgProfiles();
     }
@@ -711,9 +719,9 @@
             logWarn('email-log', 'Checking if <strong>' + esc(domain) + '</strong> exists in Mailgun (' + esc(region.toUpperCase()) + ')...');
 
             // Reset buttons while checking
-            document.getElementById('btn-add-mailgun').disabled = true;
-            document.getElementById('btn-push-dns').disabled = true;
-            document.getElementById('btn-verify-email').disabled = true;
+            if ($btnMailgun) $btnMailgun.disabled = true;
+            if ($btnPushDns) $btnPushDns.disabled = true;
+            if ($btnVerify) $btnVerify.disabled = true;
 
             fetch('/api/email/domains/' + encodeURIComponent(domain) + '?region=' + region)
                 .then(function(r) {
@@ -725,10 +733,10 @@
                         // Domain not found in Mailgun
                         clearLog('email-log');
                         logInfo('email-log', '<strong>' + esc(domain) + '</strong> not found in Mailgun — ready to add');
-                        document.getElementById('btn-add-mailgun').disabled = false;
-                        document.getElementById('btn-push-dns').disabled = true;
-                        document.getElementById('btn-verify-email').disabled = true;
-                        document.getElementById('btn-add-gophish').disabled = true;
+                        if ($btnMailgun) $btnMailgun.disabled = false;
+                        if ($btnPushDns) $btnPushDns.disabled = true;
+                        if ($btnVerify) $btnVerify.disabled = true;
+                        if ($btnGophish) $btnGophish.disabled = true;
                         return;
                     }
 
@@ -754,9 +762,9 @@
                     }
 
                     // Disable Add, enable Push DNS and Verify
-                    document.getElementById('btn-add-mailgun').disabled = true;
-                    document.getElementById('btn-push-dns').disabled = false;
-                    document.getElementById('btn-verify-email').disabled = false;
+                    if ($btnMailgun) $btnMailgun.disabled = true;
+                    if ($btnPushDns) $btnPushDns.disabled = false;
+                    if ($btnVerify) $btnVerify.disabled = false;
 
                     // Enable GoPhish button if all sending records are verified
                     updateGophishButton();
@@ -765,10 +773,10 @@
                 .catch(function() {
                     // Network error or Mailgun not configured — allow add
                     clearLog('email-log');
-                    document.getElementById('btn-add-mailgun').disabled = false;
-                    document.getElementById('btn-push-dns').disabled = true;
-                    document.getElementById('btn-verify-email').disabled = true;
-                    document.getElementById('btn-add-gophish').disabled = true;
+                    if ($btnMailgun) $btnMailgun.disabled = false;
+                    if ($btnPushDns) $btnPushDns.disabled = true;
+                    if ($btnVerify) $btnVerify.disabled = true;
+                    if ($btnGophish) $btnGophish.disabled = true;
                 });
         }, 400);
     }
@@ -781,9 +789,9 @@
 
         clearLog('email-log');
         setButtonLoading('btn-add-mailgun', true);
-        document.getElementById('btn-push-dns').disabled = true;
-        document.getElementById('btn-verify-email').disabled = true;
-        document.getElementById('btn-add-gophish').disabled = true;
+        if ($btnPushDns) $btnPushDns.disabled = true;
+        if ($btnVerify) $btnVerify.disabled = true;
+        if ($btnGophish) $btnGophish.disabled = true;
 
         logWarn('email-log', 'Adding <strong>' + esc(mailgunDomain) + '</strong> to Mailgun (' + esc(mailgunRegion.toUpperCase()) + ')...');
 
@@ -837,13 +845,13 @@
                     var valid = rec.valid === 'valid' ? ' <span class="text-success">(valid)</span>' : ' <span class="text-warning">(not verified)</span>';
                     logInfo('email-log', '&nbsp;&nbsp;' + rec.record_type + ' &rarr; ' + rec.name + (rec.priority ? ' (priority: ' + rec.priority + ')' : '') + valid);
                 });
-                document.getElementById('btn-push-dns').disabled = false;
+                if ($btnPushDns) $btnPushDns.disabled = false;
             } else {
                 logWarn('email-log', 'No DNS records returned from Mailgun');
             }
 
             // Domain now exists — disable Add, enable Push/Verify
-            document.getElementById('btn-add-mailgun').disabled = true;
+            if ($btnMailgun) $btnMailgun.disabled = true;
             lastCheckedKey = mailgunDomain + '|' + mailgunRegion;
             updateGophishButton();
             updateSmtpSuffix();
@@ -1019,7 +1027,7 @@
 
         function finalisePush() {
             setButtonLoading('btn-push-dns', false);
-            document.getElementById('btn-verify-email').disabled = false;
+            if ($btnVerify) $btnVerify.disabled = false;
         }
 
         pushNext();
@@ -1072,7 +1080,7 @@
 
     function updateSmtpSuffix() {
         var domain = mailgunDomain || selectedZoneName;
-        document.getElementById('email-smtp-suffix').textContent = '@' + domain;
+        if ($smtpSuffix) $smtpSuffix.textContent = '@' + domain;
     }
 
     function isDomainVerified() {
@@ -1085,7 +1093,7 @@
     }
 
     function updateGophishButton() {
-        document.getElementById('btn-add-gophish').disabled = !isDomainVerified();
+        if ($btnGophish) $btnGophish.disabled = !isDomainVerified();
         if (isDomainVerified()) {
             logOk('email-log', 'Domain DNS verified — GoPhish sending profile can be created');
         }
