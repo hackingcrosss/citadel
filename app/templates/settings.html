@@ -230,6 +230,7 @@
                             </div>
 
                             <!-- Accounts table -->
+                            <div class="table-responsive">
                             <table class="table table-sm table-dark table-bordered mb-0" id="aws-accounts-table">
                                 <thead>
                                     <tr>
@@ -245,6 +246,7 @@
                                     </tr>
                                 </tbody>
                             </table>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -326,6 +328,7 @@
                             </div>
 
                             <!-- Accounts table -->
+                            <div class="table-responsive">
                             <table class="table table-sm table-dark table-bordered mb-0" id="azure-accounts-table">
                                 <thead>
                                     <tr>
@@ -341,6 +344,7 @@
                                     </tr>
                                 </tbody>
                             </table>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -405,6 +409,7 @@
                             </div>
 
                             <!-- Accounts table -->
+                            <div class="table-responsive">
                             <table class="table table-sm table-dark table-bordered mb-0" id="cf-accounts-table">
                                 <thead>
                                     <tr>
@@ -420,6 +425,7 @@
                                     </tr>
                                 </tbody>
                             </table>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -640,6 +646,7 @@
                 <p class="text-muted small mb-3">Configure one or more C2 servers. Each server stores connection credentials, IPs, and an optional Malleable C2 profile for Nginx restrictor config generation.</p>
 
                 <!-- C2 Servers Table -->
+                <div class="table-responsive">
                 <table class="table table-sm table-hover align-middle mb-3">
                     <thead>
                         <tr>
@@ -656,6 +663,7 @@
                         <tr id="c2-servers-empty"><td colspan="7" class="text-center text-muted">No C2 servers configured</td></tr>
                     </tbody>
                 </table>
+                </div>
 
                 <!-- Add C2 Server Form (hidden by default) -->
                 <div id="c2-add-form" style="display:none!important" class="border rounded p-3 mb-3" style="border-color: var(--ir-border) !important;">
@@ -956,7 +964,8 @@
             .replace(/&/g, '&amp;')
             .replace(/</g, '&lt;')
             .replace(/>/g, '&gt;')
-            .replace(/"/g, '&quot;');
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#x27;');
     }
 
     function toggleVisibility(inputId, btn) {
@@ -1122,7 +1131,7 @@
     }
 
     function deleteAwsAccount(label) {
-        if (!confirm(`Delete AWS account '${label}'? This cannot be undone.`)) return;
+        if (!confirm('Delete AWS account \'' + label + '\'? This cannot be undone.')) return;
 
         fetch(`/api/credentials/aws/account/${encodeURIComponent(label)}`, {method: 'DELETE'})
             .then(r => r.json())
@@ -1257,7 +1266,7 @@
     }
 
     function deleteAzureAccount(label) {
-        if (!confirm(`Delete Azure account '${label}'? This cannot be undone.`)) return;
+        if (!confirm('Delete Azure account \'' + label + '\'? This cannot be undone.')) return;
 
         fetch(`/api/credentials/azure/account/${encodeURIComponent(label)}`, {method: 'DELETE'})
             .then(r => r.json())
@@ -1380,7 +1389,7 @@
     }
 
     function deleteCloudflareAccount(label) {
-        if (!confirm(`Delete Cloudflare account '${label}'? This cannot be undone.`)) return;
+        if (!confirm('Delete Cloudflare account \'' + label + '\'? This cannot be undone.')) return;
 
         fetch(`/api/credentials/cloudflare/account/${encodeURIComponent(label)}`, {method: 'DELETE'})
             .then(r => r.json())
@@ -1845,10 +1854,10 @@
                 loadC2Servers();
                 loadConfigBadges();
             } else {
-                showToast(data.error || 'Failed to save.', 'danger');
+                showToast(escHtml(data.error || 'Failed to save.'), 'danger');
             }
         })
-        .catch(err => showToast('Error: ' + err, 'danger'));
+        .catch(err => showToast('Error: ' + escHtml(String(err)), 'danger'));
     }
 
     function openC2Edit(label) {
@@ -1904,10 +1913,10 @@
                 loadC2Servers();
                 loadConfigBadges();
             } else {
-                showToast(data.error || 'Failed to save.', 'danger');
+                showToast(escHtml(data.error || 'Failed to save.'), 'danger');
             }
         })
-        .catch(err => showToast('Error: ' + err, 'danger'));
+        .catch(err => showToast('Error: ' + escHtml(String(err)), 'danger'));
     }
 
     function testC2Server(label, btn) {
@@ -1936,7 +1945,7 @@
     }
 
     function deleteC2Server(label) {
-        if (!confirm(`Delete C2 server '${label}'? This cannot be undone.`)) return;
+        if (!confirm('Delete C2 server \'' + label + '\'? This cannot be undone.')) return;
 
         fetch(`/api/credentials/cobaltstrike/account/${encodeURIComponent(label)}`, {method: 'DELETE'})
             .then(r => r.json())
@@ -2169,7 +2178,7 @@
                 showToast('Login failed: ' + escHtml(data.error || 'Unknown error'), 'danger');
             }
         })
-        .catch(err => showToast('Error: ' + err, 'danger'));
+        .catch(err => showToast('Error: ' + escHtml(String(err)), 'danger'));
     }
 </script>
 {% endblock %}
