@@ -70,11 +70,11 @@
 </div>
 
 <!-- Add Proxy Host Modal -->
-<div class="modal fade" id="addHostModal" tabindex="-1">
+<div class="modal fade" id="addHostModal" tabindex="-1" aria-labelledby="addHostModalLabel">
     <div class="modal-dialog">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title">Add Proxy Host</h5>
+                <h5 class="modal-title" id="addHostModalLabel">Add Proxy Host</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
@@ -129,11 +129,11 @@
 </div>
 
 <!-- Edit Proxy Host Modal -->
-<div class="modal fade" id="editHostModal" tabindex="-1">
+<div class="modal fade" id="editHostModal" tabindex="-1" aria-labelledby="editHostModalLabel">
     <div class="modal-dialog">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title">Edit Proxy Host</h5>
+                <h5 class="modal-title" id="editHostModalLabel">Edit Proxy Host</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
@@ -220,20 +220,24 @@
     }
 
     async function tagResource(rType, extId) {
-        const res = await fetch('/api/projects/' + ACTIVE_PROJECT_ID + '/resources', {
-            method: 'POST', headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({resource_type: rType, external_id: extId}),
-        });
-        if (!res.ok) { const d = await res.json(); showToast(d.error || 'Tag failed', 'danger'); return; }
-        loadHosts();
+        try {
+            const res = await fetch('/api/projects/' + ACTIVE_PROJECT_ID + '/resources', {
+                method: 'POST', headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({resource_type: rType, external_id: extId}),
+            });
+            if (!res.ok) { const d = await res.json(); showToast(d.error || 'Tag failed', 'danger'); return; }
+            loadHosts();
+        } catch(e) { showToast('Network error', 'danger'); }
     }
 
     async function untagResource(projId, resId) {
         const confirmed = await showConfirm('Remove project tag from this host?');
         if (!confirmed) return;
-        const res = await fetch('/api/projects/' + projId + '/resources/' + resId, {method: 'DELETE'});
-        if (!res.ok) { const d = await res.json(); showToast(d.error || 'Untag failed', 'danger'); return; }
-        loadHosts();
+        try {
+            const res = await fetch('/api/projects/' + projId + '/resources/' + resId, {method: 'DELETE'});
+            if (!res.ok) { const d = await res.json(); showToast(d.error || 'Untag failed', 'danger'); return; }
+            loadHosts();
+        } catch(e) { showToast('Network error', 'danger'); }
     }
 
     function loadAccessLists() {
@@ -248,14 +252,19 @@
         var options = '<option value="0"' + (current === 0 ? ' selected' : '') + '>— None —</option>';
         allAccessLists.forEach(function(acl) {
             var sel = parseInt(acl.id) === current ? ' selected' : '';
-            options += '<option value="' + acl.id + '"' + sel + '>' + acl.name + '</option>';
+            options += '<option value="' + acl.id + '"' + sel + '>' + escapeAttr(acl.name) + '</option>';
         });
+        if (IS_READONLY) {
+            return '<select class="form-select form-select-sm" style="min-width:140px;" disabled ' +
+                   'title="Access control list">' + options + '</select>';
+        }
         return '<select class="form-select form-select-sm" style="min-width:140px;" ' +
                'onchange="updateHostAcl(' + hostId + ', this.value)" ' +
                'title="Change access control list">' + options + '</select>';
     }
 
     function updateHostAcl(hostId, aclId) {
+        if (IS_READONLY) return;
         fetch('/api/npm/hosts/' + hostId, {
             method: 'PUT',
             headers: {'Content-Type': 'application/json'},
@@ -272,7 +281,7 @@
             .then(data => {
                 if (data.error) {
                     document.getElementById('hosts-tbody').innerHTML =
-                        '<tr><td colspan="8" class="text-danger text-center py-4">' + data.error + '</td></tr>';
+                        '<tr><td colspan="8" class="text-danger text-center py-4">' + escapeAttr(data.error) + '</td></tr>';
                     return;
                 }
 
@@ -289,8 +298,8 @@
                 }
 
                 document.getElementById('hosts-tbody').innerHTML = hosts.map(h => {
-                    const domains = (h.domain_names || []).join(', ');
-                    const forward = h.forward_scheme + '://' + h.forward_host + ':' + h.forward_port;
+                    const domains = escapeAttr((h.domain_names || []).join(', '));
+                    const forward = escapeAttr(h.forward_scheme + '://' + h.forward_host + ':' + h.forward_port);
                     const ssl = h.ssl_forced
                         ? '<span class="badge bg-success"><i class="bi bi-lock-fill"></i> Forced</span>'
                         : (h.certificate_id ? '<span class="badge bg-info"><i class="bi bi-lock"></i> On</span>' : '<span class="badge bg-secondary">Off</span>');
@@ -332,7 +341,7 @@
             .then(data => {
                 if (data.error) {
                     document.getElementById('certs-tbody').innerHTML =
-                        '<tr><td colspan="3" class="text-danger text-center py-4">' + data.error + '</td></tr>';
+                        '<tr><td colspan="3" class="text-danger text-center py-4">' + escapeAttr(data.error) + '</td></tr>';
                     return;
                 }
 
@@ -344,13 +353,13 @@
                 }
 
                 document.getElementById('certs-tbody').innerHTML = certs.map(c => {
-                    const domains = (c.domain_names || []).join(', ');
-                    const provider = c.provider || 'letsencrypt';
+                    const domains = escapeAttr((c.domain_names || []).join(', '));
+                    const provider = escapeAttr(c.provider || 'letsencrypt');
                     const expires = c.expires_on ? new Date(c.expires_on).toLocaleDateString() : '-';
                     return '<tr>' +
                         '<td>' + domains + '</td>' +
                         '<td><span class="badge bg-info">' + provider + '</span></td>' +
-                        '<td>' + expires + '</td>' +
+                        '<td>' + escapeAttr(expires) + '</td>' +
                     '</tr>';
                 }).join('');
             })
@@ -361,6 +370,7 @@
     }
 
     function createHost() {
+        if (IS_READONLY) return;
         const domainsRaw = document.getElementById('new-host-domains').value.trim();
         if (!domainsRaw) { alert('Enter at least one domain'); return; }
 
@@ -419,6 +429,7 @@
     }
 
     function updateHost() {
+        if (IS_READONLY) return;
         const hostId = document.getElementById('edit-host-id').value;
         if (!hostId) return;
 
