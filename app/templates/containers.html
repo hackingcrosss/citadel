@@ -16,39 +16,27 @@
 <!-- Quick Stats -->
 <div class="row g-3 mb-3">
     <div class="col-md-3">
-        <div class="card-custom">
-            <div class="card-body text-center">
-                <i class="bi bi-play-circle text-success" style="font-size: 2rem;"></i>
-                <h5 class="mt-2 mb-0" id="stat-running">-</h5>
-                <small class="text-muted">Running</small>
-            </div>
+        <div class="stat-card">
+            <div class="label">Running</div>
+            <h3 id="stat-running" class="text-success">-</h3>
         </div>
     </div>
     <div class="col-md-3">
-        <div class="card-custom">
-            <div class="card-body text-center">
-                <i class="bi bi-stop-circle text-danger" style="font-size: 2rem;"></i>
-                <h5 class="mt-2 mb-0" id="stat-stopped">-</h5>
-                <small class="text-muted">Stopped</small>
-            </div>
+        <div class="stat-card">
+            <div class="label">Stopped</div>
+            <h3 id="stat-stopped" class="text-danger">-</h3>
         </div>
     </div>
     <div class="col-md-3">
-        <div class="card-custom">
-            <div class="card-body text-center">
-                <i class="bi bi-arrow-clockwise text-warning" style="font-size: 2rem;"></i>
-                <h5 class="mt-2 mb-0" id="stat-restarting">-</h5>
-                <small class="text-muted">Restarting</small>
-            </div>
+        <div class="stat-card">
+            <div class="label">Restarting</div>
+            <h3 id="stat-restarting" class="text-warning">-</h3>
         </div>
     </div>
     <div class="col-md-3">
-        <div class="card-custom">
-            <div class="card-body text-center">
-                <i class="bi bi-box-seam text-primary" style="font-size: 2rem;"></i>
-                <h5 class="mt-2 mb-0" id="stat-total">-</h5>
-                <small class="text-muted">Total</small>
-            </div>
+        <div class="stat-card">
+            <div class="label">Total</div>
+            <h3 id="stat-total" class="text-primary">-</h3>
         </div>
     </div>
 </div>
@@ -112,11 +100,11 @@
 </div>
 
 <!-- Logs Modal -->
-<div class="modal fade" id="logsModal" tabindex="-1">
+<div class="modal fade" id="logsModal" tabindex="-1" aria-labelledby="logsModalLabel">
     <div class="modal-dialog modal-xl">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title"><i class="bi bi-file-text"></i> Container Logs: <span id="logs-container-name"></span></h5>
+                <h5 class="modal-title" id="logsModalLabel"><i class="bi bi-file-text"></i> Container Logs: <span id="logs-container-name"></span></h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
@@ -133,18 +121,18 @@
                         <i class="bi bi-arrow-clockwise"></i> Refresh
                     </button>
                 </div>
-                <pre id="logs-content" style="background: #1a1a2e; color: #e0e0e0; padding: 15px; border-radius: 6px; max-height: 500px; overflow-y: auto; font-size: 0.8rem;"><i class="bi bi-hourglass-split"></i> Loading logs...</pre>
+                <pre id="logs-content" style="background: var(--ir-surface-2, #1a1a2e); color: var(--ir-text, #e0e0e0); padding: 15px; border-radius: 6px; max-height: 500px; overflow-y: auto; font-size: 0.8rem;"><i class="bi bi-hourglass-split"></i> Loading logs...</pre>
             </div>
         </div>
     </div>
 </div>
 
 <!-- Detail Modal -->
-<div class="modal fade" id="detailModal" tabindex="-1">
+<div class="modal fade" id="detailModal" tabindex="-1" aria-labelledby="detailModalLabel">
     <div class="modal-dialog modal-lg">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title"><i class="bi bi-box"></i> Container Details: <span id="detail-container-name"></span></h5>
+                <h5 class="modal-title" id="detailModalLabel"><i class="bi bi-box"></i> Container Details: <span id="detail-container-name"></span></h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body" id="detail-content">
@@ -227,21 +215,25 @@
     }
 
     async function tagResource(rType, extId) {
-        const res = await fetch('/api/projects/' + ACTIVE_PROJECT_ID + '/resources', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({resource_type: rType, external_id: extId}),
-        });
-        if (!res.ok) { const d = await res.json(); showToast(d.error || 'Tag failed', 'danger'); return; }
-        loadContainers();
+        try {
+            const res = await fetch('/api/projects/' + ACTIVE_PROJECT_ID + '/resources', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({resource_type: rType, external_id: extId}),
+            });
+            if (!res.ok) { const d = await res.json(); showToast(d.error || 'Tag failed', 'danger'); return; }
+            loadContainers();
+        } catch(e) { showToast('Network error', 'danger'); }
     }
 
     async function untagResource(projId, resId) {
         const confirmed = await showConfirm('Remove project tag from this container?');
         if (!confirmed) return;
-        const res = await fetch('/api/projects/' + projId + '/resources/' + resId, {method: 'DELETE'});
-        if (!res.ok) { const d = await res.json(); showToast(d.error || 'Untag failed', 'danger'); return; }
-        loadContainers();
+        try {
+            const res = await fetch('/api/projects/' + projId + '/resources/' + resId, {method: 'DELETE'});
+            if (!res.ok) { const d = await res.json(); showToast(d.error || 'Untag failed', 'danger'); return; }
+            loadContainers();
+        } catch(e) { showToast('Network error', 'danger'); }
     }
 
     // --- Load Containers ---
@@ -252,7 +244,7 @@
                 if (data.error) {
                     document.getElementById('container-table').innerHTML =
                         '<tr><td colspan="8" class="text-center py-3">' +
-                        '<span class="text-danger"><i class="bi bi-exclamation-triangle"></i> ' + data.error + '</span>' +
+                        '<span class="text-danger"><i class="bi bi-exclamation-triangle"></i> ' + escapeHtml(data.error) + '</span>' +
                         '<br><small><a href="' + "{{ url_for('settings') }}" + '">Configure in Settings</a></small>' +
                         '</td></tr>';
                     return;
@@ -339,15 +331,15 @@
                 }
             }
             actions +=
-                '<button class="btn btn-outline-info" title="Logs" onclick="showLogs(\'' + c.id + '\', \'' + escapeHtml(c.name) + '\')">' +
+                '<button class="btn btn-outline-info" title="Logs" onclick="showLogs(\'' + escapeAttr(c.id) + '\', \'' + escapeAttr(c.name) + '\')">' +
                     '<i class="bi bi-file-text"></i>' +
                 '</button>' +
-                '<button class="btn btn-outline-secondary" title="Details" onclick="showDetails(\'' + c.id + '\', \'' + escapeHtml(c.name) + '\')">' +
+                '<button class="btn btn-outline-secondary" title="Details" onclick="showDetails(\'' + escapeAttr(c.id) + '\', \'' + escapeAttr(c.name) + '\')">' +
                     '<i class="bi bi-info-circle"></i>' +
                 '</button>';
             if (!IS_READONLY) {
                 actions +=
-                    '<button class="btn btn-outline-danger" title="Remove" onclick="removeContainer(\'' + c.id + '\', \'' + escapeHtml(c.name) + '\', ' + isRunning + ')">' +
+                    '<button class="btn btn-outline-danger" title="Remove" onclick="removeContainer(\'' + escapeAttr(c.id) + '\', \'' + escapeAttr(c.name) + '\', ' + isRunning + ')">' +
                         '<i class="bi bi-trash"></i>' +
                     '</button>';
             }
@@ -355,7 +347,7 @@
             return '<tr' + rowClass + '>' +
                 '<td><span class="badge bg-dark">Docker</span></td>' +
                 '<td><i class="bi bi-box"></i> <strong>' + escapeHtml(c.name) + '</strong>' +
-                    '<br><small class="text-muted">' + c.short_id + '</small></td>' +
+                    '<br><small class="text-muted">' + escapeHtml(c.short_id) + '</small></td>' +
                 '<td>' + imageName + '</td>' +
                 '<td>' + ports + '</td>' +
                 '<td>' + stateBadge(c.state) + '</td>' +
@@ -369,8 +361,8 @@
     // --- Remove Container ---
     function removeContainer(containerId, name, isRunning) {
         var body = isRunning
-            ? 'Container <strong>' + name + '</strong> is currently running and will be force-stopped before removal.'
-            : 'Remove container <strong>' + name + '</strong>? This cannot be undone.';
+            ? 'Container <strong>' + escapeHtml(name) + '</strong> is currently running and will be force-stopped before removal.'
+            : 'Remove container <strong>' + escapeHtml(name) + '</strong>? This cannot be undone.';
         showConfirm('Remove Container', body, 'Remove', function() {
             var force = isRunning ? '?force=true' : '';
             fetch('/api/containers/' + containerId + force, { method: 'DELETE' })
@@ -439,7 +431,7 @@
             .then(function(data) {
                 if (data.error) {
                     document.getElementById('detail-content').innerHTML =
-                        '<span class="text-danger">' + data.error + '</span>';
+                        '<span class="text-danger">' + escapeHtml(data.error) + '</span>';
                     return;
                 }
                 var c = data.container;
