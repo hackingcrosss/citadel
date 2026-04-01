@@ -92,23 +92,24 @@
             {% with messages = get_flashed_messages(with_categories=true) %}
                 {% if messages %}
                     {% for category, message in messages %}
-                        <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+                        {% set safe_cat = category if category in ['success','danger','warning','info'] else 'info' %}
+                        <div class="alert alert-{{ safe_cat }} alert-dismissible fade show" role="alert">
                             {{ message }}
-                            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
                         </div>
                     {% endfor %}
                 {% endif %}
             {% endwith %}
             
-            <form method="POST" action="{{ url_for('login') }}">
+            <form method="POST" action="{{ url_for('login') }}" aria-label="Login form">
                 <div class="mb-3">
                     <label for="email" class="form-label">Email</label>
-                    <input type="email" class="form-control" id="email" name="email" required autofocus>
+                    <input type="email" class="form-control" id="email" name="email" required autofocus autocomplete="email" aria-required="true">
                 </div>
                 
                 <div class="mb-3">
                     <label for="password" class="form-label">Password</label>
-                    <input type="password" class="form-control" id="password" name="password" required>
+                    <input type="password" class="form-control" id="password" name="password" required autocomplete="current-password" aria-required="true">
                 </div>
                 
                 <div class="mb-3 form-check">
@@ -118,8 +119,8 @@
                     </label>
                 </div>
                 
-                <button type="submit" class="btn btn-login">
-                    <i class="bi bi-box-arrow-in-right"></i> Login
+                <button type="submit" class="btn btn-login" aria-label="Sign in to InfraRed">
+                    <i class="bi bi-box-arrow-in-right" aria-hidden="true"></i> Login
                 </button>
             </form>
             

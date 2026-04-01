@@ -11,6 +11,7 @@
 <!-- Company list -->
 <div class="card bg-dark border-secondary mb-4">
     <div class="card-body p-0">
+        <div class="table-responsive">
         <table class="table table-dark table-hover mb-0">
             <thead>
                 <tr>
@@ -26,6 +27,7 @@
                 <tr><td colspan="6" class="text-center text-muted py-4">Loading…</td></tr>
             </tbody>
         </table>
+        </div>
     </div>
 </div>
 
@@ -40,9 +42,11 @@
             </div>
         </div>
         <div class="d-flex gap-2 align-items-center">
+            {% if current_user.role not in ['viewer', 'auditor', 'white_team'] %}
             <button id="save-btn" class="btn btn-sm btn-infrared" onclick="saveProfile()" style="display:none">
                 <i class="bi bi-check-lg me-1"></i> Save Changes
             </button>
+            {% endif %}
             <button class="btn btn-sm btn-outline-secondary" onclick="closeDetail()">
                 <i class="bi bi-x-lg"></i>
             </button>
@@ -171,6 +175,8 @@
 
 {% block extra_js %}
 <script>
+const IS_READONLY = {{ 'true' if current_user.role in ['viewer', 'auditor', 'white_team'] else 'false' }};
+
 const _PROFILE_FIELDS = [
     'scope_notes','out_of_scope_notes','roe_notes','allowed_hours',
     'primary_contact_name','primary_contact_email','primary_contact_phone',
@@ -182,8 +188,8 @@ let _currentCompanyId = null;
 let _currentCanEdit   = false;
 let _companies = [];
 
-function escapeHtml(s) {
-    return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+function escapeAttr(s) {
+    return String(s || '').replace(/&/g,'&amp;').replace(/'/g,'&#x27;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
 
 function roleBadge(role) {
@@ -208,23 +214,23 @@ async function loadCompanies() {
 
         tbody.innerHTML = _companies.map(c => {
             const projects = (c.user_projects || [])
-                .map(p => `<span class="badge bg-secondary me-1" style="font-size:0.7rem">${escapeHtml(p.code)}</span>`)
+                .map(p => `<span class="badge bg-secondary me-1" style="font-size:0.7rem">${escapeAttr(p.code)}</span>`)
                 .join('');
             return `<tr>
-                <td><code class="text-danger">${escapeHtml(c.code)}</code></td>
-                <td><strong>${escapeHtml(c.name)}</strong></td>
-                <td class="text-muted">${escapeHtml(c.industry || '—')}</td>
+                <td><code class="text-danger">${escapeAttr(c.code)}</code></td>
+                <td><strong>${escapeAttr(c.name)}</strong></td>
+                <td class="text-muted">${escapeAttr(c.industry || '—')}</td>
                 <td>${projects || '<span class="text-muted">—</span>'}</td>
                 <td>${roleBadge(c.user_role)}</td>
                 <td class="text-end">
-                    <button class="btn btn-outline-secondary btn-sm" onclick="openDetail(${c.id})">
+                    <button class="btn btn-outline-secondary btn-sm" onclick="openDetail(${parseInt(c.id, 10)})">
                         <i class="bi bi-eye me-1"></i> View
                     </button>
                 </td>
             </tr>`;
         }).join('');
     } catch(e) {
-        tbody.innerHTML = `<tr><td colspan="6" class="text-danger text-center py-3">${escapeHtml(e.message)}</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="6" class="text-danger text-center py-3">${escapeAttr(e.message)}</td></tr>`;
     }
 }
 
@@ -234,7 +240,7 @@ async function openDetail(companyId) {
     if (!company) return;
 
     _currentCompanyId = companyId;
-    _currentCanEdit   = (company.user_role === 'white_team');
+    _currentCanEdit   = !IS_READONLY && (company.user_role === 'white_team');
 
     // Header
     document.getElementById('detail-company-name').textContent = company.name;
@@ -258,7 +264,8 @@ async function openDetail(companyId) {
     });
 
     // Save button (white team only)
-    document.getElementById('save-btn').style.display = _currentCanEdit ? 'none' : 'none';
+    const saveBtn = document.getElementById('save-btn');
+    if (saveBtn) saveBtn.style.display = 'none';
     // will be shown by markDirty()
 
     document.getElementById('company-detail').style.display = '';
@@ -272,12 +279,14 @@ async function openDetail(companyId) {
 function closeDetail() {
     document.getElementById('company-detail').style.display = 'none';
     _currentCompanyId = null;
-    document.getElementById('save-btn').style.display = 'none';
+    const saveBtn = document.getElementById('save-btn');
+    if (saveBtn) saveBtn.style.display = 'none';
 }
 
 function markDirty() {
     if (_currentCanEdit) {
-        document.getElementById('save-btn').style.display = '';
+        const saveBtn = document.getElementById('save-btn');
+        if (saveBtn) saveBtn.style.display = '';
     }
 }
 
@@ -292,6 +301,7 @@ async function saveProfile() {
     });
 
     const btn = document.getElementById('save-btn');
+    if (!btn) return;
     btn.disabled = true;
     btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Saving…';
 
@@ -311,7 +321,7 @@ async function saveProfile() {
         btn.style.display = 'none';
         showToast('Company profile saved', 'success');
     } catch(e) {
-        showToast(e.message, 'danger');
+        showToast(escapeAttr(e.message), 'danger');
     } finally {
         btn.disabled = false;
         btn.innerHTML = '<i class="bi bi-check-lg me-1"></i> Save Changes';

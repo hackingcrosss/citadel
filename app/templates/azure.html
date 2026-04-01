@@ -76,7 +76,7 @@
 <div class="card-custom mb-4">
     <div class="card-header d-flex justify-content-between align-items-center">
         <span><i class="bi bi-microsoft"></i> Virtual Machines</span>
-        {% if current_user.role != 'viewer' and active_project_role != 'white_team' %}
+        {% if current_user.role not in ['viewer', 'auditor', 'white_team'] and active_project_role != 'white_team' %}
         <div>
             <button class="btn btn-sm btn-outline-success" onclick="bulkAction('start')" id="btnBulkStart" disabled>
                 <i class="bi bi-play-fill"></i> Start
@@ -99,6 +99,7 @@
             <i class="bi bi-microsoft text-muted" style="font-size: 2rem;"></i>
             <div class="text-muted mt-2">No virtual machines found</div>
         </div>
+        <div class="table-responsive">
         <table class="table table-hover mb-0 d-none" id="vmsTable">
             <thead class="table-light">
                 <tr>
@@ -118,6 +119,7 @@
             </thead>
             <tbody id="vmsBody"></tbody>
         </table>
+        </div>
     </div>
 </div>
 
@@ -127,7 +129,7 @@
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title">VM Details</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body" id="detailBody">
                 <div class="text-center py-3">
@@ -144,7 +146,7 @@
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title"><i class="bi bi-key"></i> SSH Configuration</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
                 <input type="hidden" id="sshConfigVmId">
@@ -207,7 +209,7 @@
         <div class="modal-content">
             <div class="modal-header bg-danger text-white">
                 <h5 class="modal-title"><i class="bi bi-exclamation-triangle"></i> Confirm Delete</h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
                 <p>Are you sure you want to <strong>delete</strong> this VM? This action <strong>cannot be undone</strong>.</p>
@@ -386,7 +388,7 @@
             const name = escapeAttr(vm.vm_name);
             const vmId = escapeAttr(vm.id);
             const accountLabel = vm.account_label || 'default';
-            const accountBadge = `<span class="badge bg-info text-dark" style="font-size:0.7rem" title="${escapeHtml(accountLabel)}">${escapeHtml(accountLabel !== 'default' ? accountLabel : 'Azure')}</span>`;
+            const accountBadge = `<span class="badge bg-info text-dark" style="font-size:0.7rem" title="${escapeAttr(accountLabel)}">${escapeHtml(accountLabel !== 'default' ? accountLabel : 'Azure')}</span>`;
             const sshBtnClass = vm.ssh_configured ? 'btn-outline-success' : 'btn-outline-secondary';
             const pubIp = vm.public_ip ? `<code>${escapeHtml(vm.public_ip)}</code>` : '<span class="text-muted">—</span>';
             const privIp = vm.private_ip ? `<code>${escapeHtml(vm.private_ip)}</code>` : '<span class="text-muted">—</span>';
@@ -459,26 +461,26 @@
         })
         .then(r => r.json())
         .then(data => {
-            if (data.error) { alert('Error: ' + data.error); return; }
+            if (data.error) { showToast(escapeHtml(data.error), 'danger'); return; }
             const vmId = rg + '/' + vmName;
             var vm = allVMs.find(v => v.id === vmId);
             if (vm) { if (!vm.local_tags) vm.local_tags = []; if (!vm.local_tags.includes(tag)) vm.local_tags.push(tag); }
             refreshTagFilter(); applyFilters();
         })
-        .catch(err => alert('Error: ' + err));
+        .catch(err => showToast('Error: ' + escapeHtml(String(err)), 'danger'));
     }
 
     function removeTag(rg, vmName, tag) {
         fetch(`/api/azure/vms/${encodeURIComponent(rg)}/${encodeURIComponent(vmName)}/tags/${encodeURIComponent(tag)}`, {method: 'DELETE'})
         .then(r => r.json())
         .then(data => {
-            if (data.error) { alert('Error: ' + data.error); return; }
+            if (data.error) { showToast(escapeHtml(data.error), 'danger'); return; }
             const vmId = rg + '/' + vmName;
             var vm = allVMs.find(v => v.id === vmId);
             if (vm && vm.local_tags) vm.local_tags = vm.local_tags.filter(t => t !== tag);
             refreshTagFilter(); applyFilters();
         })
-        .catch(err => alert('Error: ' + err));
+        .catch(err => showToast('Error: ' + escapeHtml(String(err)), 'danger'));
     }
 
     // ─────────────────────────────────────────
@@ -493,9 +495,12 @@
 
     function updateBulkButtons() {
         const n = document.querySelectorAll('.vm-check:checked').length;
-        document.getElementById('btnBulkStart').disabled = n === 0;
-        document.getElementById('btnBulkStop').disabled = n === 0;
-        document.getElementById('btnBulkRestart').disabled = n === 0;
+        const btnStart = document.getElementById('btnBulkStart');
+        const btnStop = document.getElementById('btnBulkStop');
+        const btnRestart = document.getElementById('btnBulkRestart');
+        if (btnStart) btnStart.disabled = n === 0;
+        if (btnStop) btnStop.disabled = n === 0;
+        if (btnRestart) btnRestart.disabled = n === 0;
     }
 
     function getSelectedVMs() {
@@ -529,10 +534,10 @@
         fetch(`/api/azure/vms/${encodeURIComponent(rg)}/${encodeURIComponent(vmName)}/${action}`, {method: 'POST'})
         .then(r => r.json())
         .then(data => {
-            if (data.error) { alert('Error: ' + data.error); return; }
+            if (data.error) { showToast(escapeHtml(data.error), 'danger'); return; }
             setTimeout(loadVMs, 2000);
         })
-        .catch(err => alert('Error: ' + err));
+        .catch(err => showToast('Error: ' + escapeHtml(String(err)), 'danger'));
     }
 
     // ─────────────────────────────────────────
@@ -553,10 +558,10 @@
         .then(r => r.json())
         .then(data => {
             bootstrap.Modal.getInstance(document.getElementById('deleteModal')).hide();
-            if (data.error) { alert('Error: ' + data.error); return; }
+            if (data.error) { showToast(escapeHtml(data.error), 'danger'); return; }
             setTimeout(loadVMs, 3000);
         })
-        .catch(err => alert('Error: ' + err));
+        .catch(err => showToast('Error: ' + escapeHtml(String(err)), 'danger'));
     });
 
     // ─────────────────────────────────────────
@@ -667,11 +672,11 @@
         })
         .then(r => r.json())
         .then(data => {
-            if (data.error) { alert('Error: ' + data.error); return; }
+            if (data.error) { showToast(escapeHtml(data.error), 'danger'); return; }
             bootstrap.Modal.getInstance(document.getElementById('sshConfigModal')).hide();
             loadVMs();
         })
-        .catch(err => alert('Error: ' + err));
+        .catch(err => showToast('Error: ' + escapeHtml(String(err)), 'danger'));
     }
 
     function deleteSSHConfig() {
@@ -680,11 +685,11 @@
         fetch(`/api/azure/vms/${encodeURIComponent(rg)}/${encodeURIComponent(vmName)}/ssh`, {method: 'DELETE'})
         .then(r => r.json())
         .then(data => {
-            if (data.error) { alert('Error: ' + data.error); return; }
+            if (data.error) { showToast(escapeHtml(data.error), 'danger'); return; }
             bootstrap.Modal.getInstance(document.getElementById('sshConfigModal')).hide();
             loadVMs();
         })
-        .catch(err => alert('Error: ' + err));
+        .catch(err => showToast('Error: ' + escapeHtml(String(err)), 'danger'));
     }
 </script>
 {% endblock %}

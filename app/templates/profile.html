@@ -30,20 +30,20 @@
             <div class="card-body">
                 <div class="row g-3">
                     <div class="col-md-6">
-                        <label class="form-label small text-muted">Email</label>
-                        <input type="text" class="form-control bg-dark text-light border-secondary" value="{{ current_user.email }}" disabled>
+                        <label for="profile-email" class="form-label small text-muted">Email</label>
+                        <input type="text" id="profile-email" class="form-control bg-dark text-light border-secondary" value="{{ current_user.email|e }}" disabled>
                     </div>
                     <div class="col-md-6">
-                        <label class="form-label small text-muted">Role</label>
-                        <div class="mt-1" id="profile-role-badge"></div>
+                        <label id="profile-role-label" class="form-label small text-muted">Role</label>
+                        <div class="mt-1" id="profile-role-badge" aria-labelledby="profile-role-label"></div>
                     </div>
                     <div class="col-md-6">
-                        <label class="form-label small text-muted">Display Name</label>
+                        <label for="profile-display-name" class="form-label small text-muted">Display Name</label>
                         <input type="text" class="form-control bg-dark text-light border-secondary" id="profile-display-name"
-                               value="{{ current_user.display_name or '' }}" placeholder="How others see you">
+                               value="{{ (current_user.display_name or '')|e }}" placeholder="How others see you">
                     </div>
                     <div class="col-md-6 d-flex align-items-end">
-                        <button class="btn btn-danger btn-sm" onclick="saveProfile()">
+                        <button class="btn btn-danger btn-sm" onclick="saveProfile()" aria-label="Save display name">
                             <i class="bi bi-check-lg me-1"></i>Save Name
                         </button>
                     </div>
@@ -61,15 +61,15 @@
             <div class="card-body">
                 <div class="row g-3">
                     <div class="col-12">
-                        <label class="form-label small text-muted">Current Password</label>
+                        <label for="pw-current" class="form-label small text-muted">Current Password</label>
                         <input type="password" class="form-control bg-dark text-light border-secondary" id="pw-current" autocomplete="current-password">
                     </div>
                     <div class="col-md-6">
-                        <label class="form-label small text-muted">New Password</label>
+                        <label for="pw-new" class="form-label small text-muted">New Password</label>
                         <input type="password" class="form-control bg-dark text-light border-secondary" id="pw-new" autocomplete="new-password">
                     </div>
                     <div class="col-md-6">
-                        <label class="form-label small text-muted">Confirm New Password</label>
+                        <label for="pw-confirm" class="form-label small text-muted">Confirm New Password</label>
                         <input type="password" class="form-control bg-dark text-light border-secondary" id="pw-confirm" autocomplete="new-password">
                     </div>
                     <div class="col-12">
@@ -79,7 +79,7 @@
                         </div>
                     </div>
                     <div class="col-12">
-                        <button class="btn btn-danger btn-sm" onclick="changePassword()">
+                        <button class="btn btn-danger btn-sm" onclick="changePassword()" aria-label="Change password">
                             <i class="bi bi-shield-check me-1"></i>Change Password
                         </button>
                     </div>
@@ -101,11 +101,21 @@ const ROLE_MAP = {
     auditor:       { label: 'Auditor',       cls: 'bg-secondary' },
 };
 
+function escHtml(str) {
+    const d = document.createElement('div');
+    d.appendChild(document.createTextNode(String(str || '')));
+    return d.innerHTML;
+}
+
 (function() {
-    const role = '{{ current_user.role }}';
+    const role = {{ current_user.role|tojson }};
     const r = ROLE_MAP[role] || { label: role, cls: 'bg-secondary' };
-    document.getElementById('profile-role-badge').innerHTML =
-        `<span class="badge ${r.cls}" style="font-size:0.82rem;padding:0.35em 0.7em">${r.label}</span>`;
+    const badge = document.createElement('span');
+    badge.className = 'badge ' + r.cls;
+    badge.style.cssText = 'font-size:0.82rem;padding:0.35em 0.7em';
+    badge.textContent = r.label;
+    document.getElementById('profile-role-badge').textContent = '';
+    document.getElementById('profile-role-badge').appendChild(badge);
 })();
 
 async function saveProfile() {
@@ -120,7 +130,7 @@ async function saveProfile() {
         if (!res.ok) throw new Error(data.error || 'Failed to save');
         showToast('Display name updated', 'success');
     } catch(e) {
-        showToast(e.message, 'danger');
+        showToast(escHtml(e.message), 'danger');
     }
 }
 
@@ -155,7 +165,7 @@ async function changePassword() {
         document.getElementById('pw-new').value = '';
         document.getElementById('pw-confirm').value = '';
     } catch(e) {
-        showToast(e.message, 'danger');
+        showToast(escHtml(e.message), 'danger');
     }
 }
 </script>
