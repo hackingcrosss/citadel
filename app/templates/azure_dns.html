@@ -5,7 +5,7 @@
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-4">
     <h1 class="h3 mb-0">Azure DNS</h1>
-    {% if current_user.role != 'viewer' and active_project_role != 'white_team' %}
+    {% if current_user.role not in ['viewer', 'auditor', 'white_team'] and active_project_role != 'white_team' %}
     <button class="btn btn-infrared" onclick="openAddRecord()">
         <i class="bi bi-plus-circle"></i> Add Record
     </button>
@@ -95,18 +95,20 @@
             <i class="bi bi-cloud-check text-muted" style="font-size:2.2rem;opacity:.4;"></i>
             <div class="text-muted mt-2">Select a zone to view DNS records</div>
         </div>
-        <table class="table table-hover mb-0 d-none" id="records-table">
-            <thead class="table-light">
-                <tr>
-                    <th style="width:80px">Type</th>
-                    <th>Name</th>
-                    <th>Content</th>
-                    <th style="width:80px">TTL</th>
-                    <th style="width:100px">Actions</th>
-                </tr>
-            </thead>
-            <tbody id="records-body"></tbody>
-        </table>
+        <div class="table-responsive">
+            <table class="table table-hover mb-0 d-none" id="records-table">
+                <thead class="table-light">
+                    <tr>
+                        <th style="width:80px">Type</th>
+                        <th>Name</th>
+                        <th>Content</th>
+                        <th style="width:80px">TTL</th>
+                        <th style="width:100px">Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="records-body"></tbody>
+            </table>
+        </div>
     </div>
 </div>
 
@@ -116,7 +118,7 @@
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title"><i class="bi bi-plus-circle"></i> Add DNS Record</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
                 <div class="mb-3">
@@ -160,7 +162,7 @@
         <div class="modal-content">
             <div class="modal-header bg-danger text-white">
                 <h5 class="modal-title">Delete Record</h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
                 <p>Delete the <strong><span id="del-type"></span></strong> record set for <code id="del-name"></code>?</p>
@@ -187,12 +189,6 @@
 
     document.addEventListener('DOMContentLoaded', loadZones);
 
-    function escapeHtml(str) {
-        var div = document.createElement('div');
-        div.appendChild(document.createTextNode(str == null ? '' : String(str)));
-        return div.innerHTML;
-    }
-
     // ─────────────────────────────────────────
     // Zones
     // ─────────────────────────────────────────
@@ -204,7 +200,7 @@
             .then(data => {
                 document.getElementById('zones-loading-indicator').classList.add('d-none');
                 if (data.error) {
-                    showToast(data.error, 'danger');
+                    showToast(escapeHtml(data.error), 'danger');
                     return;
                 }
                 allZones = data.zones || [];
@@ -224,7 +220,7 @@
             })
             .catch(err => {
                 document.getElementById('zones-loading-indicator').classList.add('d-none');
-                showToast('Error loading zones: ' + err, 'danger');
+                showToast('Error loading zones: ' + escapeHtml(err), 'danger');
             });
     }
 
@@ -281,7 +277,7 @@
                 document.getElementById('records-loading').classList.add('d-none');
                 if (data.error) {
                     document.getElementById('records-empty').classList.remove('d-none');
-                    document.getElementById('records-empty').querySelector('.text-muted').textContent = data.error;
+                    document.getElementById('records-empty').querySelector('.text-muted').textContent = data.error;  // textContent is safe
                     return;
                 }
                 const records = data.records || [];
@@ -329,12 +325,6 @@
         }).join('');
     }
 
-    function escapeAttr(str) {
-        return String(str == null ? '' : str)
-            .replace(/&/g, '&amp;').replace(/"/g, '&quot;')
-            .replace(/'/g, '&#x27;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-    }
-
     // ─────────────────────────────────────────
     // Add Record
     // ─────────────────────────────────────────
@@ -366,11 +356,11 @@
         })
         .then(r => r.json())
         .then(data => {
-            if (data.error) { showToast(data.error, 'danger'); return; }
+            if (data.error) { showToast(escapeHtml(data.error), 'danger'); return; }
             bootstrap.Modal.getInstance(document.getElementById('addRecordModal')).hide();
             loadRecords();
         })
-        .catch(err => showToast('Error: ' + err, 'danger'));
+        .catch(err => showToast('Error: ' + escapeHtml(err), 'danger'));
     }
 
     // ─────────────────────────────────────────
@@ -394,10 +384,10 @@
         .then(r => r.json())
         .then(data => {
             bootstrap.Modal.getInstance(document.getElementById('deleteRecordModal')).hide();
-            if (data.error) { showToast(data.error, 'danger'); return; }
+            if (data.error) { showToast(escapeHtml(data.error), 'danger'); return; }
             loadRecords();
         })
-        .catch(err => showToast('Error: ' + err, 'danger'));
+        .catch(err => showToast('Error: ' + escapeHtml(err), 'danger'));
     });
 </script>
 {% endblock %}

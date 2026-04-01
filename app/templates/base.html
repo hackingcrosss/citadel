@@ -866,7 +866,7 @@
                 <button class="btn btn-sm btn-outline-secondary" style="font-size:0.75rem;" onclick="taskLogClearDone()">
                     Clear done
                 </button>
-                <button type="button" class="btn-close" data-bs-dismiss="offcanvas"></button>
+                <button type="button" class="btn-close" data-bs-dismiss="offcanvas" aria-label="Close"></button>
             </div>
         </div>
         <div class="offcanvas-body p-0" style="overflow-y:auto;">
@@ -966,7 +966,9 @@
                 if (taskHeader) taskHeader.style.display = '';
                 container.innerHTML = list.map(function(n, idx) {
                     var href = n.href || '#';
-                    return '<a class="notif-entry" href="' + _esc(href) + '">' +
+                    // Only allow relative paths and http(s) URLs to prevent javascript: URI injection
+                    if (href !== '#' && !/^(\/|https?:\/\/)/.test(href)) href = '#';
+                    return '<a class="notif-entry" href="' + escapeAttr(href) + '">' +
                         '<div class="notif-entry-icon">' + _iconFor(n.type) + '</div>' +
                         '<div class="notif-entry-body">' +
                             '<div class="notif-entry-msg">' + _esc(n.message) + '</div>' +
@@ -1082,11 +1084,11 @@
                 var meta = t.meta || {};
                 resumeBtn = '<div class="mt-2">' +
                     '<button class="btn btn-sm btn-outline-success" style="font-size:0.72rem;" ' +
-                        'data-task-id="' + _esc(t.task_id) + '" ' +
-                        'data-category="' + _esc(t.description || '') + '" ' +
-                        'data-subdomain="' + _esc(meta.subdomain || '') + '" ' +
-                        'data-zone-id="' + _esc(meta.zone_id || '') + '" ' +
-                        'data-zone-name="' + _esc(meta.zone_name || '') + '" ' +
+                        'data-task-id="' + escapeAttr(t.task_id) + '" ' +
+                        'data-category="' + escapeAttr(t.description || '') + '" ' +
+                        'data-subdomain="' + escapeAttr(meta.subdomain || '') + '" ' +
+                        'data-zone-id="' + escapeAttr(meta.zone_id || '') + '" ' +
+                        'data-zone-name="' + escapeAttr(meta.zone_name || '') + '" ' +
                         'onclick="taskLogResumeWebsite(this)">' +
                         '<i class="bi bi-arrow-right-circle"></i> Resume in Setup' +
                     '</button>' +
@@ -1098,7 +1100,7 @@
                 stopBtn = '<button class="btn btn-sm btn-outline-danger ms-auto flex-shrink-0" ' +
                     'style="font-size:0.7rem;padding:1px 6px;line-height:1.6;" ' +
                     'title="Stop task" ' +
-                    'onclick="taskLogRevoke(\'' + _esc(t.task_id) + '\', this)">' +
+                    'onclick="taskLogRevoke(\'' + escapeAttr(t.task_id) + '\', this)">' +
                     '<i class="bi bi-stop-fill"></i>' +
                 '</button>';
             }
@@ -1240,11 +1242,22 @@
     })();
 
     // ── Current user info ───────────────────────────────────────────────────────
-    window._INFRARED_USER_ROLE = '{{ current_user.role if current_user.is_authenticated else "" }}';
+    window._INFRARED_USER_ROLE = {{ (current_user.role if current_user.is_authenticated else "")|tojson }};
+
+    // ── Global escape helpers ───────────────────────────────────────────────────
+    window.escapeHtml = function(s) {
+        var d = document.createElement('div');
+        d.appendChild(document.createTextNode(String(s == null ? '' : s)));
+        return d.innerHTML;
+    };
+    window.escapeAttr = function(s) {
+        return String(s || '').replace(/&/g,'&amp;').replace(/'/g,'&#x27;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    };
 
     // ── Global toast ────────────────────────────────────────────────────────────
     window.showToast = function(message, type) {
-        type = type || 'success';
+        var validTypes = ['success', 'danger', 'warning', 'info'];
+        type = (validTypes.indexOf(type) !== -1) ? type : 'success';
         var icons = {
             success: 'bi-check-circle-fill',
             danger:  'bi-x-circle-fill',
@@ -1256,8 +1269,8 @@
         container.insertAdjacentHTML('beforeend',
             '<div id="' + id + '" class="toast align-items-center text-bg-' + type + ' border-0" role="alert">' +
                 '<div class="d-flex">' +
-                    '<div class="toast-body"><i class="bi ' + (icons[type] || 'bi-info-circle-fill') + ' me-2"></i>' + message + '</div>' +
-                    '<button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>' +
+                    '<div class="toast-body"><i class="bi ' + icons[type] + ' me-2"></i>' + message + '</div>' +
+                    '<button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>' +
                 '</div>' +
             '</div>'
         );
@@ -1270,9 +1283,9 @@
     // ── Upgrade required prompt ─────────────────────────────────────────────────
     window.showUpgradeRequired = function(message) {
         var isAdmin = window._INFRARED_USER_ROLE === 'admin';
-        var body = (message || 'This feature is not available on your current plan.');
+        var body = escapeHtml(message || 'This feature is not available on your current plan.');
         if (isAdmin) {
-            body += ' <a href="/admin/license" class="alert-link fw-semibold">Manage License →</a>';
+            body += ' <a href="/admin/license" class="alert-link fw-semibold">Manage License &rarr;</a>';
         } else {
             body += ' Contact your administrator to upgrade.';
         }
