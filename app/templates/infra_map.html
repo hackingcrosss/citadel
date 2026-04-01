@@ -203,7 +203,7 @@
 <div class="card-custom mb-4">
     <div class="card-header d-flex justify-content-between align-items-center">
         <span><i class="bi bi-arrow-right-circle text-muted me-1"></i> DNS Records Pointing to NPM Host Without a Proxy Entry</span>
-        {% if current_user.role != 'viewer' and active_project_role != 'white_team' %}
+        {% if current_user.role not in ['viewer', 'auditor', 'white_team'] and active_project_role != 'white_team' %}
         <div class="d-flex gap-2">
             <button class="btn btn-sm btn-outline-secondary" onclick="selectAllDnsRecords()">
                 <i class="bi bi-check2-all"></i> Select All
@@ -354,10 +354,8 @@
 
     document.addEventListener('DOMContentLoaded', function() { loadAll(); });
 
-    function escapeHtml(str) {
-        var d = document.createElement('div');
-        d.appendChild(document.createTextNode(String(str || '')));
-        return d.innerHTML;
+    function escapeAttr(s) {
+        return String(s || '').replace(/&/g,'&amp;').replace(/'/g,'&#x27;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
     }
 
     // ── Data loading ──────────────────────────────────────────────────────────
@@ -927,9 +925,9 @@
                 : '';
             html += '<tr id="dns-row-' + escapeHtml(recId) + '">';
             html += '<td><input type="checkbox" class="dns-rec-cb"'
-                  + ' data-zone-id="'   + escapeHtml(zoneId)   + '"'
-                  + ' data-rec-id="'    + escapeHtml(recId)    + '"'
-                  + ' data-domain-id="' + escapeHtml(domainId) + '"'
+                  + ' data-zone-id="'   + escapeAttr(zoneId)   + '"'
+                  + ' data-rec-id="'    + escapeAttr(recId)    + '"'
+                  + ' data-domain-id="' + escapeAttr(domainId) + '"'
                   + ' onchange="updateDnsSelection()"></td>';
             html += '<td><code class="small">' + escapeHtml(rec.name.replace(/\.$/, '')) + '</code>' + proxiedIcon + '</td>';
             html += '<td><code class="small">' + escapeHtml(rec.content) + '</code></td>';
@@ -937,7 +935,7 @@
             html += '<td class="text-end">'
                   + (!IS_READONLY
                       ? '<button class="btn btn-sm btn-outline-danger" title="Delete DNS record"'
-                        + ' onclick="deleteDnsRecord(this,' + JSON.stringify(zoneId) + ',' + JSON.stringify(recId) + ',' + JSON.stringify(domainId) + ')">'
+                        + " onclick=\"deleteDnsRecord(this,'" + escapeAttr(zoneId) + "','" + escapeAttr(recId) + "','" + escapeAttr(domainId) + "')\">"
                         + '<i class="bi bi-trash"></i></button>'
                       : '')
                   + '</td>';
@@ -1018,7 +1016,7 @@
             .then(function(r) { return r.json(); })
             .then(function(data) {
                 if (data.error) {
-                    alert('Error: ' + data.error);
+                    showToast('Error: ' + escapeHtml(data.error), 'danger');
                     btn.disabled = false;
                     btn.innerHTML = '<i class="bi bi-trash"></i>';
                     return;
@@ -1030,7 +1028,7 @@
                 renderDnsWithoutNpm();
             })
             .catch(function(err) {
-                alert('Request failed: ' + err);
+                showToast('Error: ' + escapeHtml(String(err)), 'danger');
                 btn.disabled = false;
                 btn.innerHTML = '<i class="bi bi-trash"></i>';
             });
