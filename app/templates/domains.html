@@ -299,7 +299,7 @@
     const ACTIVE_PROJECT_ID = {{ active_project.id if active_project else 'null' }};
     const ACTIVE_PROJECT_CODE = {{ active_project.code|tojson if active_project and active_project.code else 'null' }};
 
-    function esc(s) { var d = document.createElement('div'); d.appendChild(document.createTextNode(String(s || ''))); return d.innerHTML; }
+    function escapeAttr(s) { return String(s || '').replace(/&/g,'&amp;').replace(/'/g,'&#x27;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
     let currentZoneId = null;
     let currentZoneName = null;
@@ -330,10 +330,10 @@
             .then(r => r.json())
             .then(data => {
                 _setZonesLoading(false);
-                if (data.upgrade_required) { showToast(esc(data.error || 'Upgrade required'), 'warning'); return; }
+                if (data.upgrade_required) { showToast(escapeHtml(data.error || 'Upgrade required'), 'warning'); return; }
                 if (data.error) {
                     document.getElementById('zone-select').innerHTML =
-                        '<option value="">Error: ' + esc(data.error) + '</option>';
+                        '<option value="">Error: ' + escapeHtml(data.error) + '</option>';
                     return;
                 }
                 const select = document.getElementById('zone-select');
@@ -407,7 +407,7 @@
                 document.getElementById('zone-detail-status').innerHTML =
                     z.status === 'active'
                         ? '<span class="badge bg-success">Active</span>'
-                        : '<span class="badge bg-warning">' + esc(z.status) + '</span>';
+                        : '<span class="badge bg-warning">' + escapeHtml(z.status) + '</span>';
                 document.getElementById('zone-detail-ns').textContent =
                     (z.name_servers || []).join(', ');
                 document.getElementById('zone-detail-plan').textContent =
@@ -420,7 +420,7 @@
             .then(data => {
                 if (data.error) {
                     document.getElementById('zone-detail-ssl').innerHTML =
-                        '<span class="text-muted" title="' + esc(data.error) + '">N/A</span>';
+                        '<span class="text-muted" title="' + escapeHtml(data.error) + '">N/A</span>';
                     return;
                 }
                 if (data.ssl) {
@@ -513,9 +513,9 @@
         fetch(url)
             .then(r => r.json())
             .then(data => {
-                if (data.upgrade_required) { showToast(esc(data.error || 'Upgrade required'), 'warning'); return; }
+                if (data.upgrade_required) { showToast(escapeHtml(data.error || 'Upgrade required'), 'warning'); return; }
                 if (data.error) {
-                    tbody.innerHTML = '<tr><td colspan="8" class="text-danger text-center py-4">' + esc(data.error) + '</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="8" class="text-danger text-center py-4">' + escapeHtml(data.error) + '</td></tr>';
                     updateDomainSelection();
                     return;
                 }
@@ -551,11 +551,11 @@
                     const escapedRecord = encodeURIComponent(JSON.stringify(r));
 
                     return '<tr>' +
-                        '<td><input type="checkbox" class="domain-rec-cb" data-record-id="' + esc(r.id) + '" onchange="updateDomainSelection()"></td>' +
+                        '<td><input type="checkbox" class="domain-rec-cb" data-record-id="' + escapeHtml(r.id) + '" onchange="updateDomainSelection()"></td>' +
                         '<td><span class="badge bg-secondary">Cloudflare</span></td>' +
-                        '<td><span class="badge bg-' + color + '">' + esc(r.type) + '</span></td>' +
-                        '<td>' + esc(r.name) + '</td>' +
-                        '<td class="text-truncate" style="max-width:250px" title="' + esc(r.content) + '">' + esc(r.content) + '</td>' +
+                        '<td><span class="badge bg-' + color + '">' + escapeHtml(r.type) + '</span></td>' +
+                        '<td>' + escapeHtml(r.name) + '</td>' +
+                        '<td class="text-truncate" style="max-width:250px" title="' + escapeAttr(r.content) + '">' + escapeHtml(r.content) + '</td>' +
                         '<td>' + ttl + '</td>' +
                         '<td>' + proxy + '</td>' +
                         '<td>' +
@@ -563,7 +563,7 @@
                                 (!IS_READONLY ? '<button class="btn btn-outline-primary" title="Edit" onclick="editRecord(\'' + escapedRecord + '\')">' +
                                     '<i class="bi bi-pencil"></i>' +
                                 '</button>' : '') +
-                                (!IS_READONLY ? '<button class="btn btn-outline-danger" title="Delete" onclick="deleteRecord(\'' + esc(r.id) + '\')">' +
+                                (!IS_READONLY ? '<button class="btn btn-outline-danger" title="Delete" onclick="deleteRecord(\'' + escapeAttr(r.id) + '\')">' +
                                     '<i class="bi bi-trash"></i>' +
                                 '</button>' : '') +
                             '</div>' +
@@ -585,7 +585,7 @@
     }
 
     function createRecord() {
-        if (!currentZoneId) { alert('Select a zone first'); return; }
+        if (!currentZoneId) { showToast('Select a zone first', 'warning'); return; }
 
         const body = {
             type: document.getElementById('new-record-type').value,
@@ -600,7 +600,7 @@
         }
 
         if (!body.name || !body.content) {
-            alert('Name and content are required.');
+            showToast('Name and content are required', 'warning');
             return;
         }
 
@@ -611,14 +611,14 @@
         })
         .then(r => r.json())
         .then(data => {
-            if (data.upgrade_required) { showToast(esc(data.error || 'Upgrade required'), 'warning'); return; }
-            if (data.error) { alert(data.error); return; }
+            if (data.upgrade_required) { showToast(escapeHtml(data.error || 'Upgrade required'), 'warning'); return; }
+            if (data.error) { showToast(escapeHtml(data.error), 'danger'); return; }
             bootstrap.Modal.getInstance(document.getElementById('addRecordModal')).hide();
             document.getElementById('new-record-name').value = '';
             document.getElementById('new-record-content').value = '';
             loadDNSRecords();
         })
-        .catch(err => alert('Error: ' + err));
+        .catch(err => showToast('Error: ' + escapeHtml(String(err)), 'danger'));
     }
 
     function editRecord(encodedRecord) {
@@ -659,12 +659,12 @@
         })
         .then(r => r.json())
         .then(data => {
-            if (data.upgrade_required) { showToast(esc(data.error || 'Upgrade required'), 'warning'); return; }
-            if (data.error) { alert(data.error); return; }
+            if (data.upgrade_required) { showToast(escapeHtml(data.error || 'Upgrade required'), 'warning'); return; }
+            if (data.error) { showToast(escapeHtml(data.error), 'danger'); return; }
             bootstrap.Modal.getInstance(document.getElementById('editRecordModal')).hide();
             loadDNSRecords();
         })
-        .catch(err => alert('Error: ' + err));
+        .catch(err => showToast('Error: ' + escapeHtml(String(err)), 'danger'));
     }
 
     function deleteRecord(recordId) {
@@ -672,11 +672,11 @@
             fetch(zoneUrl('/records/' + recordId), {method: 'DELETE'})
                 .then(r => r.json())
                 .then(data => {
-                    if (data.upgrade_required) { showToast(esc(data.error || 'Upgrade required'), 'warning'); return; }
-                    if (data.error) { showToast(esc(data.error), 'danger'); return; }
+                    if (data.upgrade_required) { showToast(escapeHtml(data.error || 'Upgrade required'), 'warning'); return; }
+                    if (data.error) { showToast(escapeHtml(data.error), 'danger'); return; }
                     loadDNSRecords();
                 })
-                .catch(err => showToast('Error: ' + esc(String(err)), 'danger'));
+                .catch(err => showToast('Error: ' + escapeHtml(String(err)), 'danger'));
         });
     }
 
@@ -699,12 +699,12 @@
         })
         .then(r => r.json())
         .then(data => {
-            if (data.upgrade_required) { showToast(esc(data.error || 'Upgrade required'), 'warning'); return; }
-            if (data.error) { alert(data.error); return; }
+            if (data.upgrade_required) { showToast(escapeHtml(data.error || 'Upgrade required'), 'warning'); return; }
+            if (data.error) { showToast(escapeHtml(data.error), 'danger'); return; }
             bootstrap.Modal.getInstance(document.getElementById('sslModal')).hide();
             document.getElementById('zone-detail-ssl').textContent = value;
         })
-        .catch(err => alert('Error: ' + err));
+        .catch(err => showToast('Error: ' + escapeHtml(String(err)), 'danger'));
     }
 
     function updateDomainSelection() {
@@ -732,7 +732,7 @@
     }
 
     function enableDMARC() {
-        if (!currentZoneId) { alert('Select a zone first'); return; }
+        if (!currentZoneId) { showToast('Select a zone first', 'warning'); return; }
         showConfirm(
             'Enable DMARC Management',
             'This will activate Cloudflare DMARC Management and create a <code>_dmarc</code> TXT record with <code>p=quarantine</code> policy.<br><br>Continue?',
@@ -747,9 +747,9 @@
                 .then(r => r.json())
                 .then(data => {
                     if (btn) { btn.disabled = false; btn.innerHTML = '<i class="bi bi-shield-plus"></i>'; }
-                    if (data.upgrade_required) { showToast(esc(data.error || 'Upgrade required'), 'warning'); return; }
-                    if (data.error) { showToast(esc(data.error), 'danger'); return; }
-                    if (data.warning) { showToast(esc(data.warning), 'warning'); }
+                    if (data.upgrade_required) { showToast(escapeHtml(data.error || 'Upgrade required'), 'warning'); return; }
+                    if (data.error) { showToast(escapeHtml(data.error), 'danger'); return; }
+                    if (data.warning) { showToast(escapeHtml(data.warning), 'warning'); }
                     showToast('DMARC management enabled and _dmarc record created', 'success');
                     document.getElementById('zone-detail-dmarc').innerHTML = '<span class="badge bg-success">Active</span>';
                     if (btn) btn.style.display = 'none';
@@ -757,7 +757,7 @@
                 })
                 .catch(err => {
                     if (btn) { btn.disabled = false; btn.innerHTML = '<i class="bi bi-shield-plus"></i>'; }
-                    showToast('Error: ' + err, 'danger');
+                    showToast('Error: ' + escapeHtml(String(err)), 'danger');
                 });
             }
         );
