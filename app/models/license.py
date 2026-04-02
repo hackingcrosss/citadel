@@ -3,7 +3,7 @@ from app import db
 
 
 class License(db.Model):
-    """Single-row table that stores the active plan/license for this Crucible instance.
+    """Single-row table that stores the active plan/license for this Citadel instance.
 
     The admin selects a tier manually via /admin/license.
     License key validation is reserved for a future phase.

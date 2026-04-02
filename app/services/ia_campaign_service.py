@@ -195,7 +195,7 @@ def launch_campaign(campaign):
     if not gp_targets:
         raise ValueError('No targets with valid email addresses')
 
-    group_name = f'Crucible_{campaign.project_id}_{campaign.id}_{int(datetime.utcnow().timestamp())}'
+    group_name = f'Citadel_{campaign.project_id}_{campaign.id}_{int(datetime.utcnow().timestamp())}'
     gp_group = gophish_service.create_group({
         'name': group_name,
         'targets': gp_targets,
@@ -206,10 +206,10 @@ def launch_campaign(campaign):
 
     # Build campaign payload
     gp_payload = {
-        'name': f'Crucible: {campaign.name[:150]}',
+        'name': f'Citadel: {campaign.name[:150]}',
         'smtp': smtp_profile,
         'groups': [{'name': gp_group['name']}],
-        'template': {'name': 'Crucible Grooming'},  # uses the grooming template
+        'template': {'name': 'Citadel Grooming'},  # uses the grooming template
         'page': {'name': 'Blank', 'html': '<html><body></body></html>'},
         'url': '',
     }

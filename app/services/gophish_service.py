@@ -106,7 +106,7 @@ def find_all_profiles_for_domain(domain_name):
     return matches
 
 
-_GROOMING_TEMPLATE_NAME = 'Crucible Grooming'
+_GROOMING_TEMPLATE_NAME = 'Citadel Grooming'
 
 
 def _ensure_grooming_template(subject, html_body, text_body='', attachments=None):
