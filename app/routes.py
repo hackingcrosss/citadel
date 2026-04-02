@@ -331,3 +331,9 @@ def register_routes(app):
     @feature_required('initial_access')
     def ia_recon():
         return render_template('ia_recon.html')
+
+    @app.route('/initial-access/targets')
+    @login_required
+    @feature_required('initial_access')
+    def ia_targets():
+        return render_template('ia_targets.html')
