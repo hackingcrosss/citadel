@@ -337,3 +337,9 @@ def register_routes(app):
     @feature_required('initial_access')
     def ia_targets():
         return render_template('ia_targets.html')
+
+    @app.route('/initial-access/campaigns')
+    @login_required
+    @feature_required('initial_access')
+    def ia_campaigns():
+        return render_template('ia_campaigns.html')
