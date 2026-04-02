@@ -71,6 +71,15 @@ def create_app(config_class=Config):
             return {'user_projects': [], 'active_project': None, 'active_project_role': None}
 
     @app.context_processor
+    def inject_phase():
+        """Inject is_ia_phase flag for the phase switcher in the sidebar."""
+        from flask import request as _req
+        try:
+            return {'is_ia_phase': _req.path.startswith('/initial-access/')}
+        except Exception:
+            return {'is_ia_phase': False}
+
+    @app.context_processor
     def inject_company():
         """Inject active_company and user_companies into every template."""
         from flask_login import current_user
