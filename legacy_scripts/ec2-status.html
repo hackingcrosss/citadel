@@ -1,0 +1,580 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AWS EC2 Dashboard</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        .header {
+            background: white;
+            padding: 30px;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            margin-bottom: 30px;
+        }
+
+        h1 {
+            color: #333;
+            margin-bottom: 20px;
+            font-size: 2em;
+        }
+
+        .credentials-form {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        .form-group {
+            display: flex;
+            flex-direction: column;
+        }
+
+        label {
+            font-weight: 600;
+            margin-bottom: 5px;
+            color: #555;
+            font-size: 0.9em;
+        }
+
+        input, select {
+            padding: 12px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 14px;
+            transition: border-color 0.3s;
+        }
+
+        input:focus, select:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .button-group {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        button {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .btn-primary {
+            background: #667eea;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #5568d3;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn-success {
+            background: #48bb78;
+            color: white;
+        }
+
+        .btn-success:hover {
+            background: #38a169;
+        }
+
+        .btn-danger {
+            background: #f56565;
+            color: white;
+        }
+
+        .btn-danger:hover {
+            background: #e53e3e;
+        }
+
+        .btn-warning {
+            background: #ed8936;
+            color: white;
+        }
+
+        .btn-warning:hover {
+            background: #dd6b20;
+        }
+
+        .btn-secondary {
+            background: #718096;
+            color: white;
+        }
+
+        .btn-secondary:hover {
+            background: #4a5568;
+        }
+
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .instances-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(400px, 1fr));
+            gap: 20px;
+        }
+
+        .instance-card {
+            background: white;
+            border-radius: 15px;
+            padding: 25px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            transition: transform 0.3s, box-shadow 0.3s;
+        }
+
+        .instance-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 15px 40px rgba(0,0,0,0.3);
+        }
+
+        .instance-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: start;
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid #f0f0f0;
+        }
+
+        .instance-name {
+            font-size: 1.3em;
+            font-weight: 700;
+            color: #333;
+            margin-bottom: 5px;
+        }
+
+        .instance-id {
+            font-size: 0.85em;
+            color: #888;
+            font-family: monospace;
+        }
+
+        .status-badge {
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 0.85em;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .status-running {
+            background: #c6f6d5;
+            color: #22543d;
+        }
+
+        .status-stopped {
+            background: #fed7d7;
+            color: #742a2a;
+        }
+
+        .status-pending {
+            background: #feebc8;
+            color: #7c2d12;
+        }
+
+        .status-stopping {
+            background: #feebc8;
+            color: #7c2d12;
+        }
+
+        .instance-details {
+            display: grid;
+            gap: 12px;
+            margin-bottom: 20px;
+        }
+
+        .detail-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 10px;
+            background: #f8f9fa;
+            border-radius: 8px;
+        }
+
+        .detail-label {
+            font-weight: 600;
+            color: #555;
+        }
+
+        .detail-value {
+            color: #333;
+            font-family: monospace;
+            font-size: 0.9em;
+        }
+
+        .instance-actions {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: white;
+            font-size: 1.2em;
+        }
+
+        .error {
+            background: #feb2b2;
+            color: #742a2a;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+
+        .success {
+            background: #c6f6d5;
+            color: #22543d;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        .stat-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 10px;
+            text-align: center;
+        }
+
+        .stat-number {
+            font-size: 2.5em;
+            font-weight: 700;
+            margin-bottom: 5px;
+        }
+
+        .stat-label {
+            font-size: 0.9em;
+            opacity: 0.9;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🚀 AWS EC2 Dashboard</h1>
+            
+            <div class="credentials-form">
+                <div class="form-group">
+                    <label for="accessKeyId">Access Key ID</label>
+                    <input type="text" id="accessKeyId" placeholder="AKIA...">
+                </div>
+                <div class="form-group">
+                    <label for="secretAccessKey">Secret Access Key</label>
+                    <input type="password" id="secretAccessKey" placeholder="Enter secret key">
+                </div>
+                <div class="form-group">
+                    <label for="region">Region</label>
+                    <select id="region">
+                        <option value="us-east-1">US East (N. Virginia)</option>
+                        <option value="us-east-2">US East (Ohio)</option>
+                        <option value="us-west-1">US West (N. California)</option>
+                        <option value="us-west-2">US West (Oregon)</option>
+                        <option value="eu-west-1">EU (Ireland)</option>
+                        <option value="eu-central-1">EU (Frankfurt)</option>
+                        <option value="ap-southeast-1">Asia Pacific (Singapore)</option>
+                        <option value="ap-northeast-1">Asia Pacific (Tokyo)</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="button-group">
+                <button class="btn-primary" onclick="loadInstances()">🔄 Load Instances</button>
+                <button class="btn-success" onclick="startAllStopped()">▶️ Start All Stopped</button>
+                <button class="btn-danger" onclick="stopAllRunning()">⏹️ Stop All Running</button>
+            </div>
+
+            <div id="message"></div>
+        </div>
+
+        <div id="stats" class="stats" style="display: none;"></div>
+        <div id="loading" class="loading" style="display: none;">Loading instances...</div>
+        <div id="instances" class="instances-grid"></div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/aws-sdk/2.1691.0/aws-sdk.min.js"></script>
+    <script>
+        let ec2;
+        let instances = [];
+
+        function initAWS() {
+            const accessKeyId = document.getElementById('accessKeyId').value;
+            const secretAccessKey = document.getElementById('secretAccessKey').value;
+            const region = document.getElementById('region').value;
+
+            if (!accessKeyId || !secretAccessKey) {
+                showMessage('Please enter your AWS credentials', 'error');
+                return false;
+            }
+
+            AWS.config.update({
+                accessKeyId: accessKeyId,
+                secretAccessKey: secretAccessKey,
+                region: region
+            });
+
+            ec2 = new AWS.EC2();
+            return true;
+        }
+
+        function showMessage(message, type = 'success') {
+            const messageDiv = document.getElementById('message');
+            messageDiv.className = type;
+            messageDiv.textContent = message;
+            messageDiv.style.marginTop = '15px';
+            
+            setTimeout(() => {
+                messageDiv.textContent = '';
+                messageDiv.className = '';
+            }, 5000);
+        }
+
+        async function loadInstances() {
+            if (!initAWS()) return;
+
+            document.getElementById('loading').style.display = 'block';
+            document.getElementById('instances').innerHTML = '';
+
+            try {
+                const data = await ec2.describeInstances().promise();
+                instances = [];
+
+                data.Reservations.forEach(reservation => {
+                    reservation.Instances.forEach(instance => {
+                        const name = instance.Tags?.find(tag => tag.Key === 'Name')?.Value || 'Unnamed';
+                        instances.push({
+                            id: instance.InstanceId,
+                            name: name,
+                            state: instance.State.Name,
+                            type: instance.InstanceType,
+                            privateIp: instance.PrivateIpAddress || 'N/A',
+                            publicIp: instance.PublicIpAddress || 'N/A',
+                            az: instance.Placement.AvailabilityZone
+                        });
+                    });
+                });
+
+                displayInstances();
+                displayStats();
+                showMessage(`Loaded ${instances.length} instances successfully`);
+            } catch (error) {
+                showMessage(`Error loading instances: ${error.message}`, 'error');
+            } finally {
+                document.getElementById('loading').style.display = 'none';
+            }
+        }
+
+        function displayStats() {
+            const running = instances.filter(i => i.state === 'running').length;
+            const stopped = instances.filter(i => i.state === 'stopped').length;
+            const other = instances.length - running - stopped;
+
+            const statsHTML = `
+                <div class="stat-card">
+                    <div class="stat-number">${instances.length}</div>
+                    <div class="stat-label">Total Instances</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number">${running}</div>
+                    <div class="stat-label">Running</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number">${stopped}</div>
+                    <div class="stat-label">Stopped</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number">${other}</div>
+                    <div class="stat-label">Other States</div>
+                </div>
+            `;
+
+            const statsDiv = document.getElementById('stats');
+            statsDiv.innerHTML = statsHTML;
+            statsDiv.style.display = 'grid';
+        }
+
+        function displayInstances() {
+            const container = document.getElementById('instances');
+            
+            if (instances.length === 0) {
+                container.innerHTML = '<div class="loading">No instances found</div>';
+                return;
+            }
+
+            container.innerHTML = instances.map(instance => `
+                <div class="instance-card">
+                    <div class="instance-header">
+                        <div>
+                            <div class="instance-name">${instance.name}</div>
+                            <div class="instance-id">${instance.id}</div>
+                        </div>
+                        <span class="status-badge status-${instance.state}">${instance.state}</span>
+                    </div>
+                    
+                    <div class="instance-details">
+                        <div class="detail-row">
+                            <span class="detail-label">Type:</span>
+                            <span class="detail-value">${instance.type}</span>
+                        </div>
+                        <div class="detail-row">
+                            <span class="detail-label">Private IP:</span>
+                            <span class="detail-value">${instance.privateIp}</span>
+                        </div>
+                        <div class="detail-row">
+                            <span class="detail-label">Public IP:</span>
+                            <span class="detail-value">${instance.publicIp}</span>
+                        </div>
+                        <div class="detail-row">
+                            <span class="detail-label">Zone:</span>
+                            <span class="detail-value">${instance.az}</span>
+                        </div>
+                    </div>
+
+                    <div class="instance-actions">
+                        ${instance.state === 'stopped' ? 
+                            `<button class="btn-success" onclick="startInstance('${instance.id}')">▶️ Start</button>` :
+                            instance.state === 'running' ?
+                            `<button class="btn-danger" onclick="stopInstance('${instance.id}')">⏹️ Stop</button>
+                             <button class="btn-warning" onclick="rebootInstance('${instance.id}')">🔄 Reboot</button>` :
+                            `<button class="btn-secondary" disabled>${instance.state}...</button>`
+                        }
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        async function startInstance(instanceId) {
+            if (!ec2) {
+                showMessage('Please load instances first', 'error');
+                return;
+            }
+
+            try {
+                await ec2.startInstances({ InstanceIds: [instanceId] }).promise();
+                showMessage(`Starting instance ${instanceId}`);
+                setTimeout(loadInstances, 2000);
+            } catch (error) {
+                showMessage(`Error starting instance: ${error.message}`, 'error');
+            }
+        }
+
+        async function stopInstance(instanceId) {
+            if (!confirm('Are you sure you want to stop this instance?')) return;
+            if (!ec2) {
+                showMessage('Please load instances first', 'error');
+                return;
+            }
+
+            try {
+                await ec2.stopInstances({ InstanceIds: [instanceId] }).promise();
+                showMessage(`Stopping instance ${instanceId}`);
+                setTimeout(loadInstances, 2000);
+            } catch (error) {
+                showMessage(`Error stopping instance: ${error.message}`, 'error');
+            }
+        }
+
+        async function rebootInstance(instanceId) {
+            if (!confirm('Are you sure you want to reboot this instance?')) return;
+            if (!ec2) {
+                showMessage('Please load instances first', 'error');
+                return;
+            }
+
+            try {
+                await ec2.rebootInstances({ InstanceIds: [instanceId] }).promise();
+                showMessage(`Rebooting instance ${instanceId}`);
+                setTimeout(loadInstances, 2000);
+            } catch (error) {
+                showMessage(`Error rebooting instance: ${error.message}`, 'error');
+            }
+        }
+
+        async function startAllStopped() {
+            const stoppedIds = instances.filter(i => i.state === 'stopped').map(i => i.id);
+            
+            if (stoppedIds.length === 0) {
+                showMessage('No stopped instances to start', 'error');
+                return;
+            }
+
+            if (!confirm(`Start ${stoppedIds.length} stopped instance(s)?`)) return;
+
+            if (!ec2) {
+                showMessage('Please load instances first', 'error');
+                return;
+            }
+
+            try {
+                await ec2.startInstances({ InstanceIds: stoppedIds }).promise();
+                showMessage(`Starting ${stoppedIds.length} instance(s)`);
+                setTimeout(loadInstances, 2000);
+            } catch (error) {
+                showMessage(`Error starting instances: ${error.message}`, 'error');
+            }
+        }
+
+        async function stopAllRunning() {
+            const runningIds = instances.filter(i => i.state === 'running').map(i => i.id);
+            
+            if (runningIds.length === 0) {
+                showMessage('No running instances to stop', 'error');
+                return;
+            }
+
+            if (!confirm(`Stop ${runningIds.length} running instance(s)?`)) return;
+
+            if (!ec2) {
+                showMessage('Please load instances first', 'error');
+                return;
+            }
+
+            try {
+                await ec2.stopInstances({ InstanceIds: runningIds }).promise();
+                showMessage(`Stopping ${runningIds.length} instance(s)`);
+                setTimeout(loadInstances, 2000);
+            } catch (error) {
+                showMessage(`Error stopping instances: ${error.message}`, 'error');
+            }
+        }
+    </script>
+</body>
+</html>
