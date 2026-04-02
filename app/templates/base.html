@@ -722,7 +722,7 @@
                 <a class="nav-link {% if request.endpoint == 'ia_targets' %}active{% endif %}" href="{{ url_for('ia_targets') }}">
                     <i class="bi bi-people"></i> Targets
                 </a>
-                <a class="nav-link {% if request.endpoint == 'ia_campaigns' %}active{% endif %}" href="#" onclick="return false;">
+                <a class="nav-link {% if request.endpoint == 'ia_campaigns' %}active{% endif %}" href="{{ url_for('ia_campaigns') }}">
                     <i class="bi bi-bullseye"></i> Campaigns
                 </a>
                 <a class="nav-link {% if request.endpoint == 'ia_landing_pages' %}active{% endif %}" href="#" onclick="return false;">

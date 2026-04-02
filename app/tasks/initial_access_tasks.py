@@ -39,3 +39,17 @@ def scan_poll_job(self, job_id):
 
     _log.warning('Scan job %s timed out after %d polls', job_id, _MAX_POLLS)
     return {'status': 'timeout', 'job_id': job_id}
+
+
+@celery.task(bind=True, max_retries=0, time_limit=120, soft_time_limit=90)
+def sync_active_campaigns(self):
+    """Periodic task: sync events for all active GoPhish campaigns."""
+    from app.services import ia_campaign_service
+
+    try:
+        count = ia_campaign_service.sync_all_active_campaigns()
+        _log.info('Campaign sync complete: %d new events', count)
+        return {'new_events': count}
+    except Exception as e:
+        _log.exception('Campaign sync failed: %s', e)
+        return {'error': str(e)}

@@ -1,0 +1,689 @@
+{% extends "base.html" %}
+
+{% block title %}Campaigns - Frontline{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1 class="h3 mb-0">Campaigns</h1>
+    <div class="d-flex align-items-center gap-2">
+        <select class="form-select form-select-sm" id="status-filter" style="width:140px;" onchange="loadCampaigns()">
+            <option value="">All statuses</option>
+            <option value="draft">Draft</option>
+            <option value="active">Active</option>
+            <option value="paused">Paused</option>
+            <option value="completed">Completed</option>
+            <option value="archived">Archived</option>
+        </select>
+        <button class="btn btn-sm btn-outline-secondary" onclick="loadCampaigns()">
+            <i class="bi bi-arrow-clockwise"></i> Refresh
+        </button>
+        {% if current_user.role not in ['viewer', 'auditor', 'white_team'] and active_project_role != 'white_team' %}
+        <button class="btn btn-sm btn-infrared" data-bs-toggle="modal" data-bs-target="#createCampaignModal">
+            <i class="bi bi-plus-circle"></i> New Campaign
+        </button>
+        {% endif %}
+    </div>
+</div>
+
+{% if not active_project %}
+<div class="text-center py-5">
+    <i class="bi bi-folder2-open text-warning" style="font-size: 2rem;"></i>
+    <p class="mt-2">Select a project from the top bar to manage campaigns.</p>
+</div>
+{% else %}
+
+<!-- Stats Row -->
+<div class="row g-3 mb-4">
+    <div class="col"><div class="stat-card"><div class="label">Total</div><h3 id="stat-total">0</h3></div></div>
+    <div class="col"><div class="stat-card"><div class="label">Active</div><h3 id="stat-active">0</h3></div></div>
+    <div class="col"><div class="stat-card"><div class="label">Emails Sent</div><h3 id="stat-sent">0</h3></div></div>
+    <div class="col"><div class="stat-card"><div class="label">Opens</div><h3 id="stat-opens">0</h3></div></div>
+    <div class="col"><div class="stat-card"><div class="label">Clicks</div><h3 id="stat-clicks">0</h3></div></div>
+    <div class="col"><div class="stat-card"><div class="label">Creds</div><h3 id="stat-creds">0</h3></div></div>
+</div>
+
+<!-- Campaigns Table -->
+<div class="card-custom mb-4">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <span><i class="bi bi-bullseye"></i> Campaigns</span>
+        <span class="badge bg-secondary" id="campaign-count-badge">0</span>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+        <table class="table table-hover mb-0">
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>Vector</th>
+                    <th>Status</th>
+                    <th>Domain</th>
+                    <th>Targets</th>
+                    <th>Sent</th>
+                    <th>Opens</th>
+                    <th>Clicks</th>
+                    <th>Creds</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody id="campaigns-tbody">
+                <tr><td colspan="10" class="text-center text-muted py-3">Loading...</td></tr>
+            </tbody>
+        </table>
+        </div>
+    </div>
+</div>
+
+<!-- Campaign Detail / Events Panel -->
+<div id="detail-panel" class="d-none">
+    <div class="card-custom mb-4">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <span><i class="bi bi-activity"></i> Campaign — <span id="detail-name"></span></span>
+            <div>
+                <button class="btn btn-sm btn-outline-secondary" onclick="syncCampaign()" id="btn-sync">
+                    <i class="bi bi-arrow-repeat"></i> Sync
+                </button>
+                <button class="btn btn-sm btn-outline-secondary" onclick="closeDetail()">
+                    <i class="bi bi-x-lg"></i> Close
+                </button>
+            </div>
+        </div>
+        <div class="card-body">
+            <!-- Tabs -->
+            <ul class="nav nav-tabs mb-3">
+                <li class="nav-item"><button class="nav-link active" onclick="showDetailTab('events')" id="tab-events">Events</button></li>
+                <li class="nav-item"><button class="nav-link" onclick="showDetailTab('targets')" id="tab-targets">Targets</button></li>
+            </ul>
+
+            <!-- Events tab -->
+            <div id="panel-events">
+                <div class="table-responsive">
+                <table class="table table-sm mb-0">
+                    <thead><tr><th>Time</th><th>Type</th><th>Target</th><th>Source</th><th>IP</th><th>Notes</th></tr></thead>
+                    <tbody id="events-tbody"></tbody>
+                </table>
+                </div>
+            </div>
+
+            <!-- Targets tab -->
+            <div id="panel-targets" class="d-none">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <span class="text-muted">Assigned targets</span>
+                    {% if current_user.role not in ['viewer', 'auditor', 'white_team'] and active_project_role != 'white_team' %}
+                    <button class="btn btn-sm btn-outline-primary" onclick="openAddTargets()">
+                        <i class="bi bi-plus"></i> Add Targets
+                    </button>
+                    {% endif %}
+                </div>
+                <div class="table-responsive">
+                <table class="table table-sm mb-0">
+                    <thead><tr><th>Name</th><th>Email</th><th>Job Title</th><th>Actions</th></tr></thead>
+                    <tbody id="campaign-targets-tbody"></tbody>
+                </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endif %}
+
+<!-- Create Campaign Modal -->
+<div class="modal fade" id="createCampaignModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">New Campaign</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-2">
+                    <label class="form-label">Name <span class="text-danger">*</span></label>
+                    <input type="text" class="form-control" id="c-name" placeholder="Q2 Phishing Campaign">
+                </div>
+                <div class="mb-2">
+                    <label class="form-label">Vector</label>
+                    <select class="form-select" id="c-vector">
+                        <option value="phishing" selected>Phishing</option>
+                        <option value="vishing">Vishing</option>
+                        <option value="smishing">Smishing</option>
+                    </select>
+                </div>
+                <div class="mb-2">
+                    <label class="form-label">Sender Domain</label>
+                    <select class="form-select" id="c-domain">
+                        <option value="">Loading domains...</option>
+                    </select>
+                </div>
+                <div class="mb-2">
+                    <label class="form-label">Sending Profile (GoPhish)</label>
+                    <select class="form-select" id="c-smtp">
+                        <option value="">Select after choosing domain</option>
+                    </select>
+                </div>
+                <div class="row g-2">
+                    <div class="col-6">
+                        <label class="form-label">Scheduled Start</label>
+                        <input type="datetime-local" class="form-control" id="c-start">
+                    </div>
+                    <div class="col-6">
+                        <label class="form-label">Scheduled End</label>
+                        <input type="datetime-local" class="form-control" id="c-end">
+                    </div>
+                </div>
+                <div class="form-check mt-2">
+                    <input class="form-check-input" type="checkbox" id="c-roe" checked>
+                    <label class="form-check-label" for="c-roe">Enforce Rules of Engagement</label>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-infrared" onclick="createCampaign()">
+                    <i class="bi bi-plus-circle"></i> Create
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Add Targets Modal -->
+<div class="modal fade" id="addTargetsModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Add Targets to Campaign</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-2">
+                    <input type="text" class="form-control form-control-sm" id="at-search"
+                           placeholder="Search targets..." oninput="filterAvailableTargets()">
+                </div>
+                <div class="table-responsive" style="max-height: 400px; overflow-y: auto;">
+                <table class="table table-sm mb-0">
+                    <thead><tr><th style="width:30px"><input type="checkbox" id="at-select-all" onchange="toggleSelectAll()"></th><th>Name</th><th>Email</th><th>Title</th></tr></thead>
+                    <tbody id="available-targets-tbody"></tbody>
+                </table>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-infrared" onclick="addSelectedTargets()">
+                    <i class="bi bi-plus"></i> Add Selected
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Log Event Modal -->
+<div class="modal fade" id="logEventModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Log Event</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-2">
+                    <label class="form-label">Event Type <span class="text-danger">*</span></label>
+                    <select class="form-select" id="ev-type">
+                        <option value="vishing_attempt">Vishing Attempt</option>
+                        <option value="vishing_success">Vishing Success</option>
+                        <option value="sms_sent">SMS Sent</option>
+                        <option value="sms_click">SMS Click</option>
+                        <option value="cred_capture">Credential Capture</option>
+                        <option value="payload_exec">Payload Execution</option>
+                    </select>
+                </div>
+                <div class="mb-2">
+                    <label class="form-label">Target</label>
+                    <select class="form-select" id="ev-target">
+                        <option value="">Select target...</option>
+                    </select>
+                </div>
+                <div class="mb-2">
+                    <label class="form-label">Notes</label>
+                    <textarea class="form-control" id="ev-notes" rows="2"></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-infrared" onclick="logEvent()">
+                    <i class="bi bi-plus-circle"></i> Log
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    const IS_VIEWER = {{ 'true' if current_user.is_viewer is defined and current_user.is_viewer else 'false' }};
+    const IS_WHITE_TEAM = {{ 'true' if current_user.is_white_team else 'false' }};
+    const IS_READONLY = IS_VIEWER || IS_WHITE_TEAM;
+
+    let _campaigns = [];
+    let _currentCampaignId = null;
+    let _availableDomains = [];
+    let _allProjectTargets = [];
+
+    // ── Load campaigns ─────────────────────────────────────────────────
+    async function loadCampaigns() {
+        const tbody = document.getElementById('campaigns-tbody');
+        const status = document.getElementById('status-filter')?.value || '';
+        const qs = status ? `?status=${encodeURIComponent(status)}` : '';
+
+        try {
+            const resp = await fetch(`/api/ia/campaigns${qs}`);
+            if (!resp.ok) throw new Error(await resp.text());
+            const data = await resp.json();
+            _campaigns = data.campaigns || [];
+
+            updateStats(_campaigns);
+            document.getElementById('campaign-count-badge').textContent = _campaigns.length;
+
+            if (!_campaigns.length) {
+                tbody.innerHTML = '<tr><td colspan="10" class="text-center text-muted py-3">No campaigns yet. Create your first campaign above.</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = _campaigns.map(c => {
+                const statusBadge = _statusBadge(c.status);
+                const vectorBadge = _vectorBadge(c.vector);
+
+                let actions = `<button class="btn btn-sm btn-outline-primary" onclick="viewCampaign(${c.id})" title="View"><i class="bi bi-eye"></i></button>`;
+                if (!IS_READONLY) {
+                    if (c.status === 'draft' || c.status === 'paused') {
+                        actions += ` <button class="btn btn-sm btn-outline-success" onclick="launchCampaign(${c.id})" title="Launch"><i class="bi bi-rocket-takeoff"></i></button>`;
+                    }
+                    if (c.status === 'active') {
+                        actions += ` <button class="btn btn-sm btn-outline-info" onclick="syncSingle(${c.id})" title="Sync"><i class="bi bi-arrow-repeat"></i></button>`;
+                    }
+                    if (c.vector !== 'phishing' || c.status === 'active') {
+                        actions += ` <button class="btn btn-sm btn-outline-warning" onclick="openLogEvent(${c.id})" title="Log event"><i class="bi bi-journal-plus"></i></button>`;
+                    }
+                    actions += ` <button class="btn btn-sm btn-outline-danger" onclick="archiveCampaign(${c.id}, '${escapeAttr(c.name)}')" title="Archive"><i class="bi bi-archive"></i></button>`;
+                }
+
+                return `<tr>
+                    <td>${escapeHtml(c.name)}</td>
+                    <td>${vectorBadge}</td>
+                    <td>${statusBadge}</td>
+                    <td><small>${escapeHtml(c.domain_name || '-')}</small></td>
+                    <td>${c.targets_count}</td>
+                    <td>${c.emails_sent}</td>
+                    <td>${c.opens_count}</td>
+                    <td>${c.clicks_count}</td>
+                    <td>${c.creds_captured}</td>
+                    <td class="text-nowrap">${actions}</td>
+                </tr>`;
+            }).join('');
+        } catch (e) {
+            tbody.innerHTML = `<tr><td colspan="10" class="text-center text-danger py-3">${escapeHtml(e.message || 'Failed to load')}</td></tr>`;
+        }
+    }
+
+    function updateStats(campaigns) {
+        document.getElementById('stat-total').textContent = campaigns.length;
+        document.getElementById('stat-active').textContent = campaigns.filter(c => c.status === 'active').length;
+        document.getElementById('stat-sent').textContent = campaigns.reduce((s, c) => s + (c.emails_sent || 0), 0);
+        document.getElementById('stat-opens').textContent = campaigns.reduce((s, c) => s + (c.opens_count || 0), 0);
+        document.getElementById('stat-clicks').textContent = campaigns.reduce((s, c) => s + (c.clicks_count || 0), 0);
+        document.getElementById('stat-creds').textContent = campaigns.reduce((s, c) => s + (c.creds_captured || 0), 0);
+    }
+
+    function _statusBadge(status) {
+        const map = {draft:'bg-secondary', active:'bg-success', paused:'bg-warning text-dark',
+                     completed:'bg-primary', archived:'bg-dark'};
+        return `<span class="badge ${map[status] || 'bg-secondary'}">${escapeHtml(status)}</span>`;
+    }
+
+    function _vectorBadge(vector) {
+        const map = {phishing:'bi-envelope', vishing:'bi-telephone', smishing:'bi-phone'};
+        return `<span class="badge bg-info"><i class="bi ${map[vector] || 'bi-envelope'}"></i> ${escapeHtml(vector)}</span>`;
+    }
+
+    // ── Create campaign ────────────────────────────────────────────────
+    async function loadDomains() {
+        try {
+            const resp = await fetch('/api/ia/sender-domains');
+            if (!resp.ok) return;
+            const data = await resp.json();
+            _availableDomains = data.domains || [];
+
+            const sel = document.getElementById('c-domain');
+            sel.innerHTML = '<option value="">-- No domain --</option>' +
+                _availableDomains.map(d =>
+                    `<option value="${d.domain_id}" data-profiles='${escapeAttr(JSON.stringify(d.smtp_profiles))}'>${escapeHtml(d.domain_name)} ${d.has_smtp_profile ? '(SMTP ready)' : ''}</option>`
+                ).join('');
+        } catch (e) { /* ignore */ }
+    }
+
+    document.getElementById('c-domain')?.addEventListener('change', function() {
+        const opt = this.selectedOptions[0];
+        const smtpSel = document.getElementById('c-smtp');
+        if (!opt || !opt.dataset.profiles) {
+            smtpSel.innerHTML = '<option value="">Select domain first</option>';
+            return;
+        }
+        try {
+            const profiles = JSON.parse(opt.dataset.profiles);
+            if (!profiles.length) {
+                smtpSel.innerHTML = '<option value="">No profiles for this domain</option>';
+                return;
+            }
+            smtpSel.innerHTML = profiles.map(p =>
+                `<option value="${p.id}">${escapeHtml(p.name)}</option>`
+            ).join('');
+        } catch (e) {
+            smtpSel.innerHTML = '<option value="">Error loading profiles</option>';
+        }
+    });
+
+    async function createCampaign() {
+        const payload = {
+            name: document.getElementById('c-name').value.trim(),
+            vector: document.getElementById('c-vector').value,
+            domain_id: parseInt(document.getElementById('c-domain').value) || null,
+            gophish_smtp_id: parseInt(document.getElementById('c-smtp').value) || null,
+            scheduled_start: document.getElementById('c-start').value || null,
+            scheduled_end: document.getElementById('c-end').value || null,
+            roe_enforced: document.getElementById('c-roe').checked,
+        };
+
+        if (!payload.name) {
+            showToast('Campaign name is required', 'warning');
+            return;
+        }
+
+        try {
+            const resp = await fetch('/api/ia/campaigns', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(payload),
+            });
+            const data = await resp.json();
+            if (!resp.ok) throw new Error(data.error || 'Failed to create campaign');
+
+            bootstrap.Modal.getInstance(document.getElementById('createCampaignModal')).hide();
+            showToast('Campaign created', 'success');
+            loadCampaigns();
+        } catch (e) {
+            showToast(e.message, 'danger');
+        }
+    }
+
+    // ── Launch campaign ────────────────────────────────────────────────
+    async function launchCampaign(id) {
+        const c = _campaigns.find(x => x.id === id);
+        if (!c) return;
+        if (!confirm(`Launch campaign "${c.name}"? This will start sending emails via GoPhish.`)) return;
+
+        try {
+            const resp = await fetch(`/api/ia/campaigns/${id}/launch`, {method: 'POST'});
+            const data = await resp.json();
+            if (!resp.ok) throw new Error(data.error || 'Launch failed');
+
+            showToast('Campaign launched', 'success');
+            loadCampaigns();
+        } catch (e) {
+            showToast(e.message, 'danger');
+        }
+    }
+
+    // ── Archive campaign ───────────────────────────────────────────────
+    async function archiveCampaign(id, name) {
+        if (!confirm(`Archive campaign "${name}"?`)) return;
+
+        try {
+            const resp = await fetch(`/api/ia/campaigns/${id}`, {method: 'DELETE'});
+            const data = await resp.json();
+            if (!resp.ok) throw new Error(data.error || 'Archive failed');
+
+            showToast('Campaign archived', 'success');
+            loadCampaigns();
+        } catch (e) {
+            showToast(e.message, 'danger');
+        }
+    }
+
+    // ── Sync ───────────────────────────────────────────────────────────
+    async function syncSingle(id) {
+        try {
+            const resp = await fetch(`/api/ia/campaigns/${id}/sync`, {method: 'POST'});
+            const data = await resp.json();
+            if (!resp.ok) throw new Error(data.error || 'Sync failed');
+
+            showToast(`Synced: ${data.new_events} new event(s)`, 'success');
+            loadCampaigns();
+            if (_currentCampaignId === id) loadCampaignDetail(id);
+        } catch (e) {
+            showToast(e.message, 'danger');
+        }
+    }
+
+    async function syncCampaign() {
+        if (_currentCampaignId) await syncSingle(_currentCampaignId);
+    }
+
+    // ── View campaign detail ───────────────────────────────────────────
+    async function viewCampaign(id) {
+        _currentCampaignId = id;
+        const c = _campaigns.find(x => x.id === id);
+        if (c) document.getElementById('detail-name').textContent = c.name;
+
+        document.getElementById('detail-panel').classList.remove('d-none');
+        showDetailTab('events');
+        loadCampaignDetail(id);
+        document.getElementById('detail-panel').scrollIntoView({behavior: 'smooth'});
+    }
+
+    async function loadCampaignDetail(id) {
+        // Load events
+        try {
+            const resp = await fetch(`/api/ia/campaigns/${id}/events`);
+            const data = await resp.json();
+            const events = data.events || [];
+            const tbody = document.getElementById('events-tbody');
+
+            if (!events.length) {
+                tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-3">No events yet</td></tr>';
+            } else {
+                tbody.innerHTML = events.map(e => `<tr>
+                    <td><small>${e.occurred_at ? new Date(e.occurred_at).toLocaleString() : '-'}</small></td>
+                    <td>${_eventBadge(e.event_type)}</td>
+                    <td><small>${escapeHtml(e.target_email || e.target_name || '-')}</small></td>
+                    <td><small>${escapeHtml(e.source || '-')}</small></td>
+                    <td><small>${escapeHtml(e.ip_address || '-')}</small></td>
+                    <td><small>${escapeHtml(e.notes || '-')}</small></td>
+                </tr>`).join('');
+            }
+        } catch (e) { /* ignore */ }
+
+        // Load targets
+        try {
+            const resp = await fetch(`/api/ia/campaigns/${id}?include_targets=true`);
+            const data = await resp.json();
+            const targets = data.targets || [];
+            const tbody = document.getElementById('campaign-targets-tbody');
+
+            if (!targets.length) {
+                tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted py-3">No targets assigned</td></tr>';
+            } else {
+                tbody.innerHTML = targets.map(t => `<tr>
+                    <td>${escapeHtml(t.full_name || '-')}</td>
+                    <td><small>${escapeHtml(t.email || '-')}</small></td>
+                    <td><small>${escapeHtml(t.job_title || '-')}</small></td>
+                    <td>${!IS_READONLY ? `<button class="btn btn-sm btn-outline-danger" onclick="removeTarget(${id}, ${t.id})" title="Remove"><i class="bi bi-x"></i></button>` : ''}</td>
+                </tr>`).join('');
+            }
+        } catch (e) { /* ignore */ }
+    }
+
+    function _eventBadge(type) {
+        const map = {
+            email_sent: ['bg-secondary', 'Sent'],
+            open: ['bg-info', 'Open'],
+            click: ['bg-warning text-dark', 'Click'],
+            cred_capture: ['bg-danger', 'Cred Capture'],
+            payload_exec: ['bg-danger', 'Payload'],
+            vishing_attempt: ['bg-secondary', 'Vishing'],
+            vishing_success: ['bg-success', 'Vishing OK'],
+            sms_sent: ['bg-secondary', 'SMS Sent'],
+            sms_click: ['bg-warning text-dark', 'SMS Click'],
+        };
+        const [cls, label] = map[type] || ['bg-secondary', type];
+        return `<span class="badge ${cls}">${escapeHtml(label)}</span>`;
+    }
+
+    function showDetailTab(tab) {
+        document.getElementById('tab-events').classList.toggle('active', tab === 'events');
+        document.getElementById('tab-targets').classList.toggle('active', tab === 'targets');
+        document.getElementById('panel-events').classList.toggle('d-none', tab !== 'events');
+        document.getElementById('panel-targets').classList.toggle('d-none', tab !== 'targets');
+    }
+
+    function closeDetail() {
+        document.getElementById('detail-panel').classList.add('d-none');
+        _currentCampaignId = null;
+    }
+
+    // ── Add / Remove targets ───────────────────────────────────────────
+    async function openAddTargets() {
+        if (!_currentCampaignId) return;
+
+        // Load all project targets
+        try {
+            const resp = await fetch('/api/ia/targets');
+            const data = await resp.json();
+            _allProjectTargets = data.targets || [];
+        } catch (e) {
+            showToast('Failed to load targets', 'danger');
+            return;
+        }
+
+        renderAvailableTargets(_allProjectTargets);
+        new bootstrap.Modal(document.getElementById('addTargetsModal')).show();
+    }
+
+    function renderAvailableTargets(targets) {
+        const tbody = document.getElementById('available-targets-tbody');
+        if (!targets.length) {
+            tbody.innerHTML = '<tr><td colspan="4" class="text-muted text-center py-3">No targets available</td></tr>';
+            return;
+        }
+        tbody.innerHTML = targets.map(t => `<tr>
+            <td><input type="checkbox" class="at-check" value="${t.id}"></td>
+            <td>${escapeHtml(t.full_name || '-')}</td>
+            <td><small>${escapeHtml(t.email || '-')}</small></td>
+            <td><small>${escapeHtml(t.job_title || '-')}</small></td>
+        </tr>`).join('');
+    }
+
+    function filterAvailableTargets() {
+        const q = (document.getElementById('at-search')?.value || '').toLowerCase();
+        if (!q) { renderAvailableTargets(_allProjectTargets); return; }
+        renderAvailableTargets(_allProjectTargets.filter(t =>
+            (t.full_name || '').toLowerCase().includes(q) ||
+            (t.email || '').toLowerCase().includes(q) ||
+            (t.job_title || '').toLowerCase().includes(q)
+        ));
+    }
+
+    function toggleSelectAll() {
+        const checked = document.getElementById('at-select-all').checked;
+        document.querySelectorAll('.at-check').forEach(cb => cb.checked = checked);
+    }
+
+    async function addSelectedTargets() {
+        const ids = Array.from(document.querySelectorAll('.at-check:checked')).map(cb => parseInt(cb.value));
+        if (!ids.length) {
+            showToast('Select at least one target', 'warning');
+            return;
+        }
+
+        try {
+            const resp = await fetch(`/api/ia/campaigns/${_currentCampaignId}/targets`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({target_ids: ids}),
+            });
+            const data = await resp.json();
+            if (!resp.ok) throw new Error(data.error || 'Failed to add targets');
+
+            bootstrap.Modal.getInstance(document.getElementById('addTargetsModal')).hide();
+            showToast(`Added ${data.added} target(s)`, 'success');
+            loadCampaignDetail(_currentCampaignId);
+            loadCampaigns();
+        } catch (e) {
+            showToast(e.message, 'danger');
+        }
+    }
+
+    async function removeTarget(campaignId, targetId) {
+        try {
+            const resp = await fetch(`/api/ia/campaigns/${campaignId}/targets/${targetId}`, {method: 'DELETE'});
+            const data = await resp.json();
+            if (!resp.ok) throw new Error(data.error || 'Failed');
+
+            loadCampaignDetail(campaignId);
+            loadCampaigns();
+        } catch (e) {
+            showToast(e.message, 'danger');
+        }
+    }
+
+    // ── Log manual event ───────────────────────────────────────────────
+    function openLogEvent(id) {
+        _currentCampaignId = id;
+        const c = _campaigns.find(x => x.id === id);
+        // Populate target dropdown
+        const sel = document.getElementById('ev-target');
+        sel.innerHTML = '<option value="">Select target...</option>';
+        // Load campaign targets async
+        fetch(`/api/ia/campaigns/${id}?include_targets=true`)
+            .then(r => r.json())
+            .then(data => {
+                (data.targets || []).forEach(t => {
+                    sel.innerHTML += `<option value="${t.id}">${escapeHtml(t.email || t.full_name || 'Target #' + t.id)}</option>`;
+                });
+            });
+        new bootstrap.Modal(document.getElementById('logEventModal')).show();
+    }
+
+    async function logEvent() {
+        const payload = {
+            event_type: document.getElementById('ev-type').value,
+            target_id: parseInt(document.getElementById('ev-target').value) || null,
+            notes: document.getElementById('ev-notes').value.trim(),
+        };
+
+        try {
+            const resp = await fetch(`/api/ia/campaigns/${_currentCampaignId}/events`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(payload),
+            });
+            const data = await resp.json();
+            if (!resp.ok) throw new Error(data.error || 'Failed');
+
+            bootstrap.Modal.getInstance(document.getElementById('logEventModal')).hide();
+            showToast('Event logged', 'success');
+            loadCampaigns();
+            if (document.getElementById('detail-panel').classList.contains('d-none') === false) {
+                loadCampaignDetail(_currentCampaignId);
+            }
+        } catch (e) {
+            showToast(e.message, 'danger');
+        }
+    }
+
+    // ── Init ───────────────────────────────────────────────────────────
+    {% if active_project %}
+    loadCampaigns();
+    loadDomains();
+    {% endif %}
+</script>
+{% endblock %}

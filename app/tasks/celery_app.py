@@ -12,6 +12,10 @@ celery.conf.update(
             'task': 'app.tasks.email_grooming_tasks.process_email_grooming',
             'schedule': 1800.0,  # every 30 minutes
         },
+        'ia-campaign-sync': {
+            'task': 'app.tasks.initial_access_tasks.sync_active_campaigns',
+            'schedule': 300.0,  # every 5 minutes
+        },
     },
     timezone='UTC',
 )

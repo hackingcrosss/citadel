@@ -193,3 +193,89 @@ def send_test_email(smtp_profile, to_email, subject, html_body, text_body='',
         return resp.json()
     except Exception:
         return {'success': True}
+
+
+# ── Campaign CRUD ────────────────────────────────────────────────────────
+
+def list_campaigns():
+    return _request('GET', '/api/campaigns/')
+
+
+def get_campaign(campaign_id):
+    return _request('GET', f'/api/campaigns/{campaign_id}')
+
+
+def get_campaign_results(campaign_id):
+    """Get the results/timeline for a GoPhish campaign."""
+    return _request('GET', f'/api/campaigns/{campaign_id}/results')
+
+
+def get_campaign_summary(campaign_id):
+    """Get the summary stats for a GoPhish campaign."""
+    return _request('GET', f'/api/campaigns/{campaign_id}/summary')
+
+
+def create_campaign(data):
+    """Create and launch a GoPhish campaign.
+
+    Expected data keys:
+        name, template (dict with name), url (landing page URL),
+        smtp (dict — sending profile), groups (list of group dicts),
+        page (dict — landing page), launch_date (optional ISO string),
+        send_by_date (optional ISO string).
+    """
+    return _request('POST', '/api/campaigns/', json=data)
+
+
+def delete_campaign(campaign_id):
+    return _request('DELETE', f'/api/campaigns/{campaign_id}')
+
+
+def complete_campaign(campaign_id):
+    """Mark a GoPhish campaign as complete."""
+    return _request('GET', f'/api/campaigns/{campaign_id}/complete')
+
+
+# ── Groups (target lists in GoPhish) ────────────────────────────────────
+
+def list_groups():
+    return _request('GET', '/api/groups/')
+
+
+def get_group(group_id):
+    return _request('GET', f'/api/groups/{group_id}')
+
+
+def create_group(data):
+    """Create a GoPhish group.
+
+    data: {name: str, targets: [{first_name, last_name, email, position}]}
+    """
+    return _request('POST', '/api/groups/', json=data)
+
+
+def delete_group(group_id):
+    return _request('DELETE', f'/api/groups/{group_id}')
+
+
+# ── Landing Pages ───────────────────────────────────────────────────────
+
+def list_pages():
+    return _request('GET', '/api/pages/')
+
+
+def get_page(page_id):
+    return _request('GET', f'/api/pages/{page_id}')
+
+
+def create_page(data):
+    """Create a GoPhish landing page.
+
+    data: {name, html, capture_credentials (bool), capture_passwords (bool),
+           redirect_url (optional)}
+    """
+    return _request('POST', '/api/pages/', json=data)
+
+
+def delete_page(page_id):
+    return _request('DELETE', f'/api/pages/{page_id}')

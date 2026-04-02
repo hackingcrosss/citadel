@@ -1,0 +1,247 @@
+"""Campaign management API endpoints for Initial Access module."""
+
+import logging
+from flask import request, jsonify
+from flask_login import login_required, current_user
+from app.api import api_bp
+from app.services import ia_campaign_service, audit_service
+from app.services.project_service import get_active_project
+from app.utils.decorators import feature_required
+
+_log = logging.getLogger(__name__)
+
+
+def _require_active_project():
+    project = get_active_project(current_user)
+    if not project:
+        return None
+    return project
+
+
+def _get_campaign_or_404(campaign_id):
+    campaign = ia_campaign_service.get_campaign(campaign_id)
+    if not campaign:
+        return None, jsonify({'error': 'Campaign not found'}), 404
+    project = _require_active_project()
+    if not project or campaign.project_id != project.id:
+        if not current_user.is_admin:
+            return None, jsonify({'error': 'Access denied'}), 403
+    return campaign, None, None
+
+
+# ── Campaign CRUD ───────────────────────────────────────────────────────
+
+@api_bp.route('/ia/campaigns', methods=['GET'])
+@login_required
+@feature_required('initial_access')
+def ia_list_campaigns():
+    project = _require_active_project()
+    if not project:
+        return jsonify({'error': 'No active project selected'}), 400
+
+    status = request.args.get('status')
+    campaigns = ia_campaign_service.list_campaigns(project.id, status=status)
+    return jsonify({'campaigns': [c.to_dict() for c in campaigns]})
+
+
+@api_bp.route('/ia/campaigns', methods=['POST'])
+@login_required
+@feature_required('initial_access')
+def ia_create_campaign():
+    project = _require_active_project()
+    if not project:
+        return jsonify({'error': 'No active project selected'}), 400
+    if not current_user.can_write_infra:
+        return jsonify({'error': 'Write access required'}), 403
+
+    data = request.get_json(silent=True) or {}
+    if not data.get('name'):
+        return jsonify({'error': 'Campaign name is required'}), 400
+
+    try:
+        campaign = ia_campaign_service.create_campaign(project.id, data, current_user.id)
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
+
+    audit_service.log('ia.campaign_create', 'ia_campaign', campaign.id,
+                      f'project:{project.code}', {'name': campaign.name, 'vector': campaign.vector})
+    return jsonify(campaign.to_dict()), 201
+
+
+@api_bp.route('/ia/campaigns/<int:campaign_id>', methods=['GET'])
+@login_required
+@feature_required('initial_access')
+def ia_get_campaign(campaign_id):
+    campaign, err, code = _get_campaign_or_404(campaign_id)
+    if err:
+        return err, code
+
+    include_targets = request.args.get('include_targets', 'false').lower() == 'true'
+    return jsonify(campaign.to_dict(include_targets=include_targets))
+
+
+@api_bp.route('/ia/campaigns/<int:campaign_id>', methods=['PATCH'])
+@login_required
+@feature_required('initial_access')
+def ia_update_campaign(campaign_id):
+    campaign, err, code = _get_campaign_or_404(campaign_id)
+    if err:
+        return err, code
+    if not current_user.can_write_infra:
+        return jsonify({'error': 'Write access required'}), 403
+
+    data = request.get_json(silent=True) or {}
+    try:
+        updated = ia_campaign_service.update_campaign(campaign, data)
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
+
+    return jsonify(updated.to_dict())
+
+
+@api_bp.route('/ia/campaigns/<int:campaign_id>', methods=['DELETE'])
+@login_required
+@feature_required('initial_access')
+def ia_archive_campaign(campaign_id):
+    campaign, err, code = _get_campaign_or_404(campaign_id)
+    if err:
+        return err, code
+    if not current_user.can_write_infra:
+        return jsonify({'error': 'Write access required'}), 403
+
+    audit_service.log('ia.campaign_archive', 'ia_campaign', campaign.id,
+                      f'project:{_require_active_project().code}', {'name': campaign.name})
+    ia_campaign_service.archive_campaign(campaign)
+    return jsonify({'ok': True})
+
+
+# ── Launch + Sync ───────────────────────────────────────────────────────
+
+@api_bp.route('/ia/campaigns/<int:campaign_id>/launch', methods=['POST'])
+@login_required
+@feature_required('initial_access')
+def ia_launch_campaign(campaign_id):
+    campaign, err, code = _get_campaign_or_404(campaign_id)
+    if err:
+        return err, code
+    if not current_user.can_write_infra:
+        return jsonify({'error': 'Write access required'}), 403
+
+    try:
+        launched = ia_campaign_service.launch_campaign(campaign)
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
+    except Exception as e:
+        _log.exception('Failed to launch campaign %s', campaign_id)
+        return jsonify({'error': f'GoPhish error: {e}'}), 502
+
+    project = _require_active_project()
+    audit_service.log('ia.campaign_launch', 'ia_campaign', campaign.id,
+                      f'project:{project.code}',
+                      {'gophish_id': launched.gophish_campaign_id})
+    return jsonify(launched.to_dict())
+
+
+@api_bp.route('/ia/campaigns/<int:campaign_id>/sync', methods=['POST'])
+@login_required
+@feature_required('initial_access')
+def ia_sync_campaign(campaign_id):
+    campaign, err, code = _get_campaign_or_404(campaign_id)
+    if err:
+        return err, code
+
+    new_events = ia_campaign_service.sync_campaign_events(campaign)
+    return jsonify({'new_events': new_events, 'campaign': campaign.to_dict()})
+
+
+# ── Events ──────────────────────────────────────────────────────────────
+
+@api_bp.route('/ia/campaigns/<int:campaign_id>/events', methods=['GET'])
+@login_required
+@feature_required('initial_access')
+def ia_campaign_events(campaign_id):
+    campaign, err, code = _get_campaign_or_404(campaign_id)
+    if err:
+        return err, code
+
+    events = campaign.events  # already ordered desc by occurred_at
+    return jsonify({'events': [e.to_dict() for e in events]})
+
+
+@api_bp.route('/ia/campaigns/<int:campaign_id>/events', methods=['POST'])
+@login_required
+@feature_required('initial_access')
+def ia_log_event(campaign_id):
+    """Manually log a vishing/smishing/other event."""
+    campaign, err, code = _get_campaign_or_404(campaign_id)
+    if err:
+        return err, code
+    if not current_user.can_write_infra:
+        return jsonify({'error': 'Write access required'}), 403
+
+    data = request.get_json(silent=True) or {}
+    if not data.get('event_type'):
+        return jsonify({'error': 'event_type is required'}), 400
+
+    try:
+        event = ia_campaign_service.log_manual_event(campaign, data)
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
+
+    return jsonify(event.to_dict()), 201
+
+
+# ── Campaign targets ────────────────────────────────────────────────────
+
+@api_bp.route('/ia/campaigns/<int:campaign_id>/targets', methods=['POST'])
+@login_required
+@feature_required('initial_access')
+def ia_add_campaign_targets(campaign_id):
+    campaign, err, code = _get_campaign_or_404(campaign_id)
+    if err:
+        return err, code
+    if not current_user.can_write_infra:
+        return jsonify({'error': 'Write access required'}), 403
+
+    data = request.get_json(silent=True) or {}
+    target_ids = data.get('target_ids', [])
+    if not target_ids:
+        return jsonify({'error': 'target_ids list required'}), 400
+
+    added = ia_campaign_service.add_targets(campaign, target_ids)
+    return jsonify({'added': added, 'targets_count': campaign.targets_count})
+
+
+@api_bp.route('/ia/campaigns/<int:campaign_id>/targets/<int:target_id>', methods=['DELETE'])
+@login_required
+@feature_required('initial_access')
+def ia_remove_campaign_target(campaign_id, target_id):
+    campaign, err, code = _get_campaign_or_404(campaign_id)
+    if err:
+        return err, code
+    if not current_user.can_write_infra:
+        return jsonify({'error': 'Write access required'}), 403
+
+    removed = ia_campaign_service.remove_target(campaign, target_id)
+    if not removed:
+        return jsonify({'error': 'Target not in campaign'}), 404
+    return jsonify({'ok': True, 'targets_count': campaign.targets_count})
+
+
+# ── Sender domains ─────────────────────────────────────────────────────
+
+@api_bp.route('/ia/sender-domains', methods=['GET'])
+@login_required
+@feature_required('initial_access')
+def ia_sender_domains():
+    project = _require_active_project()
+    if not project:
+        return jsonify({'error': 'No active project selected'}), 400
+
+    try:
+        domains = ia_campaign_service.get_eligible_domains(project.id)
+    except Exception as e:
+        _log.warning('Failed to fetch sender domains: %s', e)
+        domains = []
+
+    return jsonify({'domains': domains})

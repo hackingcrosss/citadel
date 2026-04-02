@@ -12,3 +12,5 @@ from app.models.email_grooming import EmailGroomingConfig
 from app.models.email_grooming_log import EmailGroomingLog
 from app.models.ia_scan_job import IAScanJob
 from app.models.ia_target import IATarget
+from app.models.ia_campaign import IACampaign, ia_campaign_targets
+from app.models.ia_campaign_event import IACampaignEvent
