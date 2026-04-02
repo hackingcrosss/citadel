@@ -32,3 +32,4 @@ import app.tasks.container_tasks          # noqa: F401, E402
 import app.tasks.website_generator_tasks  # noqa: F401, E402
 import app.tasks.cdn_tasks                # noqa: F401, E402
 import app.tasks.email_grooming_tasks     # noqa: F401, E402
+import app.tasks.initial_access_tasks    # noqa: F401, E402

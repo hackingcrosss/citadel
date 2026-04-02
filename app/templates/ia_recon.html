@@ -1,0 +1,307 @@
+{% extends "base.html" %}
+
+{% block title %}Recon - Frontline{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1 class="h3 mb-0">Recon Scans</h1>
+    <div>
+        <button class="btn btn-sm btn-outline-secondary" onclick="loadScans()">
+            <i class="bi bi-arrow-clockwise"></i> Refresh
+        </button>
+        {% if current_user.role not in ['viewer', 'auditor', 'white_team'] and active_project_role != 'white_team' %}
+        <button class="btn btn-sm btn-infrared" data-bs-toggle="modal" data-bs-target="#triggerScanModal">
+            <i class="bi bi-plus-circle"></i> New Scan
+        </button>
+        {% endif %}
+    </div>
+</div>
+
+{% if not active_project %}
+<div class="text-center py-5">
+    <i class="bi bi-folder2-open text-warning" style="font-size: 2rem;"></i>
+    <p class="mt-2">Select a project from the top bar to view and trigger scans.</p>
+</div>
+{% else %}
+
+<!-- Scan Jobs Table -->
+<div class="card-custom mb-4">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <span><i class="bi bi-radar"></i> Scan Jobs</span>
+        <span class="badge bg-secondary" id="scan-count-badge">0</span>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+        <table class="table table-hover mb-0">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Status</th>
+                    <th>Scope</th>
+                    <th>Findings</th>
+                    <th>Triggered By</th>
+                    <th>Triggered</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody id="scan-table-body">
+                <tr><td colspan="7" class="text-center text-muted py-3">Loading...</td></tr>
+            </tbody>
+        </table>
+        </div>
+    </div>
+</div>
+
+<!-- Scan Results Panel (shown when a scan is selected) -->
+<div id="results-panel" class="d-none">
+    <div class="card-custom">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <span><i class="bi bi-search"></i> Scan Results — <span id="results-title"></span></span>
+            <button class="btn btn-sm btn-outline-secondary" onclick="closeResults()">
+                <i class="bi bi-x-lg"></i> Close
+            </button>
+        </div>
+        <div class="card-body">
+            <!-- Summary stats -->
+            <div class="row g-3 mb-4" id="results-summary">
+                <div class="col"><div class="stat-card"><div class="label">Subdomains</div><h3 id="rs-subdomains">0</h3></div></div>
+                <div class="col"><div class="stat-card"><div class="label">Open Ports</div><h3 id="rs-ports">0</h3></div></div>
+                <div class="col"><div class="stat-card"><div class="label">Technologies</div><h3 id="rs-tech">0</h3></div></div>
+                <div class="col"><div class="stat-card"><div class="label">Emails</div><h3 id="rs-emails">0</h3></div></div>
+                <div class="col"><div class="stat-card"><div class="label">Breaches</div><h3 id="rs-breaches">0</h3></div></div>
+            </div>
+
+            <!-- Result tabs -->
+            <ul class="nav nav-tabs mb-3" id="result-tabs">
+                <li class="nav-item"><button class="nav-link active" onclick="showResultTab('subdomains')">Subdomains</button></li>
+                <li class="nav-item"><button class="nav-link" onclick="showResultTab('open_ports')">Open Ports</button></li>
+                <li class="nav-item"><button class="nav-link" onclick="showResultTab('technologies')">Technologies</button></li>
+                <li class="nav-item"><button class="nav-link" onclick="showResultTab('emails')">Emails</button></li>
+                <li class="nav-item"><button class="nav-link" onclick="showResultTab('breaches')">Breaches</button></li>
+            </ul>
+
+            <div class="table-responsive">
+                <table class="table table-sm mb-0" id="results-table">
+                    <thead id="results-thead"></thead>
+                    <tbody id="results-tbody"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endif %}
+
+<!-- Trigger Scan Modal -->
+<div class="modal fade" id="triggerScanModal" tabindex="-1" aria-labelledby="triggerScanLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="triggerScanLabel">Trigger New Scan</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label">Domains <small class="text-muted">(one per line)</small></label>
+                    <textarea class="form-control" id="scan-domains" rows="4" placeholder="example.com&#10;sub.example.com"></textarea>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">IP Ranges <small class="text-muted">(optional, one per line)</small></label>
+                    <textarea class="form-control" id="scan-ip-ranges" rows="3" placeholder="10.0.0.0/24&#10;192.168.1.0/24"></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-infrared" onclick="triggerScan()">
+                    <i class="bi bi-radar"></i> Launch Scan
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    const IS_VIEWER = {{ 'true' if current_user.is_viewer is defined and current_user.is_viewer else 'false' }};
+    const IS_WHITE_TEAM = {{ 'true' if current_user.is_white_team else 'false' }};
+    const IS_READONLY = IS_VIEWER || IS_WHITE_TEAM;
+
+    let _currentResults = null;
+
+    // ── Load scan jobs ──────────────────────────────────────────────────
+    async function loadScans() {
+        const tbody = document.getElementById('scan-table-body');
+        try {
+            const resp = await fetch('/api/ia/scans');
+            if (!resp.ok) throw new Error(await resp.text());
+            const data = await resp.json();
+            const scans = data.scans || [];
+
+            document.getElementById('scan-count-badge').textContent = scans.length;
+
+            if (!scans.length) {
+                tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted py-3">No scans yet. Trigger your first scan above.</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = scans.map(s => {
+                const statusBadge = _statusBadge(s.status);
+                const scope = s.target_scope;
+                const scopeText = scope
+                    ? [
+                        ...(scope.domains || []).slice(0, 2),
+                        ...(scope.ip_ranges || []).slice(0, 1),
+                      ].join(', ') + ((scope.domains || []).length > 2 ? ' ...' : '')
+                    : '-';
+                const summary = s.results_summary;
+                const findings = summary
+                    ? `${summary.subdomains || 0} sub, ${summary.open_ports || 0} ports, ${summary.emails || 0} emails`
+                    : '-';
+                const triggered = s.triggered_at ? new Date(s.triggered_at).toLocaleString() : '-';
+
+                return `<tr>
+                    <td>${escapeHtml(String(s.id))}</td>
+                    <td>${statusBadge}</td>
+                    <td><small>${escapeHtml(scopeText)}</small></td>
+                    <td><small>${escapeHtml(findings)}</small></td>
+                    <td>${escapeHtml(s.triggered_by || '-')}</td>
+                    <td><small>${escapeHtml(triggered)}</small></td>
+                    <td>
+                        ${s.status === 'completed' ? `<button class="btn btn-sm btn-outline-primary" onclick="viewResults(${s.id})" title="View results"><i class="bi bi-eye"></i></button>` : ''}
+                        ${s.status === 'pending' || s.status === 'running' ? `<button class="btn btn-sm btn-outline-secondary" onclick="pollScan(${s.id})" title="Poll for update"><i class="bi bi-arrow-repeat"></i></button>` : ''}
+                    </td>
+                </tr>`;
+            }).join('');
+        } catch (e) {
+            tbody.innerHTML = `<tr><td colspan="7" class="text-center text-danger py-3">${escapeHtml(e.message || 'Failed to load scans')}</td></tr>`;
+        }
+    }
+
+    function _statusBadge(status) {
+        const map = {
+            'pending':   'bg-secondary',
+            'running':   'bg-primary',
+            'completed': 'bg-success',
+            'failed':    'bg-danger',
+        };
+        return `<span class="badge ${map[status] || 'bg-secondary'}">${escapeHtml(status)}</span>`;
+    }
+
+    // ── Trigger scan ────────────────────────────────────────────────────
+    async function triggerScan() {
+        const domainsRaw = document.getElementById('scan-domains').value.trim();
+        const ipRaw = document.getElementById('scan-ip-ranges').value.trim();
+
+        const domains = domainsRaw ? domainsRaw.split('\n').map(d => d.trim()).filter(Boolean) : [];
+        const ip_ranges = ipRaw ? ipRaw.split('\n').map(d => d.trim()).filter(Boolean) : [];
+
+        if (!domains.length && !ip_ranges.length) {
+            showToast('Enter at least one domain or IP range', 'warning');
+            return;
+        }
+
+        try {
+            const resp = await fetch('/api/ia/scans', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({scope: {domains, ip_ranges}}),
+            });
+            const data = await resp.json();
+            if (!resp.ok) throw new Error(data.error || 'Failed to trigger scan');
+
+            bootstrap.Modal.getInstance(document.getElementById('triggerScanModal')).hide();
+            document.getElementById('scan-domains').value = '';
+            document.getElementById('scan-ip-ranges').value = '';
+            showToast('Scan triggered successfully', 'success');
+            loadScans();
+        } catch (e) {
+            showToast(e.message, 'danger');
+        }
+    }
+
+    // ── Poll scan ───────────────────────────────────────────────────────
+    async function pollScan(jobId) {
+        try {
+            const resp = await fetch(`/api/ia/scans/${jobId}/poll`, {method: 'POST'});
+            const data = await resp.json();
+            if (!resp.ok) throw new Error(data.error || 'Poll failed');
+            showToast(`Scan ${jobId}: ${data.status}`, 'info');
+            loadScans();
+        } catch (e) {
+            showToast(e.message, 'danger');
+        }
+    }
+
+    // ── View results ────────────────────────────────────────────────────
+    async function viewResults(jobId) {
+        try {
+            const resp = await fetch(`/api/ia/scans/${jobId}/results`);
+            if (!resp.ok) throw new Error('Failed to load results');
+            const data = await resp.json();
+            _currentResults = data.results;
+
+            document.getElementById('results-title').textContent = `Scan #${jobId}`;
+
+            // Summary
+            const r = _currentResults;
+            document.getElementById('rs-subdomains').textContent = (r.subdomains || []).length;
+            document.getElementById('rs-ports').textContent = (r.open_ports || []).length;
+            document.getElementById('rs-tech').textContent = (r.technologies || []).length;
+            document.getElementById('rs-emails').textContent = (r.emails || []).length;
+            document.getElementById('rs-breaches').textContent = (r.breaches || []).length;
+
+            showResultTab('subdomains');
+            document.getElementById('results-panel').classList.remove('d-none');
+            document.getElementById('results-panel').scrollIntoView({behavior: 'smooth'});
+        } catch (e) {
+            showToast(e.message, 'danger');
+        }
+    }
+
+    function closeResults() {
+        document.getElementById('results-panel').classList.add('d-none');
+        _currentResults = null;
+    }
+
+    // ── Result tabs ─────────────────────────────────────────────────────
+    const _tabConfig = {
+        subdomains:   {cols: ['Name', 'IP'],                  keys: ['name', 'ip']},
+        open_ports:   {cols: ['Host', 'Port', 'Service'],     keys: ['host', 'port', 'service']},
+        technologies: {cols: ['Host', 'Technology', 'Version'],keys: ['host', 'tech', 'version']},
+        emails:       {cols: ['Address', 'Source'],            keys: ['address', 'source']},
+        breaches:     {cols: ['Email', 'Source', 'Year'],      keys: ['email', 'source', 'year']},
+    };
+
+    function showResultTab(tab) {
+        // Update active tab
+        document.querySelectorAll('#result-tabs .nav-link').forEach(btn => btn.classList.remove('active'));
+        const idx = Object.keys(_tabConfig).indexOf(tab);
+        if (idx >= 0) document.querySelectorAll('#result-tabs .nav-link')[idx].classList.add('active');
+
+        const cfg = _tabConfig[tab];
+        if (!cfg || !_currentResults) return;
+
+        const items = _currentResults[tab] || [];
+
+        document.getElementById('results-thead').innerHTML =
+            '<tr>' + cfg.cols.map(c => `<th>${escapeHtml(c)}</th>`).join('') + '</tr>';
+
+        if (!items.length) {
+            document.getElementById('results-tbody').innerHTML =
+                `<tr><td colspan="${cfg.cols.length}" class="text-center text-muted py-3">No ${tab.replace('_', ' ')} found</td></tr>`;
+            return;
+        }
+
+        document.getElementById('results-tbody').innerHTML = items.map(item =>
+            '<tr>' + cfg.keys.map(k => `<td>${escapeHtml(String(item[k] || '-'))}</td>`).join('') + '</tr>'
+        ).join('');
+    }
+
+    // ── Init ────────────────────────────────────────────────────────────
+    {% if active_project %}
+    loadScans();
+    {% endif %}
+</script>
+{% endblock %}
