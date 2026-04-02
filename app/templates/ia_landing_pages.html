@@ -1,0 +1,446 @@
+{% extends "base.html" %}
+
+{% block title %}Landing Pages - Frontline{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1 class="h3 mb-0">Landing Pages</h1>
+    <div class="d-flex align-items-center gap-2">
+        <select class="form-select form-select-sm" id="status-filter" style="width:140px;" onchange="loadPages()">
+            <option value="">All statuses</option>
+            <option value="draft">Draft</option>
+            <option value="deploying">Deploying</option>
+            <option value="live">Live</option>
+            <option value="error">Error</option>
+            <option value="torn_down">Torn Down</option>
+        </select>
+        <button class="btn btn-sm btn-outline-secondary" onclick="loadPages()">
+            <i class="bi bi-arrow-clockwise"></i> Refresh
+        </button>
+        {% if current_user.role not in ['viewer', 'auditor', 'white_team'] and active_project_role != 'white_team' %}
+        <button class="btn btn-sm btn-infrared" data-bs-toggle="modal" data-bs-target="#createPageModal">
+            <i class="bi bi-plus-circle"></i> New Page
+        </button>
+        {% endif %}
+    </div>
+</div>
+
+{% if not active_project %}
+<div class="text-center py-5">
+    <i class="bi bi-folder2-open text-warning" style="font-size: 2rem;"></i>
+    <p class="mt-2">Select a project from the top bar to manage landing pages.</p>
+</div>
+{% else %}
+
+<!-- Stats Row -->
+<div class="row g-3 mb-4">
+    <div class="col"><div class="stat-card"><div class="label">Total</div><h3 id="stat-total">0</h3></div></div>
+    <div class="col"><div class="stat-card"><div class="label">Live</div><h3 id="stat-live">0</h3></div></div>
+    <div class="col"><div class="stat-card"><div class="label">Draft</div><h3 id="stat-draft">0</h3></div></div>
+    <div class="col"><div class="stat-card"><div class="label">Error</div><h3 id="stat-error">0</h3></div></div>
+    <div class="col"><div class="stat-card"><div class="label">Torn Down</div><h3 id="stat-torn">0</h3></div></div>
+</div>
+
+<!-- Pages Table -->
+<div class="card-custom">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <span><i class="bi bi-window-stack"></i> Landing Pages</span>
+        <span class="badge bg-secondary" id="page-count-badge">0</span>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+        <table class="table table-hover mb-0">
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>Type</th>
+                    <th>Status</th>
+                    <th>Domain</th>
+                    <th>FQDN</th>
+                    <th>Source</th>
+                    <th>GoPhish</th>
+                    <th>Deployed</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody id="pages-tbody">
+                <tr><td colspan="9" class="text-center text-muted py-3">Loading...</td></tr>
+            </tbody>
+        </table>
+        </div>
+    </div>
+</div>
+
+{% endif %}
+
+<!-- Create / Edit Page Modal -->
+<div class="modal fade" id="createPageModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="pageModalTitle">New Landing Page</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="lp-id">
+                <div class="mb-2">
+                    <label class="form-label">Name <span class="text-danger">*</span></label>
+                    <input type="text" class="form-control" id="lp-name" placeholder="O365 Login Page">
+                </div>
+                <div class="row g-2 mb-2">
+                    <div class="col-md-4">
+                        <label class="form-label">Page Type</label>
+                        <select class="form-select" id="lp-type">
+                            <option value="cred_harvest">Credential Harvest</option>
+                            <option value="payload_delivery">Payload Delivery</option>
+                            <option value="redirect">Redirect</option>
+                            <option value="awareness">Awareness</option>
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Template Source</label>
+                        <select class="form-select" id="lp-source">
+                            <option value="manual">Manual HTML</option>
+                            <option value="clone">Clone URL</option>
+                            <option value="gophish">GoPhish Import</option>
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Domain</label>
+                        <select class="form-select" id="lp-domain">
+                            <option value="">Loading...</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="mb-2" id="clone-url-group">
+                    <label class="form-label">Clone URL</label>
+                    <input type="url" class="form-control" id="lp-clone-url" placeholder="https://login.example.com">
+                </div>
+                <div class="mb-2">
+                    <label class="form-label">HTML Content</label>
+                    <textarea class="form-control font-mono" id="lp-html" rows="10"
+                              placeholder="<html>&#10;  <body>&#10;    ...&#10;  </body>&#10;</html>"></textarea>
+                </div>
+                <div class="row g-2 mb-2">
+                    <div class="col-md-6">
+                        <label class="form-label">Redirect URL <small class="text-muted">(after capture)</small></label>
+                        <input type="url" class="form-control" id="lp-redirect" placeholder="https://real-site.com">
+                    </div>
+                    <div class="col-md-6 d-flex align-items-end gap-3">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="lp-capture-creds" checked>
+                            <label class="form-check-label" for="lp-capture-creds">Capture Credentials</label>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="lp-capture-pass">
+                            <label class="form-check-label" for="lp-capture-pass">Capture Passwords</label>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-infrared" onclick="savePage()">
+                    <i class="bi bi-check-lg"></i> Save
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Deploy Results Modal -->
+<div class="modal fade" id="deployResultsModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Deploy Results</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body" id="deploy-results-body"></div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    const IS_VIEWER = {{ 'true' if current_user.is_viewer is defined and current_user.is_viewer else 'false' }};
+    const IS_WHITE_TEAM = {{ 'true' if current_user.is_white_team else 'false' }};
+    const IS_READONLY = IS_VIEWER || IS_WHITE_TEAM;
+
+    let _pages = [];
+    let _domains = [];
+
+    // ── Load pages ─────────────────────────────────────────────────────
+    async function loadPages() {
+        const tbody = document.getElementById('pages-tbody');
+        const status = document.getElementById('status-filter')?.value || '';
+        const qs = status ? `?status=${encodeURIComponent(status)}` : '';
+
+        try {
+            const resp = await fetch(`/api/ia/landing-pages${qs}`);
+            if (!resp.ok) throw new Error(await resp.text());
+            const data = await resp.json();
+            _pages = data.landing_pages || [];
+
+            updateStats(_pages);
+            document.getElementById('page-count-badge').textContent = _pages.length;
+
+            if (!_pages.length) {
+                tbody.innerHTML = '<tr><td colspan="9" class="text-center text-muted py-3">No landing pages yet.</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = _pages.map(p => {
+                const typeBadge = _typeBadge(p.page_type);
+                const statusBadge = _statusBadge(p.status);
+                const fqdn = p.fqdn
+                    ? (p.status === 'live'
+                        ? `<a href="https://${escapeAttr(p.fqdn)}" target="_blank" rel="noopener">${escapeHtml(p.fqdn)}</a>`
+                        : escapeHtml(p.fqdn))
+                    : '-';
+                const gp = p.gophish_page_id
+                    ? `<span class="badge bg-success">ID: ${p.gophish_page_id}</span>`
+                    : '<span class="text-muted">-</span>';
+                const deployed = p.deployed_at ? new Date(p.deployed_at).toLocaleString() : '-';
+
+                let actions = '';
+                if (!IS_READONLY) {
+                    if (p.status === 'draft' || p.status === 'error') {
+                        actions += `<button class="btn btn-sm btn-outline-secondary" onclick="editPage(${p.id})" title="Edit"><i class="bi bi-pencil"></i></button> `;
+                        actions += `<button class="btn btn-sm btn-outline-success" onclick="deployPage(${p.id})" title="Deploy"><i class="bi bi-rocket-takeoff"></i></button> `;
+                    }
+                    if (p.status === 'live') {
+                        actions += `<button class="btn btn-sm btn-outline-danger" onclick="teardownPage(${p.id}, '${escapeAttr(p.name)}')" title="Tear down"><i class="bi bi-trash"></i></button> `;
+                    }
+                }
+
+                return `<tr>
+                    <td>${escapeHtml(p.name)}</td>
+                    <td>${typeBadge}</td>
+                    <td>${statusBadge}</td>
+                    <td><small>${escapeHtml(p.domain_name || '-')}</small></td>
+                    <td><small>${fqdn}</small></td>
+                    <td><small>${escapeHtml(p.template_source || '-')}</small></td>
+                    <td>${gp}</td>
+                    <td><small>${escapeHtml(deployed)}</small></td>
+                    <td class="text-nowrap">${actions}</td>
+                </tr>`;
+            }).join('');
+        } catch (e) {
+            tbody.innerHTML = `<tr><td colspan="9" class="text-center text-danger py-3">${escapeHtml(e.message || 'Failed to load')}</td></tr>`;
+        }
+    }
+
+    function updateStats(pages) {
+        document.getElementById('stat-total').textContent = pages.length;
+        document.getElementById('stat-live').textContent = pages.filter(p => p.status === 'live').length;
+        document.getElementById('stat-draft').textContent = pages.filter(p => p.status === 'draft').length;
+        document.getElementById('stat-error').textContent = pages.filter(p => p.status === 'error').length;
+        document.getElementById('stat-torn').textContent = pages.filter(p => p.status === 'torn_down').length;
+    }
+
+    function _typeBadge(type) {
+        const map = {
+            cred_harvest: ['bg-danger', 'Cred Harvest'],
+            payload_delivery: ['bg-warning text-dark', 'Payload'],
+            redirect: ['bg-info', 'Redirect'],
+            awareness: ['bg-success', 'Awareness'],
+        };
+        const [cls, label] = map[type] || ['bg-secondary', type];
+        return `<span class="badge ${cls}">${escapeHtml(label)}</span>`;
+    }
+
+    function _statusBadge(status) {
+        const map = {
+            draft: 'bg-secondary', deploying: 'bg-primary',
+            live: 'bg-success', error: 'bg-danger', torn_down: 'bg-dark',
+        };
+        return `<span class="badge ${map[status] || 'bg-secondary'}">${escapeHtml(status)}</span>`;
+    }
+
+    // ── Domains loader ─────────────────────────────────────────────────
+    async function loadDomains() {
+        try {
+            const resp = await fetch('/api/ia/sender-domains');
+            if (!resp.ok) return;
+            const data = await resp.json();
+            _domains = data.domains || [];
+
+            const sel = document.getElementById('lp-domain');
+            sel.innerHTML = '<option value="">-- No domain --</option>' +
+                _domains.map(d =>
+                    `<option value="${d.domain_id}">${escapeHtml(d.domain_name)}</option>`
+                ).join('');
+        } catch (e) { /* ignore */ }
+    }
+
+    // ── Create / Edit page ─────────────────────────────────────────────
+    function _clearForm() {
+        document.getElementById('lp-id').value = '';
+        document.getElementById('lp-name').value = '';
+        document.getElementById('lp-type').value = 'cred_harvest';
+        document.getElementById('lp-source').value = 'manual';
+        document.getElementById('lp-domain').value = '';
+        document.getElementById('lp-clone-url').value = '';
+        document.getElementById('lp-html').value = '';
+        document.getElementById('lp-redirect').value = '';
+        document.getElementById('lp-capture-creds').checked = true;
+        document.getElementById('lp-capture-pass').checked = false;
+        document.getElementById('pageModalTitle').textContent = 'New Landing Page';
+    }
+
+    function editPage(id) {
+        const p = _pages.find(x => x.id === id);
+        if (!p) return;
+
+        document.getElementById('lp-id').value = p.id;
+        document.getElementById('lp-name').value = p.name || '';
+        document.getElementById('lp-type').value = p.page_type || 'cred_harvest';
+        document.getElementById('lp-source').value = p.template_source || 'manual';
+        document.getElementById('lp-domain').value = p.domain_id || '';
+        document.getElementById('lp-clone-url').value = p.clone_url || '';
+        document.getElementById('lp-redirect').value = p.redirect_url || '';
+        document.getElementById('lp-capture-creds').checked = p.capture_credentials !== false;
+        document.getElementById('lp-capture-pass').checked = !!p.capture_passwords;
+        document.getElementById('pageModalTitle').textContent = 'Edit Landing Page';
+
+        // Load HTML content if needed
+        document.getElementById('lp-html').value = '';
+        if (p.has_html) {
+            document.getElementById('lp-html').placeholder = '(Existing HTML content — leave empty to keep)';
+        }
+
+        new bootstrap.Modal(document.getElementById('createPageModal')).show();
+    }
+
+    document.getElementById('createPageModal')?.addEventListener('hidden.bs.modal', _clearForm);
+
+    async function savePage() {
+        const id = document.getElementById('lp-id').value;
+        const payload = {
+            name: document.getElementById('lp-name').value.trim(),
+            page_type: document.getElementById('lp-type').value,
+            template_source: document.getElementById('lp-source').value,
+            domain_id: parseInt(document.getElementById('lp-domain').value) || null,
+            clone_url: document.getElementById('lp-clone-url').value.trim() || null,
+            html_content: document.getElementById('lp-html').value || null,
+            redirect_url: document.getElementById('lp-redirect').value.trim() || null,
+            capture_credentials: document.getElementById('lp-capture-creds').checked,
+            capture_passwords: document.getElementById('lp-capture-pass').checked,
+        };
+
+        if (!payload.name) {
+            showToast('Name is required', 'warning');
+            return;
+        }
+
+        try {
+            const url = id ? `/api/ia/landing-pages/${id}` : '/api/ia/landing-pages';
+            const method = id ? 'PATCH' : 'POST';
+            const resp = await fetch(url, {
+                method,
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(payload),
+            });
+            const data = await resp.json();
+            if (!resp.ok) throw new Error(data.error || 'Failed');
+
+            bootstrap.Modal.getInstance(document.getElementById('createPageModal')).hide();
+            showToast(id ? 'Page updated' : 'Page created', 'success');
+            loadPages();
+        } catch (e) {
+            showToast(e.message, 'danger');
+        }
+    }
+
+    // ── Deploy ─────────────────────────────────────────────────────────
+    async function deployPage(id) {
+        const p = _pages.find(x => x.id === id);
+        if (!p) return;
+        if (!confirm(`Deploy landing page "${p.name}"? This will create a container, NPM proxy, and DNS record.`)) return;
+
+        showToast('Deploying...', 'info');
+
+        try {
+            const resp = await fetch(`/api/ia/landing-pages/${id}/deploy`, {method: 'POST'});
+            const data = await resp.json();
+            if (!resp.ok) throw new Error(data.error || 'Deploy failed');
+
+            // Show step results
+            const steps = data.steps || [];
+            let html = '<ul class="list-group">';
+            steps.forEach(s => {
+                const icon = s.status === 'ok'
+                    ? '<i class="bi bi-check-circle text-success"></i>'
+                    : '<i class="bi bi-x-circle text-danger"></i>';
+                html += `<li class="list-group-item d-flex justify-content-between align-items-center">
+                    ${icon} <span>${escapeHtml(s.step)}</span>
+                    <span class="badge ${s.status === 'ok' ? 'bg-success' : 'bg-danger'}">${escapeHtml(s.status)}</span>
+                </li>`;
+                if (s.error) html += `<li class="list-group-item text-danger small">${escapeHtml(s.error)}</li>`;
+            });
+            html += '</ul>';
+
+            if (data.landing_page?.fqdn) {
+                html += `<div class="mt-3 text-center"><strong>FQDN:</strong> <a href="https://${escapeAttr(data.landing_page.fqdn)}" target="_blank" rel="noopener">${escapeHtml(data.landing_page.fqdn)}</a></div>`;
+            }
+
+            document.getElementById('deploy-results-body').innerHTML = html;
+            new bootstrap.Modal(document.getElementById('deployResultsModal')).show();
+
+            loadPages();
+        } catch (e) {
+            showToast(e.message, 'danger');
+        }
+    }
+
+    // ── Teardown ───────────────────────────────────────────────────────
+    async function teardownPage(id, name) {
+        if (!confirm(`Tear down "${name}"? This will remove the container, proxy, and DNS record.`)) return;
+
+        try {
+            const resp = await fetch(`/api/ia/landing-pages/${id}`, {method: 'DELETE'});
+            const data = await resp.json();
+            if (!resp.ok) throw new Error(data.error || 'Teardown failed');
+
+            // Show step results
+            const steps = data.steps || [];
+            let html = '<ul class="list-group">';
+            steps.forEach(s => {
+                const icon = s.status === 'ok'
+                    ? '<i class="bi bi-check-circle text-success"></i>'
+                    : '<i class="bi bi-x-circle text-danger"></i>';
+                html += `<li class="list-group-item d-flex justify-content-between align-items-center">
+                    ${icon} <span>${escapeHtml(s.step)}</span>
+                    <span class="badge ${s.status === 'ok' ? 'bg-success' : 'bg-danger'}">${escapeHtml(s.status)}</span>
+                </li>`;
+            });
+            html += '</ul>';
+
+            document.getElementById('deploy-results-body').innerHTML = html;
+            new bootstrap.Modal(document.getElementById('deployResultsModal')).show();
+
+            loadPages();
+        } catch (e) {
+            showToast(e.message, 'danger');
+        }
+    }
+
+    // ── Toggle clone URL field visibility ──────────────────────────────
+    document.getElementById('lp-source')?.addEventListener('change', function() {
+        document.getElementById('clone-url-group').style.display =
+            this.value === 'clone' ? '' : 'none';
+    });
+
+    // ── Init ───────────────────────────────────────────────────────────
+    {% if active_project %}
+    loadPages();
+    loadDomains();
+    {% endif %}
+</script>
+{% endblock %}
