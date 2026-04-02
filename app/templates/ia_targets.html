@@ -1,0 +1,603 @@
+{% extends "base.html" %}
+
+{% block title %}Targets - Frontline{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1 class="h3 mb-0">Targets</h1>
+    <div class="d-flex align-items-center gap-2">
+        <input type="text" class="form-control form-control-sm" id="search-input"
+               placeholder="Search targets..." style="width: 220px;">
+        <button class="btn btn-sm btn-outline-secondary" onclick="loadTargets()">
+            <i class="bi bi-arrow-clockwise"></i> Refresh
+        </button>
+        {% if current_user.role not in ['viewer', 'auditor', 'white_team'] and active_project_role != 'white_team' %}
+        <button class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#importModal">
+            <i class="bi bi-upload"></i> Import CSV
+        </button>
+        <button class="btn btn-sm btn-infrared" data-bs-toggle="modal" data-bs-target="#addTargetModal">
+            <i class="bi bi-plus-circle"></i> Add Target
+        </button>
+        {% endif %}
+    </div>
+</div>
+
+{% if not active_project %}
+<div class="text-center py-5">
+    <i class="bi bi-folder2-open text-warning" style="font-size: 2rem;"></i>
+    <p class="mt-2">Select a project from the top bar to manage targets.</p>
+</div>
+{% else %}
+
+<!-- Stats Row -->
+<div class="row g-3 mb-4">
+    <div class="col"><div class="stat-card"><div class="label">Total</div><h3 id="stat-total">0</h3></div></div>
+    <div class="col"><div class="stat-card"><div class="label">Enriched</div><h3 id="stat-enriched">0</h3></div></div>
+    <div class="col"><div class="stat-card"><div class="label">With Breaches</div><h3 id="stat-breached">0</h3></div></div>
+    <div class="col"><div class="stat-card"><div class="label">Imported</div><h3 id="stat-imported">0</h3></div></div>
+    <div class="col"><div class="stat-card"><div class="label">Manual</div><h3 id="stat-manual">0</h3></div></div>
+</div>
+
+<!-- Targets Table -->
+<div class="card-custom">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <span><i class="bi bi-people"></i> Targets</span>
+        <span class="badge bg-secondary" id="target-count-badge">0</span>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+        <table class="table table-hover mb-0">
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>Email</th>
+                    <th>Job Title</th>
+                    <th>Department</th>
+                    <th>Organisation</th>
+                    <th>OSINT</th>
+                    <th>Source</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody id="targets-tbody">
+                <tr><td colspan="8" class="text-center text-muted py-3">Loading...</td></tr>
+            </tbody>
+        </table>
+        </div>
+    </div>
+</div>
+
+{% endif %}
+
+<!-- Add Target Modal -->
+<div class="modal fade" id="addTargetModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="addTargetModalLabel">Add Target</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row g-2">
+                    <div class="col-6">
+                        <label class="form-label">First Name</label>
+                        <input type="text" class="form-control" id="t-first-name">
+                    </div>
+                    <div class="col-6">
+                        <label class="form-label">Last Name</label>
+                        <input type="text" class="form-control" id="t-last-name">
+                    </div>
+                </div>
+                <div class="mb-2 mt-2">
+                    <label class="form-label">Email <span class="text-danger">*</span></label>
+                    <input type="email" class="form-control" id="t-email" required>
+                </div>
+                <div class="mb-2">
+                    <label class="form-label">Phone</label>
+                    <input type="text" class="form-control" id="t-phone">
+                </div>
+                <div class="mb-2">
+                    <label class="form-label">Job Title</label>
+                    <input type="text" class="form-control" id="t-job-title">
+                </div>
+                <div class="row g-2">
+                    <div class="col-6">
+                        <label class="form-label">Department</label>
+                        <input type="text" class="form-control" id="t-department">
+                    </div>
+                    <div class="col-6">
+                        <label class="form-label">Organisation</label>
+                        <input type="text" class="form-control" id="t-organisation">
+                    </div>
+                </div>
+                <div class="mb-2 mt-2">
+                    <label class="form-label">LinkedIn URL</label>
+                    <input type="url" class="form-control" id="t-linkedin">
+                </div>
+                <div class="mb-2">
+                    <label class="form-label">Notes</label>
+                    <textarea class="form-control" id="t-notes" rows="2"></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-infrared" onclick="createTarget()">
+                    <i class="bi bi-plus-circle"></i> Add
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Edit Target Modal -->
+<div class="modal fade" id="editTargetModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Edit Target</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="edit-id">
+                <div class="row g-2">
+                    <div class="col-6">
+                        <label class="form-label">First Name</label>
+                        <input type="text" class="form-control" id="edit-first-name">
+                    </div>
+                    <div class="col-6">
+                        <label class="form-label">Last Name</label>
+                        <input type="text" class="form-control" id="edit-last-name">
+                    </div>
+                </div>
+                <div class="mb-2 mt-2">
+                    <label class="form-label">Email <span class="text-danger">*</span></label>
+                    <input type="email" class="form-control" id="edit-email" required>
+                </div>
+                <div class="mb-2">
+                    <label class="form-label">Phone</label>
+                    <input type="text" class="form-control" id="edit-phone">
+                </div>
+                <div class="mb-2">
+                    <label class="form-label">Job Title</label>
+                    <input type="text" class="form-control" id="edit-job-title">
+                </div>
+                <div class="row g-2">
+                    <div class="col-6">
+                        <label class="form-label">Department</label>
+                        <input type="text" class="form-control" id="edit-department">
+                    </div>
+                    <div class="col-6">
+                        <label class="form-label">Organisation</label>
+                        <input type="text" class="form-control" id="edit-organisation">
+                    </div>
+                </div>
+                <div class="mb-2 mt-2">
+                    <label class="form-label">LinkedIn URL</label>
+                    <input type="url" class="form-control" id="edit-linkedin">
+                </div>
+                <div class="mb-2">
+                    <label class="form-label">Notes</label>
+                    <textarea class="form-control" id="edit-notes" rows="2"></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-infrared" onclick="updateTarget()">
+                    <i class="bi bi-check-lg"></i> Save
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Import CSV Modal -->
+<div class="modal fade" id="importModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Import Targets from CSV</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p class="text-muted small mb-2">
+                    Upload a CSV with at least an <strong>email</strong> column. Supported columns:
+                    <code>first_name</code>, <code>last_name</code>, <code>email</code>, <code>phone</code>,
+                    <code>job_title</code>, <code>department</code>, <code>organisation</code>,
+                    <code>linkedin_url</code>, <code>notes</code>.
+                    Duplicates (by email) are automatically skipped.
+                </p>
+                <div class="mb-3">
+                    <label class="form-label">CSV File</label>
+                    <input type="file" class="form-control" id="csv-file" accept=".csv,text/csv">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Or paste CSV text</label>
+                    <textarea class="form-control font-mono" id="csv-text" rows="8"
+                              placeholder="email,first_name,last_name,job_title&#10;john@example.com,John,Doe,CTO"></textarea>
+                </div>
+                <div id="import-result" class="d-none">
+                    <hr>
+                    <div class="row g-2 text-center">
+                        <div class="col"><span class="badge bg-success fs-6" id="import-created">0</span><br><small>Created</small></div>
+                        <div class="col"><span class="badge bg-secondary fs-6" id="import-skipped">0</span><br><small>Skipped</small></div>
+                        <div class="col"><span class="badge bg-danger fs-6" id="import-errors">0</span><br><small>Errors</small></div>
+                    </div>
+                    <div id="import-error-details" class="mt-2 d-none">
+                        <small class="text-danger" id="import-error-list"></small>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                <button type="button" class="btn btn-infrared" id="import-btn" onclick="importCSV()">
+                    <i class="bi bi-upload"></i> Import
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Target Detail Modal -->
+<div class="modal fade" id="detailModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="detail-title">Target Details</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body" id="detail-body"></div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    const IS_VIEWER = {{ 'true' if current_user.is_viewer is defined and current_user.is_viewer else 'false' }};
+    const IS_WHITE_TEAM = {{ 'true' if current_user.is_white_team else 'false' }};
+    const IS_READONLY = IS_VIEWER || IS_WHITE_TEAM;
+
+    let _allTargets = [];
+    let _searchTimer = null;
+
+    // ── Search debounce ────────────────────────────────────────────────
+    document.getElementById('search-input')?.addEventListener('input', function() {
+        clearTimeout(_searchTimer);
+        _searchTimer = setTimeout(() => loadTargets(), 300);
+    });
+
+    // ── Load targets ───────────────────────────────────────────────────
+    async function loadTargets() {
+        const tbody = document.getElementById('targets-tbody');
+        const search = document.getElementById('search-input')?.value.trim() || '';
+        const qs = search ? `?search=${encodeURIComponent(search)}` : '';
+
+        try {
+            const resp = await fetch(`/api/ia/targets${qs}`);
+            if (!resp.ok) throw new Error(await resp.text());
+            const data = await resp.json();
+            _allTargets = data.targets || [];
+
+            updateStats(_allTargets);
+            document.getElementById('target-count-badge').textContent = _allTargets.length;
+
+            if (!_allTargets.length) {
+                tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted py-3">No targets found. Add targets manually or import from CSV.</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = _allTargets.map(t => {
+                const name = escapeHtml(t.full_name || '-');
+                const email = escapeHtml(t.email || '-');
+                const title = escapeHtml(t.job_title || '-');
+                const dept = escapeHtml(t.department || '-');
+                const org = escapeHtml(t.organisation || '-');
+
+                // OSINT badges
+                let osint = '';
+                if (t.is_enriched) {
+                    const breachCount = (t.breach_sources || []).length;
+                    const svcCount = (t.exposed_services || []).length;
+                    if (breachCount) osint += `<span class="badge bg-danger me-1" title="${breachCount} breach(es)"><i class="bi bi-shield-exclamation"></i> ${breachCount}</span>`;
+                    if (svcCount) osint += `<span class="badge bg-warning text-dark me-1" title="${svcCount} exposure(s)"><i class="bi bi-globe"></i> ${svcCount}</span>`;
+                    if (!breachCount && !svcCount) osint = '<span class="badge bg-success"><i class="bi bi-check-circle"></i></span>';
+                } else {
+                    osint = '<span class="text-muted">-</span>';
+                }
+
+                const sourceBadge = t.source === 'import'
+                    ? '<span class="badge bg-info">import</span>'
+                    : t.source === 'osint'
+                      ? '<span class="badge bg-warning text-dark">osint</span>'
+                      : '<span class="badge bg-secondary">manual</span>';
+
+                let actions = `<button class="btn btn-sm btn-outline-primary" onclick="viewTarget(${t.id})" title="View details"><i class="bi bi-eye"></i></button>`;
+                if (!IS_READONLY) {
+                    actions += ` <button class="btn btn-sm btn-outline-secondary" onclick="editTarget(${t.id})" title="Edit"><i class="bi bi-pencil"></i></button>`;
+                    actions += ` <button class="btn btn-sm btn-outline-info" onclick="enrichTarget(${t.id})" title="Enrich from scan"><i class="bi bi-stars"></i></button>`;
+                    actions += ` <button class="btn btn-sm btn-outline-danger" onclick="deleteTarget(${t.id}, '${escapeAttr(t.email || '')}')" title="Delete"><i class="bi bi-trash"></i></button>`;
+                }
+
+                return `<tr>
+                    <td>${name}</td>
+                    <td><small>${email}</small></td>
+                    <td><small>${title}</small></td>
+                    <td><small>${dept}</small></td>
+                    <td><small>${org}</small></td>
+                    <td>${osint}</td>
+                    <td>${sourceBadge}</td>
+                    <td class="text-nowrap">${actions}</td>
+                </tr>`;
+            }).join('');
+        } catch (e) {
+            tbody.innerHTML = `<tr><td colspan="8" class="text-center text-danger py-3">${escapeHtml(e.message || 'Failed to load targets')}</td></tr>`;
+        }
+    }
+
+    function updateStats(targets) {
+        document.getElementById('stat-total').textContent = targets.length;
+        document.getElementById('stat-enriched').textContent = targets.filter(t => t.is_enriched).length;
+        document.getElementById('stat-breached').textContent = targets.filter(t => (t.breach_sources || []).length > 0).length;
+        document.getElementById('stat-imported').textContent = targets.filter(t => t.source === 'import').length;
+        document.getElementById('stat-manual').textContent = targets.filter(t => t.source === 'manual').length;
+    }
+
+    // ── Create target ──────────────────────────────────────────────────
+    async function createTarget() {
+        const payload = {
+            first_name: document.getElementById('t-first-name').value.trim(),
+            last_name:  document.getElementById('t-last-name').value.trim(),
+            email:      document.getElementById('t-email').value.trim(),
+            phone:      document.getElementById('t-phone').value.trim(),
+            job_title:  document.getElementById('t-job-title').value.trim(),
+            department: document.getElementById('t-department').value.trim(),
+            organisation: document.getElementById('t-organisation').value.trim(),
+            linkedin_url: document.getElementById('t-linkedin').value.trim(),
+            notes:      document.getElementById('t-notes').value.trim(),
+        };
+
+        if (!payload.email) {
+            showToast('Email is required', 'warning');
+            return;
+        }
+
+        try {
+            const resp = await fetch('/api/ia/targets', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(payload),
+            });
+            const data = await resp.json();
+            if (!resp.ok) throw new Error(data.error || 'Failed to create target');
+
+            bootstrap.Modal.getInstance(document.getElementById('addTargetModal')).hide();
+            _clearAddForm();
+            showToast('Target added successfully', 'success');
+            loadTargets();
+        } catch (e) {
+            showToast(e.message, 'danger');
+        }
+    }
+
+    function _clearAddForm() {
+        ['t-first-name','t-last-name','t-email','t-phone','t-job-title',
+         't-department','t-organisation','t-linkedin','t-notes'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.value = '';
+        });
+    }
+
+    // ── Edit target ────────────────────────────────────────────────────
+    function editTarget(id) {
+        const t = _allTargets.find(x => x.id === id);
+        if (!t) return;
+
+        document.getElementById('edit-id').value = t.id;
+        document.getElementById('edit-first-name').value = t.first_name || '';
+        document.getElementById('edit-last-name').value = t.last_name || '';
+        document.getElementById('edit-email').value = t.email || '';
+        document.getElementById('edit-phone').value = t.phone || '';
+        document.getElementById('edit-job-title').value = t.job_title || '';
+        document.getElementById('edit-department').value = t.department || '';
+        document.getElementById('edit-organisation').value = t.organisation || '';
+        document.getElementById('edit-linkedin').value = t.linkedin_url || '';
+        document.getElementById('edit-notes').value = t.notes || '';
+
+        new bootstrap.Modal(document.getElementById('editTargetModal')).show();
+    }
+
+    async function updateTarget() {
+        const id = document.getElementById('edit-id').value;
+        const payload = {
+            first_name: document.getElementById('edit-first-name').value.trim(),
+            last_name:  document.getElementById('edit-last-name').value.trim(),
+            email:      document.getElementById('edit-email').value.trim(),
+            phone:      document.getElementById('edit-phone').value.trim(),
+            job_title:  document.getElementById('edit-job-title').value.trim(),
+            department: document.getElementById('edit-department').value.trim(),
+            organisation: document.getElementById('edit-organisation').value.trim(),
+            linkedin_url: document.getElementById('edit-linkedin').value.trim(),
+            notes:      document.getElementById('edit-notes').value.trim(),
+        };
+
+        try {
+            const resp = await fetch(`/api/ia/targets/${id}`, {
+                method: 'PATCH',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(payload),
+            });
+            const data = await resp.json();
+            if (!resp.ok) throw new Error(data.error || 'Failed to update target');
+
+            bootstrap.Modal.getInstance(document.getElementById('editTargetModal')).hide();
+            showToast('Target updated', 'success');
+            loadTargets();
+        } catch (e) {
+            showToast(e.message, 'danger');
+        }
+    }
+
+    // ── Delete target ──────────────────────────────────────────────────
+    async function deleteTarget(id, email) {
+        if (!confirm(`Delete target ${email}?`)) return;
+
+        try {
+            const resp = await fetch(`/api/ia/targets/${id}`, {method: 'DELETE'});
+            const data = await resp.json();
+            if (!resp.ok) throw new Error(data.error || 'Failed to delete target');
+
+            showToast('Target deleted', 'success');
+            loadTargets();
+        } catch (e) {
+            showToast(e.message, 'danger');
+        }
+    }
+
+    // ── Enrich target ──────────────────────────────────────────────────
+    async function enrichTarget(id) {
+        try {
+            const resp = await fetch(`/api/ia/targets/${id}/enrich`, {method: 'POST'});
+            const data = await resp.json();
+            if (!resp.ok) throw new Error(data.error || 'Enrichment failed');
+
+            showToast(data.enriched ? 'Target enriched with OSINT data' : 'No new data found', data.enriched ? 'success' : 'info');
+            loadTargets();
+        } catch (e) {
+            showToast(e.message, 'danger');
+        }
+    }
+
+    // ── View target detail ─────────────────────────────────────────────
+    function viewTarget(id) {
+        const t = _allTargets.find(x => x.id === id);
+        if (!t) return;
+
+        document.getElementById('detail-title').textContent = t.full_name || t.email || 'Target Details';
+
+        const breaches = (t.breach_sources || []);
+        const services = (t.exposed_services || []);
+
+        let html = `
+        <div class="row g-3 mb-3">
+            <div class="col-md-6">
+                <table class="table table-sm mb-0">
+                    <tr><td class="text-muted" style="width:120px">Email</td><td>${escapeHtml(t.email || '-')}</td></tr>
+                    <tr><td class="text-muted">Phone</td><td>${escapeHtml(t.phone || '-')}</td></tr>
+                    <tr><td class="text-muted">Job Title</td><td>${escapeHtml(t.job_title || '-')}</td></tr>
+                    <tr><td class="text-muted">Department</td><td>${escapeHtml(t.department || '-')}</td></tr>
+                    <tr><td class="text-muted">Organisation</td><td>${escapeHtml(t.organisation || '-')}</td></tr>
+                </table>
+            </div>
+            <div class="col-md-6">
+                <table class="table table-sm mb-0">
+                    <tr><td class="text-muted" style="width:120px">Source</td><td><span class="badge bg-secondary">${escapeHtml(t.source || '-')}</span></td></tr>
+                    <tr><td class="text-muted">Created</td><td>${t.created_at ? new Date(t.created_at).toLocaleString() : '-'}</td></tr>
+                    <tr><td class="text-muted">Updated</td><td>${t.updated_at ? new Date(t.updated_at).toLocaleString() : '-'}</td></tr>
+                    <tr><td class="text-muted">Enriched</td><td>${t.osint_enriched_at ? new Date(t.osint_enriched_at).toLocaleString() : '<span class="text-muted">Not enriched</span>'}</td></tr>
+                    <tr><td class="text-muted">LinkedIn</td><td>${t.linkedin_url ? `<a href="${escapeAttr(t.linkedin_url)}" target="_blank" rel="noopener">${escapeHtml(t.linkedin_url)}</a>` : '-'}</td></tr>
+                </table>
+            </div>
+        </div>`;
+
+        if (t.notes) {
+            html += `<div class="mb-3"><strong>Notes</strong><p class="mb-0 small">${escapeHtml(t.notes)}</p></div>`;
+        }
+
+        if (breaches.length) {
+            html += `<div class="mb-3"><strong><i class="bi bi-shield-exclamation text-danger"></i> Breach Sources (${breaches.length})</strong>
+            <table class="table table-sm mt-1 mb-0">
+                <thead><tr><th>Source</th><th>Year</th><th>Has Password</th></tr></thead>
+                <tbody>${breaches.map(b => `<tr>
+                    <td>${escapeHtml(b.source || '-')}</td>
+                    <td>${escapeHtml(String(b.year || '-'))}</td>
+                    <td>${b.password_hash ? '<span class="badge bg-danger">Yes</span>' : '-'}</td>
+                </tr>`).join('')}</tbody>
+            </table></div>`;
+        }
+
+        if (services.length) {
+            html += `<div class="mb-3"><strong><i class="bi bi-globe text-warning"></i> Exposed Services (${services.length})</strong>
+            <table class="table table-sm mt-1 mb-0">
+                <thead><tr><th>Service</th><th>Host</th><th>Port/Source</th></tr></thead>
+                <tbody>${services.map(s => `<tr>
+                    <td>${escapeHtml(s.service || '-')}</td>
+                    <td>${escapeHtml(s.host || '-')}</td>
+                    <td>${escapeHtml(String(s.port || '-'))}</td>
+                </tr>`).join('')}</tbody>
+            </table></div>`;
+        }
+
+        if (!breaches.length && !services.length && !t.is_enriched) {
+            html += `<div class="text-center text-muted py-3"><i class="bi bi-info-circle"></i> No OSINT data. Click <strong>Enrich</strong> to match against scan results.</div>`;
+        }
+
+        document.getElementById('detail-body').innerHTML = html;
+        new bootstrap.Modal(document.getElementById('detailModal')).show();
+    }
+
+    // ── CSV Import ─────────────────────────────────────────────────────
+    async function importCSV() {
+        let csvText = document.getElementById('csv-text').value.trim();
+        const fileInput = document.getElementById('csv-file');
+
+        // Read from file if provided
+        if (fileInput.files.length && !csvText) {
+            csvText = await fileInput.files[0].text();
+        }
+
+        if (!csvText) {
+            showToast('Provide a CSV file or paste CSV text', 'warning');
+            return;
+        }
+
+        const btn = document.getElementById('import-btn');
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Importing...';
+
+        try {
+            const resp = await fetch('/api/ia/targets/import', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({csv_text: csvText}),
+            });
+            const data = await resp.json();
+            if (!resp.ok) throw new Error(data.error || 'Import failed');
+
+            // Show results
+            document.getElementById('import-created').textContent = data.created;
+            document.getElementById('import-skipped').textContent = data.skipped;
+            document.getElementById('import-errors').textContent = data.errors;
+            document.getElementById('import-result').classList.remove('d-none');
+
+            if (data.error_details && data.error_details.length) {
+                document.getElementById('import-error-list').textContent = data.error_details.join('; ');
+                document.getElementById('import-error-details').classList.remove('d-none');
+            } else {
+                document.getElementById('import-error-details').classList.add('d-none');
+            }
+
+            showToast(`Imported ${data.created} target(s)`, 'success');
+            loadTargets();
+        } catch (e) {
+            showToast(e.message, 'danger');
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="bi bi-upload"></i> Import';
+        }
+    }
+
+    // Reset import modal state on close
+    document.getElementById('importModal')?.addEventListener('hidden.bs.modal', function() {
+        document.getElementById('csv-text').value = '';
+        document.getElementById('csv-file').value = '';
+        document.getElementById('import-result').classList.add('d-none');
+        document.getElementById('import-error-details').classList.add('d-none');
+    });
+
+    // ── Init ───────────────────────────────────────────────────────────
+    {% if active_project %}
+    loadTargets();
+    {% endif %}
+</script>
+{% endblock %}
