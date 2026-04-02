@@ -318,3 +318,16 @@ def register_routes(app):
         if current_user.is_admin:
             return redirect(url_for('admin_companies'))
         return render_template('company.html')
+
+    # ── Frontline phase ────────────────────────────────────────────────
+    @app.route('/initial-access/')
+    @login_required
+    @feature_required('initial_access')
+    def ia_dashboard():
+        return render_template('ia_dashboard.html')
+
+    @app.route('/initial-access/recon')
+    @login_required
+    @feature_required('initial_access')
+    def ia_recon():
+        return render_template('ia_recon.html')
