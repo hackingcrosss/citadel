@@ -119,6 +119,7 @@ def test_credentials(provider):
         'gophish': _test_gophish,
         'cobaltstrike': _test_cobaltstrike,
         'openai': _test_openai,
+        'scanner': _test_scanner,
     }
 
     tester = testers.get(provider)
@@ -237,3 +238,9 @@ def _test_azure(label='default'):
     rm_client = ResourceManagementClient(cred, subscription_id)
     groups = list(rm_client.resource_groups.list())
     return {'subscription_id': subscription_id, 'resource_group_count': len(groups)}
+
+
+def _test_scanner():
+    from app.services import ia_scan_service
+    result = ia_scan_service.test_connection()
+    return result
