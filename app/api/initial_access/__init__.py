@@ -153,5 +153,6 @@ def ia_scan_results(job_id):
 
 
 # Register sub-modules
-from app.api.initial_access import targets    # noqa: F401, E402
-from app.api.initial_access import campaigns  # noqa: F401, E402
+from app.api.initial_access import targets       # noqa: F401, E402
+from app.api.initial_access import campaigns     # noqa: F401, E402
+from app.api.initial_access import landing_pages # noqa: F401, E402

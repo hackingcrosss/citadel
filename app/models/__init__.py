@@ -14,3 +14,4 @@ from app.models.ia_scan_job import IAScanJob
 from app.models.ia_target import IATarget
 from app.models.ia_campaign import IACampaign, ia_campaign_targets
 from app.models.ia_campaign_event import IACampaignEvent
+from app.models.ia_landing_page import IALandingPage

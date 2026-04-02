@@ -343,3 +343,9 @@ def register_routes(app):
     @feature_required('initial_access')
     def ia_campaigns():
         return render_template('ia_campaigns.html')
+
+    @app.route('/initial-access/landing-pages')
+    @login_required
+    @feature_required('initial_access')
+    def ia_landing_pages():
+        return render_template('ia_landing_pages.html')

@@ -1,7 +1,8 @@
 from app import db
 from datetime import datetime
 
-RESOURCE_TYPES = ('ec2', 'container', 'cs_listener', 'npm_host', 'ia_campaign', 'ia_scan_job')
+RESOURCE_TYPES = ('ec2', 'container', 'cs_listener', 'npm_host',
+                  'ia_campaign', 'ia_scan_job', 'ia_landing_page')
 
 
 class ProjectResource(db.Model):
