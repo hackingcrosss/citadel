@@ -184,7 +184,7 @@ def deploy_landing_page(page):
     # Step 5: Push to GoPhish as landing page (for campaign linking)
     try:
         gp_page = gophish_service.create_page({
-            'name': f'Crucible: {page.name[:150]}',
+            'name': f'Citadel: {page.name[:150]}',
             'html': page.html_content,
             'capture_credentials': page.capture_credentials,
             'capture_passwords': page.capture_passwords,
