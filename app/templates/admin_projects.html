@@ -69,13 +69,14 @@
                     <th>Company</th>
                     <th>Codename</th>
                     <th>Status</th>
+                    <th>Scope</th>
                     <th>Members</th>
                     <th>Created</th>
                     <th></th>
                 </tr>
             </thead>
             <tbody id="projects-tbody">
-                <tr><td colspan="6" class="text-center text-muted py-4">Loading...</td></tr>
+                <tr><td colspan="7" class="text-center text-muted py-4">Loading...</td></tr>
             </tbody>
         </table>
         </div>
@@ -367,6 +368,56 @@
         </div>
     </div>
 </div>
+<!-- ===================== SCOPE MODAL ===================== -->
+<div class="modal fade" id="scopeModal" tabindex="-1" aria-labelledby="scopeModalLabel">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content bg-dark border-secondary">
+            <div class="modal-header border-secondary">
+                <h5 class="modal-title" id="scopeModalLabel"><i class="bi bi-crosshair me-2"></i>Scope — <span id="scope-project-name"></span></h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p class="text-muted small mb-3">
+                    Define the engagement scope for this project. This feeds into Frontline recon scans.
+                </p>
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label class="form-label">Domains <small class="text-muted">(one per line)</small></label>
+                        <textarea class="form-control bg-dark text-light border-secondary font-mono" id="scope-domains" rows="6"
+                            placeholder="example.com&#10;*.example.com&#10;app.example.com"></textarea>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">CIDR Ranges <small class="text-muted">(one per line)</small></label>
+                        <textarea class="form-control bg-dark text-light border-secondary font-mono" id="scope-cidrs" rows="6"
+                            placeholder="10.0.0.0/24&#10;192.168.1.0/24&#10;172.16.0.0/16"></textarea>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Individual IPs <small class="text-muted">(one per line)</small></label>
+                        <textarea class="form-control bg-dark text-light border-secondary font-mono" id="scope-ips" rows="4"
+                            placeholder="10.0.1.5&#10;203.0.113.42"></textarea>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Notes <small class="text-muted">(free-form context)</small></label>
+                        <textarea class="form-control bg-dark text-light border-secondary" id="scope-notes" rows="4"
+                            placeholder="Additional scope context, restrictions, or comments…"></textarea>
+                    </div>
+                </div>
+                <div class="mt-3 mb-0">
+                    <div class="d-flex gap-2 align-items-center">
+                        <span class="badge bg-secondary" id="scope-summary"></span>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer border-secondary">
+                <button class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+                <button class="btn btn-danger btn-sm" id="scope-save-btn" onclick="saveScope()">
+                    <i class="bi bi-check-lg me-1"></i>Save Scope
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
 {% endblock %}
 
 
@@ -413,6 +464,13 @@ function statusBadge(status) {
     return `<span class="status-badge ${cls}">${status}</span>`;
 }
 
+function _scopeBadge(scope) {
+    if (!scope) return '<span class="text-muted small">—</span>';
+    const total = (scope.domains || []).length + (scope.cidrs || []).length + (scope.ips || []).length;
+    if (!total) return '<span class="text-muted small">—</span>';
+    return `<span class="badge bg-success" style="font-size:0.7rem">${total} item(s)</span>`;
+}
+
 // ── Load projects ────────────────────────────────────────────────────────────
 async function loadProjects() {
     const tbody = document.getElementById('projects-tbody');
@@ -424,7 +482,7 @@ async function loadProjects() {
         _projects = Array.isArray(data) ? data : (data.projects || []);
         renderProjects();
     } catch(e) {
-        tbody.innerHTML = `<tr><td colspan="6" class="text-danger text-center py-3">${escapeHtml(e.message)}</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="7" class="text-danger text-center py-3">${escapeHtml(e.message)}</td></tr>`;
     }
 }
 
@@ -438,7 +496,7 @@ function renderProjects() {
     document.getElementById('filter-count').textContent = `${filtered.length} / ${_projects.length}`;
 
     if (!filtered.length) {
-        tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-4">No projects match filter</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted py-4">No projects match filter</td></tr>';
         return;
     }
     tbody.innerHTML = filtered.map(p => `
@@ -446,6 +504,7 @@ function renderProjects() {
             <td>${p.company_code ? `<span class="badge bg-danger" style="font-size:0.7rem">${escapeHtml(p.company_code)}</span>` : '<span class="text-muted">—</span>'}</td>
             <td><code class="text-danger">${escapeHtml(p.code)}</code>${p.description ? ` <small class="text-muted">${escapeHtml(p.description)}</small>` : ''}</td>
             <td>${statusBadge(p.status)}</td>
+            <td>${_scopeBadge(p.scope)}</td>
             <td><span class="text-muted">${p.member_count ?? '—'}</span></td>
             <td class="text-muted small">${p.created_at ? p.created_at.substring(0,10) : '—'}</td>
             <td class="text-end">
@@ -454,6 +513,9 @@ function renderProjects() {
                 </button>
                 <button class="btn btn-outline-secondary btn-sm me-1" title="Domains" onclick="openDomainsModal(${p.id})">
                     <i class="bi bi-globe"></i>
+                </button>
+                <button class="btn btn-outline-secondary btn-sm me-1" title="Scope" onclick="openScopeModal(${p.id})">
+                    <i class="bi bi-crosshair"></i>
                 </button>
                 ${canManageProject(p) ? `
                 <button class="btn btn-outline-secondary btn-sm me-1" title="Edit" onclick="openEditModal(${p.id})">
@@ -1317,5 +1379,86 @@ async function _tdExecute() {
     document.getElementById('td-btn-close3').disabled = false;
     loadProjects();
 }
+
+// ── Scope modal ──────────────────────────────────────────────────────────────
+let _scopeProjectId = null;
+const scopeModal = new bootstrap.Modal(document.getElementById('scopeModal'));
+
+async function openScopeModal(projectId) {
+    _scopeProjectId = projectId;
+    const p = _projects.find(x => x.id === projectId);
+    document.getElementById('scope-project-name').textContent = p ? p.code : '';
+
+    // Clear form
+    document.getElementById('scope-domains').value = '';
+    document.getElementById('scope-cidrs').value = '';
+    document.getElementById('scope-ips').value = '';
+    document.getElementById('scope-notes').value = '';
+    document.getElementById('scope-summary').textContent = 'Loading...';
+
+    // Hide save button for read-only users
+    document.getElementById('scope-save-btn').style.display = IS_READONLY ? 'none' : '';
+
+    scopeModal.show();
+
+    try {
+        const res = await fetch(`/api/projects/${projectId}/scope`);
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Failed to load scope');
+
+        document.getElementById('scope-domains').value = (data.domains || []).join('\n');
+        document.getElementById('scope-cidrs').value = (data.cidrs || []).join('\n');
+        document.getElementById('scope-ips').value = (data.ips || []).join('\n');
+        document.getElementById('scope-notes').value = data.notes || '';
+        _updateScopeSummary(data);
+    } catch(e) {
+        showToast(e.message, 'danger');
+    }
+}
+
+function _updateScopeSummary(data) {
+    const d = (data.domains || []).length;
+    const c = (data.cidrs || []).length;
+    const i = (data.ips || []).length;
+    document.getElementById('scope-summary').textContent =
+        `${d} domain(s), ${c} CIDR(s), ${i} IP(s)`;
+}
+
+function _parseLines(el) {
+    return el.value.split('\n').map(s => s.trim()).filter(Boolean);
+}
+
+async function saveScope() {
+    const payload = {
+        domains: _parseLines(document.getElementById('scope-domains')),
+        cidrs: _parseLines(document.getElementById('scope-cidrs')),
+        ips: _parseLines(document.getElementById('scope-ips')),
+        notes: document.getElementById('scope-notes').value.trim(),
+    };
+
+    try {
+        const res = await fetch(`/api/projects/${_scopeProjectId}/scope`, {
+            method: 'PATCH',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(payload),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Failed to save scope');
+        showToast('Scope saved', 'success');
+        _updateScopeSummary(data);
+    } catch(e) {
+        showToast(e.message, 'danger');
+    }
+}
+
+['scope-domains','scope-cidrs','scope-ips'].forEach(id => {
+    document.getElementById(id)?.addEventListener('input', function() {
+        _updateScopeSummary({
+            domains: _parseLines(document.getElementById('scope-domains')),
+            cidrs: _parseLines(document.getElementById('scope-cidrs')),
+            ips: _parseLines(document.getElementById('scope-ips')),
+        });
+    });
+});
 </script>
 {% endblock %}

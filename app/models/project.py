@@ -1,3 +1,4 @@
+import json
 from app import db
 from datetime import datetime
 
@@ -18,11 +19,28 @@ class Project(db.Model):
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     company_id = db.Column(db.Integer, db.ForeignKey('companies.id'), nullable=True, index=True)
+    scope = db.Column(db.Text)  # JSON: {"domains":[], "cidrs":[], "ips":[], "notes":""}
 
     created_by = db.relationship('User', foreign_keys=[created_by_id])
     company = db.relationship('Company', foreign_keys=[company_id], back_populates='projects')
     members = db.relationship('ProjectMember', back_populates='project',
                               cascade='all, delete-orphan')
+
+    @property
+    def parsed_scope(self):
+        """Return the scope JSON as a dict, with safe defaults."""
+        if not self.scope:
+            return {'domains': [], 'cidrs': [], 'ips': [], 'notes': ''}
+        try:
+            s = json.loads(self.scope)
+            return {
+                'domains': s.get('domains') or [],
+                'cidrs': s.get('cidrs') or [],
+                'ips': s.get('ips') or [],
+                'notes': s.get('notes') or '',
+            }
+        except (json.JSONDecodeError, TypeError):
+            return {'domains': [], 'cidrs': [], 'ips': [], 'notes': ''}
 
     def to_dict(self, include_members=False):
         d = {
@@ -37,6 +55,7 @@ class Project(db.Model):
             'created_by_id': self.created_by_id,
             'created_by_email': self.created_by.email if self.created_by else None,
             'member_count': len(self.members),
+            'scope': self.parsed_scope,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None,
         }
