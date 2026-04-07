@@ -147,8 +147,8 @@ def update_company(company_id):
             return jsonify({
                 'error': f'Only admins may update: {", ".join(sorted(attempted_structural))}',
             }), 403
-        # white_team can only edit their own company
-        if current_user.is_white_team and current_user.company_id != company_id:
+        # white_team can only edit companies they are associated with
+        if current_user.is_white_team and not _can_access_company(company_id):
             return jsonify({'error': 'White team users can only edit their own company profile'}), 403
         # auditors are read-only
         if current_user.is_auditor:

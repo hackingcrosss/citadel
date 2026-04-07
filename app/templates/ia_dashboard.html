@@ -314,7 +314,7 @@
         }
     }
 
-    // ── Load project scope ────────────────────────────────────────────
+    // ── Load company scope (via active project's company) ───────────
     async function loadScope() {
         const badge = document.getElementById('scope-badge');
         const body = document.getElementById('scope-body');
@@ -324,42 +324,48 @@
             const data = await resp.json();
             const project = data.active_project;
             if (!project) { body.innerHTML = '<div class="text-muted text-center">No active project</div>'; return; }
+            if (!project.company_id) { body.innerHTML = '<div class="text-muted text-center">Project has no company assigned</div>'; badge.textContent = 'N/A'; badge.className = 'badge bg-secondary'; return; }
 
-            const scope = project.scope || {domains: [], cidrs: [], ips: [], notes: ''};
-            const total = scope.domains.length + scope.cidrs.length + scope.ips.length;
+            const cResp = await fetch(`/api/companies/${project.company_id}`);
+            if (!cResp.ok) throw new Error('Failed to load company');
+            const cData = await cResp.json();
+            const company = cData.company;
 
-            badge.textContent = total ? `${total} item(s)` : 'Not defined';
-            badge.className = total ? 'badge bg-success' : 'badge bg-warning text-dark';
+            const scopeNotes = company.scope_notes || '';
+            const outOfScope = company.out_of_scope_notes || '';
+            const hasScope = scopeNotes || outOfScope;
 
-            if (!total && !scope.notes) {
-                body.innerHTML = '<div class="text-center text-muted py-2"><i class="bi bi-info-circle me-1"></i>No scope defined. Ask a Project Admin or White Team member to configure the engagement scope.</div>';
+            badge.textContent = hasScope ? 'Defined' : 'Not defined';
+            badge.className = hasScope ? 'badge bg-success' : 'badge bg-warning text-dark';
+
+            if (!hasScope && !company.roe_notes && !company.allowed_hours) {
+                body.innerHTML = '<div class="text-center text-muted py-2"><i class="bi bi-info-circle me-1"></i>No scope defined. Ask a White Team member to configure the scope on the company profile.</div>';
                 return;
             }
 
             let html = '<div class="row g-3">';
 
-            if (scope.domains.length) {
-                html += '<div class="col-md-4"><strong class="small text-muted d-block mb-1"><i class="bi bi-globe me-1"></i>Domains (' + scope.domains.length + ')</strong>';
-                html += scope.domains.map(d => `<code class="d-block small">${escapeHtml(d)}</code>`).join('');
+            if (scopeNotes) {
+                html += '<div class="col-md-6"><strong class="small text-muted d-block mb-1"><i class="bi bi-crosshair me-1"></i>In Scope</strong>';
+                html += `<pre class="small mb-0 text-light" style="white-space:pre-wrap">${escapeHtml(scopeNotes)}</pre>`;
                 html += '</div>';
             }
 
-            if (scope.cidrs.length) {
-                html += '<div class="col-md-4"><strong class="small text-muted d-block mb-1"><i class="bi bi-hdd-network me-1"></i>CIDR Ranges (' + scope.cidrs.length + ')</strong>';
-                html += scope.cidrs.map(c => `<code class="d-block small">${escapeHtml(c)}</code>`).join('');
-                html += '</div>';
-            }
-
-            if (scope.ips.length) {
-                html += '<div class="col-md-4"><strong class="small text-muted d-block mb-1"><i class="bi bi-pc-display me-1"></i>IPs (' + scope.ips.length + ')</strong>';
-                html += scope.ips.map(ip => `<code class="d-block small">${escapeHtml(ip)}</code>`).join('');
+            if (outOfScope) {
+                html += '<div class="col-md-6"><strong class="small text-muted d-block mb-1"><i class="bi bi-slash-circle me-1"></i>Out of Scope</strong>';
+                html += `<pre class="small mb-0 text-light" style="white-space:pre-wrap">${escapeHtml(outOfScope)}</pre>`;
                 html += '</div>';
             }
 
             html += '</div>';
 
-            if (scope.notes) {
-                html += '<div class="mt-2 small text-muted"><i class="bi bi-journal-text me-1"></i>' + escapeHtml(scope.notes) + '</div>';
+            if (company.roe_notes) {
+                html += '<div class="mt-2"><strong class="small text-muted d-block mb-1"><i class="bi bi-shield-check me-1"></i>Rules of Engagement</strong>';
+                html += `<pre class="small mb-0 text-light" style="white-space:pre-wrap">${escapeHtml(company.roe_notes)}</pre></div>`;
+            }
+
+            if (company.allowed_hours) {
+                html += `<div class="mt-2 small text-muted"><i class="bi bi-clock me-1"></i><strong>Allowed Hours:</strong> ${escapeHtml(company.allowed_hours)}</div>`;
             }
 
             body.innerHTML = html;

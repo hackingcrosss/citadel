@@ -42,7 +42,7 @@
             </div>
         </div>
         <div class="d-flex gap-2 align-items-center">
-            {% if current_user.role not in ['viewer', 'auditor', 'white_team'] %}
+            {% if current_user.role not in ['viewer', 'auditor'] %}
             <button id="save-btn" class="btn btn-sm btn-infrared" onclick="saveProfile()" style="display:none">
                 <i class="bi bi-check-lg me-1"></i> Save Changes
             </button>
@@ -175,7 +175,8 @@
 
 {% block extra_js %}
 <script>
-const IS_READONLY = {{ 'true' if current_user.role in ['viewer', 'auditor', 'white_team'] else 'false' }};
+const IS_READONLY = {{ 'true' if current_user.role in ['viewer', 'auditor'] else 'false' }};
+const IS_WHITE_TEAM = {{ 'true' if current_user.role == 'white_team' else 'false' }};
 
 const _PROFILE_FIELDS = [
     'scope_notes','out_of_scope_notes','roe_notes','allowed_hours',
@@ -240,7 +241,7 @@ async function openDetail(companyId) {
     if (!company) return;
 
     _currentCompanyId = companyId;
-    _currentCanEdit   = !IS_READONLY && (company.user_role === 'white_team');
+    _currentCanEdit   = !IS_READONLY && (IS_WHITE_TEAM || company.user_role === 'white_team');
 
     // Header
     document.getElementById('detail-company-name').textContent = company.name;

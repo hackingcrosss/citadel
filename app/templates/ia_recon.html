@@ -310,54 +310,57 @@
         ).join('');
     }
 
-    // ── Pre-populate scope ─────────────────────────────────────────────
+    // ── Pre-populate scope from company ──────────────────────────────
     async function loadProjectScope() {
         try {
             const resp = await fetch('/api/projects/active');
             if (!resp.ok) return;
             const data = await resp.json();
-            const scope = (data.active_project || {}).scope;
-            if (!scope) return;
+            const project = data.active_project;
+            if (!project || !project.company_id) return;
 
-            const domainsEl = document.getElementById('scan-domains');
-            const ipEl = document.getElementById('scan-ip-ranges');
+            const cResp = await fetch(`/api/companies/${project.company_id}`);
+            if (!cResp.ok) return;
+            const company = (await cResp.json()).company;
 
-            // Only pre-fill if the fields are empty (don't overwrite user edits)
-            if (domainsEl && !domainsEl.value.trim() && (scope.domains || []).length) {
-                domainsEl.value = scope.domains.join('\n');
-            }
-            if (ipEl && !ipEl.value.trim()) {
-                const ranges = [...(scope.cidrs || []), ...(scope.ips || [])];
-                if (ranges.length) ipEl.value = ranges.join('\n');
+            const scopeNotes = company.scope_notes || '';
+            const outOfScope = company.out_of_scope_notes || '';
+
+            // Pre-fill scan form domains field from scope_notes lines
+            if (scopeNotes) {
+                const domainsEl = document.getElementById('scan-domains');
+                const ipEl = document.getElementById('scan-ip-ranges');
+                const lines = scopeNotes.split('\n').map(l => l.trim()).filter(Boolean);
+                // Heuristic: lines that look like IPs/CIDRs go to IP field, rest to domains
+                const domains = [], ips = [];
+                lines.forEach(l => {
+                    if (/^[\d.:\/]+$/.test(l)) ips.push(l);
+                    else domains.push(l);
+                });
+                if (domainsEl && !domainsEl.value.trim() && domains.length) {
+                    domainsEl.value = domains.join('\n');
+                }
+                if (ipEl && !ipEl.value.trim() && ips.length) {
+                    ipEl.value = ips.join('\n');
+                }
             }
 
             // Render scope reference panel
-            const total = (scope.domains || []).length + (scope.cidrs || []).length + (scope.ips || []).length;
-            if (total) {
+            if (scopeNotes || outOfScope) {
                 const card = document.getElementById('scope-ref-card');
                 const body = document.getElementById('scope-ref-body');
                 card.style.display = '';
 
-                let html = '<div class="d-flex flex-wrap gap-3">';
-                if (scope.domains.length) {
-                    html += '<div><strong class="small text-muted"><i class="bi bi-globe me-1"></i>Domains</strong>';
-                    html += scope.domains.map(d => `<code class="d-block small">${escapeHtml(d)}</code>`).join('');
-                    html += '</div>';
+                let html = '<div class="row g-3">';
+                if (scopeNotes) {
+                    html += '<div class="col-md-6"><strong class="small text-muted d-block mb-1"><i class="bi bi-crosshair me-1"></i>In Scope</strong>';
+                    html += `<pre class="small mb-0 text-light" style="white-space:pre-wrap">${escapeHtml(scopeNotes)}</pre></div>`;
                 }
-                if (scope.cidrs.length) {
-                    html += '<div><strong class="small text-muted"><i class="bi bi-hdd-network me-1"></i>CIDRs</strong>';
-                    html += scope.cidrs.map(c => `<code class="d-block small">${escapeHtml(c)}</code>`).join('');
-                    html += '</div>';
-                }
-                if (scope.ips.length) {
-                    html += '<div><strong class="small text-muted"><i class="bi bi-pc-display me-1"></i>IPs</strong>';
-                    html += scope.ips.map(ip => `<code class="d-block small">${escapeHtml(ip)}</code>`).join('');
-                    html += '</div>';
+                if (outOfScope) {
+                    html += '<div class="col-md-6"><strong class="small text-muted d-block mb-1"><i class="bi bi-slash-circle me-1"></i>Out of Scope</strong>';
+                    html += `<pre class="small mb-0 text-light" style="white-space:pre-wrap">${escapeHtml(outOfScope)}</pre></div>`;
                 }
                 html += '</div>';
-                if (scope.notes) {
-                    html += `<div class="mt-1 small text-muted"><i class="bi bi-journal-text me-1"></i>${escapeHtml(scope.notes)}</div>`;
-                }
                 body.innerHTML = html;
             }
         } catch (e) { /* ignore */ }
