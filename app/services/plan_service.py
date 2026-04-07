@@ -44,7 +44,7 @@ TIERS = {
         'description': 'Full phishing toolkit for small red teams.',
         'max_users': 5,
         'max_domains': 20,
-        'features': frozenset({'gophish', 'website_generator', 'initial_access'}),
+        'features': frozenset({'gophish', 'website_generator', 'initial_access', 'projects', 'companies'}),
     },
     'team': {
         'display_name': 'Team',
