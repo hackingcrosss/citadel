@@ -386,24 +386,26 @@ def sync_all_active_campaigns():
 # ── Sender domain recommendation ────────────────────────────────────────
 
 def get_eligible_domains(project_id):
-    """Return domains available for phishing campaigns with readiness info.
+    """Return phishing-ready domains checked out to the project.
 
-    Checks which domains have GoPhish sending profiles configured.
+    Only includes domains that have at least one GoPhish sending profile
+    configured (which implies Mailgun SMTP is set up for the domain).
     """
     from app.models.domain import Domain
 
     domains = Domain.query.filter_by(
-        project_id=project_id,
-        purpose='phishing',
+        checkout_project_id=project_id,
     ).all()
 
     result = []
     for d in domains:
         profiles = gophish_service.find_all_profiles_for_domain(d.name)
+        if not profiles:
+            continue
         result.append({
             'domain_id': d.id,
             'domain_name': d.name,
-            'has_smtp_profile': len(profiles) > 0,
+            'has_smtp_profile': True,
             'smtp_profiles': [{'id': p['id'], 'name': p['name']} for p in profiles],
             'status': d.status,
         })
