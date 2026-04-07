@@ -792,6 +792,64 @@ def untag_resource(project_id, resource_id):
 
 
 # ---------------------------------------------------------------------------
+# Project Scope
+# ---------------------------------------------------------------------------
+
+@api_bp.route('/projects/<int:project_id>/scope', methods=['GET'])
+@login_required
+@project_member_required()
+def get_project_scope(project_id):
+    from flask import g
+    return jsonify(g.project.parsed_scope)
+
+
+@api_bp.route('/projects/<int:project_id>/scope', methods=['PATCH'])
+@login_required
+def update_project_scope(project_id):
+    """Update project scope. Writable by admin, project_admin, and white_team."""
+    import json as _json
+    project = Project.query.get_or_404(project_id)
+
+    # Determine if the user can edit scope
+    can_edit = False
+    if current_user.is_admin:
+        can_edit = True
+    else:
+        role = get_user_project_role(current_user.id, project_id)
+        if role in ('project_admin', 'white_team'):
+            can_edit = True
+
+    if not can_edit:
+        return jsonify({'error': 'Admin, Project Admin, or White Team role required to edit scope'}), 403
+
+    data = request.get_json(silent=True) or {}
+    current_scope = project.parsed_scope
+
+    # Merge provided fields into current scope
+    for key in ('domains', 'cidrs', 'ips'):
+        if key in data:
+            val = data[key]
+            if not isinstance(val, list):
+                return jsonify({'error': f'{key} must be a list'}), 400
+            # Deduplicate, strip whitespace, remove empty
+            current_scope[key] = list(dict.fromkeys(
+                s.strip() for s in val if isinstance(s, str) and s.strip()
+            ))
+    if 'notes' in data:
+        current_scope['notes'] = (str(data['notes']) if data['notes'] else '').strip()
+
+    project.scope = _json.dumps(current_scope)
+    db.session.commit()
+
+    _log.info('User %s updated scope for project %s', current_user.email, project.code)
+    audit_service.log('project.scope_update', 'project', project.id, project.code,
+                      {'domains': len(current_scope['domains']),
+                       'cidrs': len(current_scope['cidrs']),
+                       'ips': len(current_scope['ips'])})
+    return jsonify(current_scope)
+
+
+# ---------------------------------------------------------------------------
 # Active Project (session)
 # ---------------------------------------------------------------------------
 
