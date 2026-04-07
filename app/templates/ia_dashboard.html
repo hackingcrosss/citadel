@@ -7,67 +7,135 @@
     <h1 class="h3 mb-0">Frontline Dashboard</h1>
     <div class="d-flex align-items-center gap-3">
         <small class="text-muted" id="last-updated"></small>
-        <button class="btn btn-sm btn-outline-secondary" onclick="refreshAll()" disabled>
+        <button class="btn btn-sm btn-outline-secondary" onclick="refreshAll()">
             <i class="bi bi-arrow-clockwise"></i> Refresh
         </button>
     </div>
 </div>
+
+{% if not active_project %}
+<div class="text-center py-5">
+    <i class="bi bi-folder2-open text-warning" style="font-size: 2rem;"></i>
+    <p class="mt-2">Select a project from the top bar to view the Frontline dashboard.</p>
+</div>
+{% else %}
 
 <!-- Stats Row -->
 <div class="row g-3 mb-4">
     <div class="col-md-3">
         <div class="stat-card">
             <div class="label">Scan Jobs</div>
-            <h3 id="scan-count">0</h3>
-            <small class="text-muted">No scans yet</small>
+            <h3 id="scan-count">-</h3>
+            <small class="text-muted" id="scan-sub">Loading...</small>
         </div>
     </div>
     <div class="col-md-3">
         <div class="stat-card">
             <div class="label">Targets</div>
-            <h3 id="target-count">0</h3>
-            <small class="text-muted">No targets imported</small>
+            <h3 id="target-count">-</h3>
+            <small class="text-muted" id="target-sub">Loading...</small>
         </div>
     </div>
     <div class="col-md-3">
         <div class="stat-card">
             <div class="label">Active Campaigns</div>
-            <h3 id="campaign-count">0</h3>
-            <small class="text-muted">No campaigns</small>
+            <h3 id="campaign-count">-</h3>
+            <small class="text-muted" id="campaign-sub">Loading...</small>
         </div>
     </div>
     <div class="col-md-3">
         <div class="stat-card">
             <div class="label">Landing Pages</div>
-            <h3 id="landing-count">0</h3>
-            <small class="text-muted">None deployed</small>
+            <h3 id="landing-count">-</h3>
+            <small class="text-muted" id="landing-sub">Loading...</small>
         </div>
     </div>
 </div>
 
-<!-- Placeholder panels -->
-<div class="row g-3">
+<!-- Detail panels -->
+<div class="row g-3 mb-4">
+    <!-- Recent Scans -->
     <div class="col-md-6">
         <div class="card-custom">
-            <div class="card-header">
-                <i class="bi bi-radar"></i> Recent Scans
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span><i class="bi bi-radar"></i> Recent Scans</span>
+                <a href="/initial-access/recon" class="btn btn-sm btn-outline-secondary">View All</a>
             </div>
-            <div class="card-body">
-                <p class="text-muted mb-0">No recon scans have been run yet. Configure scanner credentials in Settings and trigger your first scan from the <strong>Recon</strong> page.</p>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                <table class="table table-sm table-hover mb-0">
+                    <thead><tr><th>ID</th><th>Status</th><th>Scope</th><th>Triggered</th></tr></thead>
+                    <tbody id="scans-tbody">
+                        <tr><td colspan="4" class="text-center text-muted py-3">Loading...</td></tr>
+                    </tbody>
+                </table>
+                </div>
             </div>
         </div>
     </div>
+
+    <!-- Campaign Overview -->
     <div class="col-md-6">
         <div class="card-custom">
-            <div class="card-header">
-                <i class="bi bi-bullseye"></i> Campaign Activity
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span><i class="bi bi-bullseye"></i> Campaigns</span>
+                <a href="/initial-access/campaigns" class="btn btn-sm btn-outline-secondary">View All</a>
             </div>
-            <div class="card-body">
-                <p class="text-muted mb-0">No campaign activity yet. Create your first campaign from the <strong>Campaigns</strong> page after importing targets.</p>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                <table class="table table-sm table-hover mb-0">
+                    <thead><tr><th>Name</th><th>Vector</th><th>Status</th><th>Sent</th><th>Clicks</th><th>Creds</th></tr></thead>
+                    <tbody id="campaigns-tbody">
+                        <tr><td colspan="6" class="text-center text-muted py-3">Loading...</td></tr>
+                    </tbody>
+                </table>
+                </div>
             </div>
         </div>
     </div>
 </div>
+
+<div class="row g-3">
+    <!-- Live Landing Pages -->
+    <div class="col-md-6">
+        <div class="card-custom">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span><i class="bi bi-window-stack"></i> Live Landing Pages</span>
+                <a href="/initial-access/landing-pages" class="btn btn-sm btn-outline-secondary">View All</a>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                <table class="table table-sm table-hover mb-0">
+                    <thead><tr><th>Name</th><th>Type</th><th>FQDN</th><th>Deployed</th></tr></thead>
+                    <tbody id="landing-tbody">
+                        <tr><td colspan="4" class="text-center text-muted py-3">Loading...</td></tr>
+                    </tbody>
+                </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Target Breakdown -->
+    <div class="col-md-6">
+        <div class="card-custom">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span><i class="bi bi-people"></i> Targets</span>
+                <a href="/initial-access/targets" class="btn btn-sm btn-outline-secondary">View All</a>
+            </div>
+            <div class="card-body">
+                <div class="row g-2 text-center" id="target-breakdown">
+                    <div class="col"><span class="d-block fs-5 fw-bold" id="tb-total">-</span><small class="text-muted">Total</small></div>
+                    <div class="col"><span class="d-block fs-5 fw-bold" id="tb-enriched">-</span><small class="text-muted">Enriched</small></div>
+                    <div class="col"><span class="d-block fs-5 fw-bold text-danger" id="tb-breached">-</span><small class="text-muted">Breached</small></div>
+                    <div class="col"><span class="d-block fs-5 fw-bold" id="tb-imported">-</span><small class="text-muted">Imported</small></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endif %}
 {% endblock %}
 
 {% block extra_js %}
@@ -76,8 +144,178 @@
     const IS_WHITE_TEAM = {{ 'true' if current_user.is_white_team else 'false' }};
     const IS_READONLY = IS_VIEWER || IS_WHITE_TEAM;
 
-    function refreshAll() {
-        // Will be wired to real API calls in later phases
+    function _statusBadge(status) {
+        const map = {
+            pending: 'bg-secondary', running: 'bg-primary', completed: 'bg-success',
+            failed: 'bg-danger', draft: 'bg-secondary', active: 'bg-success',
+            paused: 'bg-warning text-dark', archived: 'bg-dark',
+            live: 'bg-success', deploying: 'bg-primary', error: 'bg-danger',
+            torn_down: 'bg-dark',
+        };
+        return `<span class="badge ${map[status] || 'bg-secondary'}">${escapeHtml(status)}</span>`;
     }
+
+    // ── Load scans ─────────────────────────────────────────────────────
+    async function loadScans() {
+        const tbody = document.getElementById('scans-tbody');
+        try {
+            const resp = await fetch('/api/ia/scans');
+            if (!resp.ok) throw new Error('Failed');
+            const data = await resp.json();
+            const scans = data.scans || [];
+
+            const running = scans.filter(s => s.status === 'running').length;
+            const completed = scans.filter(s => s.status === 'completed').length;
+            document.getElementById('scan-count').textContent = scans.length;
+            document.getElementById('scan-sub').textContent = scans.length
+                ? `${completed} completed, ${running} running`
+                : 'No scans yet';
+
+            if (!scans.length) {
+                tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted py-3">No scans. Go to <a href="/initial-access/recon">Recon</a> to trigger one.</td></tr>';
+                return;
+            }
+
+            const recent = scans.slice(0, 5);
+            tbody.innerHTML = recent.map(s => {
+                const scope = s.target_scope;
+                const scopeText = scope
+                    ? [...(scope.domains || []).slice(0, 2), ...(scope.ip_ranges || []).slice(0, 1)].join(', ')
+                    : '-';
+                const triggered = s.triggered_at ? new Date(s.triggered_at).toLocaleString() : '-';
+                return `<tr>
+                    <td>${escapeHtml(String(s.id))}</td>
+                    <td>${_statusBadge(s.status)}</td>
+                    <td><small>${escapeHtml(scopeText)}</small></td>
+                    <td><small>${escapeHtml(triggered)}</small></td>
+                </tr>`;
+            }).join('');
+        } catch (e) {
+            document.getElementById('scan-count').textContent = '!';
+            document.getElementById('scan-sub').textContent = 'Error loading';
+            tbody.innerHTML = '<tr><td colspan="4" class="text-center text-danger py-3">Failed to load scans</td></tr>';
+        }
+    }
+
+    // ── Load campaigns ─────────────────────────────────────────────────
+    async function loadCampaigns() {
+        const tbody = document.getElementById('campaigns-tbody');
+        try {
+            const resp = await fetch('/api/ia/campaigns');
+            if (!resp.ok) throw new Error('Failed');
+            const data = await resp.json();
+            const campaigns = data.campaigns || [];
+
+            const active = campaigns.filter(c => c.status === 'active').length;
+            const totalSent = campaigns.reduce((s, c) => s + (c.emails_sent || 0), 0);
+            document.getElementById('campaign-count').textContent = active;
+            document.getElementById('campaign-sub').textContent = campaigns.length
+                ? `${campaigns.length} total, ${totalSent} emails sent`
+                : 'No campaigns';
+
+            if (!campaigns.length) {
+                tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-3">No campaigns. Go to <a href="/initial-access/campaigns">Campaigns</a> to create one.</td></tr>';
+                return;
+            }
+
+            const recent = campaigns.slice(0, 5);
+            tbody.innerHTML = recent.map(c => {
+                const vectorMap = {phishing: 'bi-envelope', vishing: 'bi-telephone', smishing: 'bi-phone'};
+                return `<tr>
+                    <td>${escapeHtml(c.name)}</td>
+                    <td><i class="bi ${vectorMap[c.vector] || 'bi-envelope'}"></i> ${escapeHtml(c.vector)}</td>
+                    <td>${_statusBadge(c.status)}</td>
+                    <td>${c.emails_sent || 0}</td>
+                    <td>${c.clicks_count || 0}</td>
+                    <td>${c.creds_captured || 0}</td>
+                </tr>`;
+            }).join('');
+        } catch (e) {
+            document.getElementById('campaign-count').textContent = '!';
+            document.getElementById('campaign-sub').textContent = 'Error loading';
+            tbody.innerHTML = '<tr><td colspan="6" class="text-center text-danger py-3">Failed to load campaigns</td></tr>';
+        }
+    }
+
+    // ── Load targets ───────────────────────────────────────────────────
+    async function loadTargets() {
+        try {
+            const resp = await fetch('/api/ia/targets');
+            if (!resp.ok) throw new Error('Failed');
+            const data = await resp.json();
+            const targets = data.targets || [];
+
+            const enriched = targets.filter(t => t.is_enriched).length;
+            const breached = targets.filter(t => (t.breach_sources || []).length > 0).length;
+            document.getElementById('target-count').textContent = targets.length;
+            document.getElementById('target-sub').textContent = targets.length
+                ? `${enriched} enriched, ${breached} with breaches`
+                : 'No targets imported';
+
+            document.getElementById('tb-total').textContent = targets.length;
+            document.getElementById('tb-enriched').textContent = enriched;
+            document.getElementById('tb-breached').textContent = breached;
+            document.getElementById('tb-imported').textContent = targets.filter(t => t.source === 'import').length;
+        } catch (e) {
+            document.getElementById('target-count').textContent = '!';
+            document.getElementById('target-sub').textContent = 'Error loading';
+        }
+    }
+
+    // ── Load landing pages ─────────────────────────────────────────────
+    async function loadLandingPages() {
+        const tbody = document.getElementById('landing-tbody');
+        try {
+            const resp = await fetch('/api/ia/landing-pages');
+            if (!resp.ok) throw new Error('Failed');
+            const data = await resp.json();
+            const pages = data.landing_pages || [];
+
+            const live = pages.filter(p => p.status === 'live').length;
+            document.getElementById('landing-count').textContent = live;
+            document.getElementById('landing-sub').textContent = pages.length
+                ? `${pages.length} total, ${live} live`
+                : 'None created';
+
+            const livePages = pages.filter(p => p.status === 'live');
+            if (!livePages.length) {
+                tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted py-3">No live pages. Go to <a href="/initial-access/landing-pages">Landing Pages</a> to deploy one.</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = livePages.slice(0, 5).map(p => {
+                const typeMap = {cred_harvest: 'Cred Harvest', payload_delivery: 'Payload', redirect: 'Redirect', awareness: 'Awareness'};
+                const fqdn = p.fqdn
+                    ? `<a href="https://${escapeAttr(p.fqdn)}" target="_blank" rel="noopener">${escapeHtml(p.fqdn)}</a>`
+                    : '-';
+                const deployed = p.deployed_at ? new Date(p.deployed_at).toLocaleString() : '-';
+                return `<tr>
+                    <td>${escapeHtml(p.name)}</td>
+                    <td><small>${escapeHtml(typeMap[p.page_type] || p.page_type)}</small></td>
+                    <td><small>${fqdn}</small></td>
+                    <td><small>${escapeHtml(deployed)}</small></td>
+                </tr>`;
+            }).join('');
+        } catch (e) {
+            document.getElementById('landing-count').textContent = '!';
+            document.getElementById('landing-sub').textContent = 'Error loading';
+            tbody.innerHTML = '<tr><td colspan="4" class="text-center text-danger py-3">Failed to load</td></tr>';
+        }
+    }
+
+    // ── Refresh all ────────────────────────────────────────────────────
+    function refreshAll() {
+        loadScans();
+        loadCampaigns();
+        loadTargets();
+        loadLandingPages();
+        document.getElementById('last-updated').textContent = 'Updated ' + new Date().toLocaleTimeString();
+    }
+
+    // ── Init ───────────────────────────────────────────────────────────
+    {% if active_project %}
+    refreshAll();
+    setInterval(refreshAll, 30000);
+    {% endif %}
 </script>
 {% endblock %}
