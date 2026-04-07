@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Dashboard - Frontline{% endblock %}
+{% block title %}Frontline Dashboard - Citadel{% endblock %}
 
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-4">
@@ -15,7 +15,7 @@
 
 {% if not active_project %}
 <div class="text-center py-5">
-    <i class="bi bi-folder2-open text-warning" style="font-size: 2rem;"></i>
+    <i class="bi bi-folder2-open text-warning" style="font-size: 2rem;" aria-hidden="true"></i>
     <p class="mt-2">Select a project from the top bar to view the Frontline dashboard.</p>
 </div>
 {% else %}
@@ -151,9 +151,12 @@
 
 {% block extra_js %}
 <script>
-    const IS_VIEWER = {{ 'true' if current_user.is_viewer is defined and current_user.is_viewer else 'false' }};
+    const IS_VIEWER = {{ 'true' if current_user.role == 'viewer' else 'false' }};
+    const IS_AUDITOR = {{ 'true' if current_user.role == 'auditor' else 'false' }};
     const IS_WHITE_TEAM = {{ 'true' if current_user.is_white_team else 'false' }};
-    const IS_READONLY = IS_VIEWER || IS_WHITE_TEAM;
+    const IS_READONLY = IS_VIEWER || IS_AUDITOR || IS_WHITE_TEAM;
+    const ACTIVE_PROJECT_ID = {{ active_project.id if active_project else 'null' }};
+    const ACTIVE_PROJECT_CODE = {{ active_project.code|tojson if active_project and active_project.code else 'null' }};
 
     function _statusBadge(status) {
         const map = {
@@ -171,8 +174,9 @@
         const tbody = document.getElementById('scans-tbody');
         try {
             const resp = await fetch('/api/ia/scans');
-            if (!resp.ok) throw new Error('Failed');
             const data = await resp.json();
+            if (data.upgrade_required) { showToast('Feature requires plan upgrade', 'warning'); return; }
+            if (!resp.ok) throw new Error(data.error || 'Failed');
             const scans = data.scans || [];
 
             const running = scans.filter(s => s.status === 'running').length;
@@ -213,8 +217,9 @@
         const tbody = document.getElementById('campaigns-tbody');
         try {
             const resp = await fetch('/api/ia/campaigns');
-            if (!resp.ok) throw new Error('Failed');
             const data = await resp.json();
+            if (data.upgrade_required) { showToast('Feature requires plan upgrade', 'warning'); return; }
+            if (!resp.ok) throw new Error(data.error || 'Failed');
             const campaigns = data.campaigns || [];
 
             const active = campaigns.filter(c => c.status === 'active').length;
@@ -252,8 +257,9 @@
     async function loadTargets() {
         try {
             const resp = await fetch('/api/ia/targets');
-            if (!resp.ok) throw new Error('Failed');
             const data = await resp.json();
+            if (data.upgrade_required) { showToast('Feature requires plan upgrade', 'warning'); return; }
+            if (!resp.ok) throw new Error(data.error || 'Failed');
             const targets = data.targets || [];
 
             const enriched = targets.filter(t => t.is_enriched).length;
@@ -278,8 +284,9 @@
         const tbody = document.getElementById('landing-tbody');
         try {
             const resp = await fetch('/api/ia/landing-pages');
-            if (!resp.ok) throw new Error('Failed');
             const data = await resp.json();
+            if (data.upgrade_required) { showToast('Feature requires plan upgrade', 'warning'); return; }
+            if (!resp.ok) throw new Error(data.error || 'Failed');
             const pages = data.landing_pages || [];
 
             const live = pages.filter(p => p.status === 'live').length;
@@ -327,8 +334,9 @@
             if (!project.company_id) { body.innerHTML = '<div class="text-muted text-center">Project has no company assigned</div>'; badge.textContent = 'N/A'; badge.className = 'badge bg-secondary'; return; }
 
             const cResp = await fetch(`/api/companies/${project.company_id}`);
-            if (!cResp.ok) throw new Error('Failed to load company');
             const cData = await cResp.json();
+            if (cData.upgrade_required) { showToast('Feature requires plan upgrade', 'warning'); return; }
+            if (!cResp.ok) throw new Error(cData.error || 'Failed to load company');
             const company = cData.company;
 
             const scopeNotes = company.scope_notes || '';
