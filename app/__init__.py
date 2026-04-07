@@ -67,7 +67,9 @@ def create_app(config_class=Config):
                 'active_project': active,
                 'active_project_role': role,
             }
-        except Exception:
+        except Exception as exc:
+            import logging
+            logging.getLogger(__name__).warning('inject_projects failed: %s', exc)
             return {'user_projects': [], 'active_project': None, 'active_project_role': None}
 
     @app.context_processor
