@@ -22,6 +22,8 @@
             --ir-text-dim:   #484f58;
             --ir-green:      #3fb950;
             --ir-yellow:     #d29922;
+            --ir-gold-dim:   rgba(210,153,34,0.15);
+            --ir-gold-glow:  rgba(210,153,34,0.25);
             --ir-blue:       #58a6ff;
             --ir-orange:     #f0883e;
             --sidebar-width: 240px;
@@ -131,6 +133,12 @@
             background: rgba(88,166,255,0.1);
         }
 
+        .sidebar .brand .phase-link.active-citadel {
+            color: var(--ir-yellow);
+            text-shadow: 0 0 20px var(--ir-gold-glow);
+            background: var(--ir-gold-dim);
+        }
+
         .sidebar .brand .phase-link i {
             font-size: 1rem;
             width: 18px;
@@ -172,6 +180,11 @@
         .sidebar.ia-phase .nav-link.active {
             background: rgba(88,166,255,0.1);
             border-left-color: var(--ir-blue);
+        }
+
+        .sidebar.citadel-phase .nav-link.active {
+            background: var(--ir-gold-dim);
+            border-left-color: var(--ir-yellow);
         }
 
         .sidebar .nav-section {
@@ -669,11 +682,15 @@
 </head>
 <body>
     <!-- Sidebar -->
-    <div class="sidebar{% if is_ia_phase %} ia-phase{% endif %}">
+    <div class="sidebar{% if is_ia_phase %} ia-phase{% elif is_citadel_phase %} citadel-phase{% endif %}">
         <div class="brand">
             <div class="brand-name"><i class="bi bi-shield-shaded"></i> Citadel</div>
+            <a href="{{ url_for('citadel_dashboard') }}"
+               class="phase-link {% if is_citadel_phase %}active-citadel{% endif %}">
+                <i class="bi bi-shield-shaded"></i> Citadel
+            </a>
             <a href="{{ url_for('dashboard') }}"
-               class="phase-link {% if not is_ia_phase %}active-ir{% endif %}">
+               class="phase-link {% if not is_ia_phase and not is_citadel_phase %}active-ir{% endif %}">
                 <i class="bi bi-hammer"></i> Arsenal
             </a>
             {% if current_plan.is_enabled('initial_access') %}
@@ -685,7 +702,30 @@
         </div>
         {% set admin_plat_pages = ['admin_users','admin_domain_pool','admin_license','admin_audit','settings'] %}
 
-        {% if is_ia_phase %}
+        {% if is_citadel_phase %}
+        {# ── Citadel sidebar ────────────────────────────────────────────── #}
+        {% set citadel_pages = ['citadel_dashboard','citadel_projects','citadel_companies'] %}
+        <nav class="nav flex-column">
+            <a class="nav-link {% if request.endpoint == 'citadel_dashboard' %}active{% endif %}" href="{{ url_for('citadel_dashboard') }}">
+                <i class="bi bi-speedometer2"></i> Dashboard
+            </a>
+
+            <div class="nav-divider"></div>
+
+            {% if current_plan.is_enabled('projects') and (current_user.can_manage_projects or user_projects) %}
+            <a class="nav-link {% if request.endpoint == 'citadel_projects' %}active{% endif %}" href="{{ url_for('citadel_projects') }}">
+                <i class="bi bi-folder2-open"></i> {% if current_user.can_manage_projects %}Projects{% else %}My Projects{% endif %}
+            </a>
+            {% endif %}
+
+            {% if current_plan.is_enabled('companies') and (user_companies or current_user.role == 'admin') %}
+            <a class="nav-link {% if request.endpoint == 'citadel_companies' %}active{% endif %}" href="{{ url_for('citadel_companies') }}">
+                <i class="bi bi-building"></i> Companies
+            </a>
+            {% endif %}
+        </nav>
+
+        {% elif is_ia_phase %}
         {# ── Frontline sidebar ───────────────────────────────────────────── #}
         {% set ia_pages = ['ia_dashboard','ia_scope','ia_recon','ia_targets','ia_campaigns','ia_landing_pages'] %}
         {% set ia_recon_pages = ['ia_recon'] %}
@@ -766,39 +806,6 @@
             <a class="nav-link {% if request.endpoint == 'dashboard' %}active{% endif %}" href="{{ url_for('dashboard') }}">
                 <i class="bi bi-speedometer2"></i> Dashboard
             </a>
-
-            {% set has_team_items = (current_user.can_manage_projects and current_plan.is_enabled('projects')) or (user_projects and current_plan.is_enabled('projects')) or (user_companies and current_plan.is_enabled('companies')) or (current_user.role == 'admin' and current_plan.is_enabled('companies')) %}
-            {% set team_pages = ['admin_projects','projects','company_detail','admin_companies'] %}
-            {% if current_user.is_authenticated and has_team_items %}
-            <button class="nav-section {% if request.endpoint not in team_pages %}collapsed{% endif %}" data-bs-toggle="collapse" data-bs-target="#nav-team">
-                <span><i class="bi bi-people-fill"></i> Team</span>
-                <i class="bi bi-chevron-right"></i>
-            </button>
-            <div class="collapse nav-collapse {% if request.endpoint in team_pages %}show{% endif %}" id="nav-team">
-                {% if current_plan.is_enabled('projects') %}
-                {% if current_user.can_manage_projects %}
-                <a class="nav-link {% if request.endpoint == 'admin_projects' %}active{% endif %}" href="{{ url_for('admin_projects') }}">
-                    <i class="bi bi-folder2-open"></i> Projects
-                </a>
-                {% elif user_projects %}
-                <a class="nav-link {% if request.endpoint == 'projects' %}active{% endif %}" href="{{ url_for('projects') }}">
-                    <i class="bi bi-folder2-open"></i> My Projects
-                </a>
-                {% endif %}
-                {% endif %}
-                {% if current_plan.is_enabled('companies') and (user_companies or current_user.role == 'admin') %}
-                {% if current_user.role == 'admin' %}
-                <a class="nav-link {% if request.endpoint == 'admin_companies' %}active{% endif %}" href="{{ url_for('admin_companies') }}">
-                    <i class="bi bi-building"></i> Companies
-                </a>
-                {% else %}
-                <a class="nav-link {% if request.endpoint == 'company_detail' %}active{% endif %}" href="{{ url_for('company_detail') }}">
-                    <i class="bi bi-building"></i> Companies
-                </a>
-                {% endif %}
-                {% endif %}
-            </div>
-            {% endif %}
 
             <div class="nav-divider"></div>
 
