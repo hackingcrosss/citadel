@@ -20,41 +20,39 @@
 </div>
 {% else %}
 
-<!-- Engagement Scope -->
-<div class="card-custom mb-4" id="scope-card">
-    <div class="card-header d-flex justify-content-between align-items-center">
-        <span><i class="bi bi-crosshair"></i> Engagement Scope</span>
-        <span class="badge bg-secondary" id="scope-badge">Loading...</span>
-    </div>
-    <div class="card-body" id="scope-body">
-        <div class="text-center text-muted py-2">Loading scope...</div>
-    </div>
-</div>
-
 <!-- Stats Row -->
 <div class="row g-3 mb-4">
-    <div class="col-md-3">
+    <div class="col">
+        <a href="/initial-access/scope" class="text-decoration-none">
+        <div class="stat-card">
+            <div class="label"><i class="bi bi-crosshair me-1"></i>Scope</div>
+            <h3 id="scope-count">-</h3>
+            <div id="scope-sub"><small class="text-muted">Loading...</small></div>
+        </div>
+        </a>
+    </div>
+    <div class="col">
         <div class="stat-card">
             <div class="label">Scan Jobs</div>
             <h3 id="scan-count">-</h3>
             <small class="text-muted" id="scan-sub">Loading...</small>
         </div>
     </div>
-    <div class="col-md-3">
+    <div class="col">
         <div class="stat-card">
             <div class="label">Targets</div>
             <h3 id="target-count">-</h3>
             <small class="text-muted" id="target-sub">Loading...</small>
         </div>
     </div>
-    <div class="col-md-3">
+    <div class="col">
         <div class="stat-card">
             <div class="label">Active Campaigns</div>
             <h3 id="campaign-count">-</h3>
             <small class="text-muted" id="campaign-sub">Loading...</small>
         </div>
     </div>
-    <div class="col-md-3">
+    <div class="col">
         <div class="stat-card">
             <div class="label">Landing Pages</div>
             <h3 id="landing-count">-</h3>
@@ -321,66 +319,61 @@
         }
     }
 
-    // ── Load company scope (via active project's company) ───────────
+    // ── Scope classification (lightweight) ───────────────────────────
+    const _SCOPE_META = {
+        domain:   { label: 'Domains',   cls: 'bg-primary' },
+        wildcard: { label: 'Wildcards', cls: 'bg-info text-dark' },
+        cidr:     { label: 'CIDRs',     cls: 'bg-warning text-dark' },
+        ip:       { label: 'IPs',       cls: 'bg-success' },
+        url:      { label: 'URLs',      cls: 'bg-danger' },
+        other:    { label: 'Other',     cls: 'bg-secondary' },
+    };
+
+    function _classifyLine(l) {
+        if (/^https?:\/\//i.test(l))                   return 'url';
+        if (/^\*\./.test(l))                            return 'wildcard';
+        if (/\/\d{1,2}$/.test(l))                       return 'cidr';
+        if (/^\d{1,3}(\.\d{1,3}){3}$/.test(l))          return 'ip';
+        if (/^[a-z0-9]([a-z0-9-]*\.)+[a-z]{2,}$/i.test(l)) return 'domain';
+        return 'other';
+    }
+
     async function loadScope() {
-        const badge = document.getElementById('scope-badge');
-        const body = document.getElementById('scope-body');
+        const countEl = document.getElementById('scope-count');
+        const subEl = document.getElementById('scope-sub');
         try {
             const resp = await fetch('/api/projects/active');
             if (!resp.ok) throw new Error('Failed');
-            const data = await resp.json();
-            const project = data.active_project;
-            if (!project) { body.innerHTML = '<div class="text-muted text-center">No active project</div>'; return; }
-            if (!project.company_id) { body.innerHTML = '<div class="text-muted text-center">Project has no company assigned</div>'; badge.textContent = 'N/A'; badge.className = 'badge bg-secondary'; return; }
+            const project = (await resp.json()).active_project;
+            if (!project || !project.company_id) {
+                countEl.textContent = '-';
+                subEl.innerHTML = '<small class="text-muted">No company</small>';
+                return;
+            }
+            const cResp = await fetch(`/api/companies/${encodeURIComponent(project.company_id)}`);
+            if (!cResp.ok) throw new Error('Failed');
+            const company = (await cResp.json()).company;
+            const lines = (company.scope_notes || '').split('\n').map(l => l.trim()).filter(l => l && !l.startsWith('#'));
 
-            const cResp = await fetch(`/api/companies/${project.company_id}`);
-            const cData = await cResp.json();
-            if (cData.upgrade_required) { showToast('Feature requires plan upgrade', 'warning'); return; }
-            if (!cResp.ok) throw new Error(cData.error || 'Failed to load company');
-            const company = cData.company;
-
-            const scopeNotes = company.scope_notes || '';
-            const outOfScope = company.out_of_scope_notes || '';
-            const hasScope = scopeNotes || outOfScope;
-
-            badge.textContent = hasScope ? 'Defined' : 'Not defined';
-            badge.className = hasScope ? 'badge bg-success' : 'badge bg-warning text-dark';
-
-            if (!hasScope && !company.roe_notes && !company.allowed_hours) {
-                body.innerHTML = '<div class="text-center text-muted py-2"><i class="bi bi-info-circle me-1"></i>No scope defined. Ask a White Team member to configure the scope on the company profile.</div>';
+            if (!lines.length) {
+                countEl.textContent = '0';
+                subEl.innerHTML = '<span class="badge bg-warning text-dark" style="font-size:.65rem">Not defined</span>';
                 return;
             }
 
-            let html = '<div class="row g-3">';
+            countEl.textContent = lines.length;
+            const counts = {};
+            for (const l of lines) { const t = _classifyLine(l); counts[t] = (counts[t] || 0) + 1; }
 
-            if (scopeNotes) {
-                html += '<div class="col-md-6"><strong class="small text-muted d-block mb-1"><i class="bi bi-crosshair me-1"></i>In Scope</strong>';
-                html += `<pre class="small mb-0 text-light" style="white-space:pre-wrap">${escapeHtml(scopeNotes)}</pre>`;
-                html += '</div>';
+            let badges = '';
+            for (const [type, meta] of Object.entries(_SCOPE_META)) {
+                if (!counts[type]) continue;
+                badges += `<span class="badge ${meta.cls} me-1" style="font-size:.65rem">${meta.label} ${counts[type]}</span>`;
             }
-
-            if (outOfScope) {
-                html += '<div class="col-md-6"><strong class="small text-muted d-block mb-1"><i class="bi bi-slash-circle me-1"></i>Out of Scope</strong>';
-                html += `<pre class="small mb-0 text-light" style="white-space:pre-wrap">${escapeHtml(outOfScope)}</pre>`;
-                html += '</div>';
-            }
-
-            html += '</div>';
-
-            if (company.roe_notes) {
-                html += '<div class="mt-2"><strong class="small text-muted d-block mb-1"><i class="bi bi-shield-check me-1"></i>Rules of Engagement</strong>';
-                html += `<pre class="small mb-0 text-light" style="white-space:pre-wrap">${escapeHtml(company.roe_notes)}</pre></div>`;
-            }
-
-            if (company.allowed_hours) {
-                html += `<div class="mt-2 small text-muted"><i class="bi bi-clock me-1"></i><strong>Allowed Hours:</strong> ${escapeHtml(company.allowed_hours)}</div>`;
-            }
-
-            body.innerHTML = html;
+            subEl.innerHTML = badges;
         } catch (e) {
-            badge.textContent = 'Error';
-            badge.className = 'badge bg-danger';
-            body.innerHTML = '<div class="text-danger text-center">Failed to load scope</div>';
+            countEl.textContent = '!';
+            subEl.innerHTML = '<small class="text-danger">Error</small>';
         }
     }
 

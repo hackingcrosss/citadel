@@ -326,6 +326,12 @@ def register_routes(app):
     def ia_dashboard():
         return render_template('ia_dashboard.html')
 
+    @app.route('/initial-access/scope')
+    @login_required
+    @feature_required('initial_access')
+    def ia_scope():
+        return render_template('ia_scope.html')
+
     @app.route('/initial-access/recon')
     @login_required
     @feature_required('initial_access')
