@@ -388,3 +388,9 @@ def register_routes(app):
     @feature_required('initial_access')
     def ia_email_templates():
         return render_template('ia_email_templates.html')
+
+    @app.route('/initial-access/fofa')
+    @login_required
+    @feature_required('initial_access')
+    def ia_fofa():
+        return render_template('ia_fofa.html')

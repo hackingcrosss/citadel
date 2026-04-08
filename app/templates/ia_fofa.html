@@ -1,0 +1,428 @@
+{% extends "base.html" %}
+
+{% block title %}FOFA Search - Frontline{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1 class="h3 mb-0">FOFA Search</h1>
+    <div>
+        <button class="btn btn-sm btn-outline-secondary" onclick="loadSearches()">
+            <i class="bi bi-arrow-clockwise"></i> Refresh
+        </button>
+        {% if current_user.role not in ['viewer', 'auditor', 'white_team'] and active_project_role != 'white_team' %}
+        <button class="btn btn-sm btn-infrared" data-bs-toggle="modal" data-bs-target="#newSearchModal">
+            <i class="bi bi-plus-circle"></i> New Search
+        </button>
+        {% endif %}
+    </div>
+</div>
+
+{% if not active_project %}
+<div class="text-center py-5">
+    <i class="bi bi-folder2-open text-warning" style="font-size: 2rem;"></i>
+    <p class="mt-2">Select a project from the top bar to run FOFA searches.</p>
+</div>
+{% else %}
+
+<!-- Searches Table -->
+<div class="card-custom mb-4">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <span><i class="bi bi-globe-americas"></i> Searches</span>
+        <span class="badge bg-secondary" id="search-count-badge">0</span>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+        <table class="table table-hover mb-0">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Query</th>
+                    <th>Scope</th>
+                    <th>Results</th>
+                    <th>Status</th>
+                    <th>Date</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody id="search-table-body">
+                <tr><td colspan="7" class="text-center text-muted py-3">Loading...</td></tr>
+            </tbody>
+        </table>
+        </div>
+    </div>
+</div>
+
+<!-- Results Panel -->
+<div id="results-panel" class="d-none">
+    <div class="card-custom">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <span><i class="bi bi-search"></i> Results — <span id="results-title"></span></span>
+            <button class="btn btn-sm btn-outline-secondary" onclick="closeResults()">
+                <i class="bi bi-x-lg"></i> Close
+            </button>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+            <table class="table table-sm mb-0">
+                <thead>
+                    <tr>
+                        <th>Host</th>
+                        <th>IP</th>
+                        <th>Port</th>
+                        <th>Protocol</th>
+                        <th>Title</th>
+                        <th>Server</th>
+                        <th>Country</th>
+                        <th>ASN</th>
+                        <th>Last Seen</th>
+                    </tr>
+                </thead>
+                <tbody id="results-tbody">
+                </tbody>
+            </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endif %}
+
+<!-- New Search Modal -->
+<div class="modal fade" id="newSearchModal" tabindex="-1" aria-labelledby="newSearchLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="newSearchLabel">New FOFA Search</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <!-- Tabs -->
+                <ul class="nav nav-tabs mb-3" role="tablist">
+                    <li class="nav-item">
+                        <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tab-scope" role="tab" aria-selected="true">From Scope</button>
+                    </li>
+                    <li class="nav-item">
+                        <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-custom" role="tab" aria-selected="false">Custom Query</button>
+                    </li>
+                </ul>
+
+                <div class="tab-content">
+                    <!-- From Scope tab -->
+                    <div class="tab-pane fade show active" id="tab-scope" role="tabpanel">
+                        <div class="form-check mb-3">
+                            <input class="form-check-input" type="checkbox" id="scope-select-all" checked>
+                            <label class="form-check-label" for="scope-select-all"><strong>Select All</strong></label>
+                        </div>
+                        <div id="scope-items-list" class="mb-2">
+                            <p class="text-muted">Loading scope...</p>
+                        </div>
+                    </div>
+                    <!-- Custom Query tab -->
+                    <div class="tab-pane fade" id="tab-custom" role="tabpanel">
+                        <div class="mb-3">
+                            <label class="form-label" for="custom-query">FOFA Query</label>
+                            <input type="text" class="form-control" id="custom-query" placeholder='domain="example.com" || ip="1.2.3.0/24"'>
+                            <small class="text-muted">Use FOFA query syntax. Examples: <code>domain="example.com"</code>, <code>ip="1.2.3.4"</code>, <code>cert="Company Name"</code></small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-infrared" onclick="startSearch()">
+                    <i class="bi bi-search"></i> Search
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Delete Confirm Modal -->
+<div class="modal fade" id="deleteConfirmModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-sm">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Confirm Delete</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">Delete this FOFA search and its results?</div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-danger btn-sm" id="delete-confirm-btn">Delete</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    const IS_VIEWER = {{ 'true' if current_user.is_viewer else 'false' }};
+    const IS_AUDITOR = {{ 'true' if current_user.role == 'auditor' else 'false' }};
+    const IS_WHITE_TEAM = {{ 'true' if current_user.is_white_team else 'false' }};
+    const IS_READONLY = IS_VIEWER || IS_AUDITOR || IS_WHITE_TEAM;
+
+    const FOFA_TASK_KEY = 'fofa_task_id';
+    let _scopeItems = [];
+
+    // ── Load searches ───────────────────────────────────────────────────
+    async function loadSearches() {
+        const tbody = document.getElementById('search-table-body');
+        try {
+            const resp = await fetch('/api/ia/fofa/searches');
+            if (!resp.ok) throw new Error(await resp.text());
+            const data = await resp.json();
+            const searches = data.searches || [];
+
+            document.getElementById('search-count-badge').textContent = searches.length;
+
+            if (!searches.length) {
+                tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted py-3">No FOFA searches yet.</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = searches.map(s => {
+                const statusCls = {pending: 'bg-secondary', running: 'bg-primary', completed: 'bg-success', failed: 'bg-danger'}[s.status] || 'bg-secondary';
+                const date = s.created_at ? new Date(s.created_at).toLocaleString() : '-';
+                const queryShort = s.query && s.query.length > 60 ? s.query.substring(0, 57) + '...' : (s.query || '-');
+                return `<tr>
+                    <td>${escapeHtml(String(s.id))}</td>
+                    <td title="${escapeAttr(s.query || '')}"><code class="small">${escapeHtml(queryShort)}</code></td>
+                    <td><span class="badge bg-dark">${escapeHtml(s.scope_type || '-')}</span> ${escapeHtml(s.scope_value || '')}</td>
+                    <td>${s.results_count != null ? s.results_count : '-'}${s.total_results != null ? ' / ' + s.total_results : ''}</td>
+                    <td><span class="badge ${statusCls}">${escapeHtml(s.status)}</span></td>
+                    <td><small>${escapeHtml(date)}</small></td>
+                    <td>
+                        ${s.status === 'completed' && s.results_count > 0 ? `<button class="btn btn-sm btn-outline-primary" onclick="viewResults(${s.id})" title="View results" aria-label="View results"><i class="bi bi-eye"></i></button>` : ''}
+                        ${!IS_READONLY ? `<button class="btn btn-sm btn-outline-danger" onclick="confirmDelete(${s.id})" title="Delete" aria-label="Delete"><i class="bi bi-trash"></i></button>` : ''}
+                    </td>
+                </tr>`;
+            }).join('');
+        } catch (e) {
+            tbody.innerHTML = `<tr><td colspan="7" class="text-center text-danger py-3">${escapeHtml(String(e))}</td></tr>`;
+        }
+    }
+
+    // ── Classify scope lines (same logic as ia_scope.html) ────────────
+    function classifyEntry(line) {
+        line = line.trim();
+        if (!line || line.startsWith('#')) return null;
+        if (/\/\d{1,2}$/.test(line))              return 'cidr';
+        if (/^\d{1,3}(\.\d{1,3}){3}$/.test(line)) return 'ip';
+        if (/^\*\./.test(line))                     return 'domain';  // wildcard -> domain query
+        if (/^[a-z0-9]([a-z0-9-]*\.)+[a-z]{2,}$/i.test(line)) return 'domain';
+        return null; // skip URLs, comments, other
+    }
+
+    // ── Load project scope into modal ───────────────────────────────────
+    async function loadScope() {
+        try {
+            const resp = await fetch('/api/projects/active');
+            if (!resp.ok) return;
+            const data = await resp.json();
+            const project = data.active_project;
+            if (!project || !project.company_id) return;
+
+            const cResp = await fetch(`/api/companies/${project.company_id}`);
+            if (!cResp.ok) return;
+            const company = (await cResp.json()).company;
+
+            _scopeItems = [];
+            const scopeText = company.scope_notes || '';
+            scopeText.split('\n').forEach(line => {
+                line = line.trim();
+                const type = classifyEntry(line);
+                if (type) _scopeItems.push({type, value: line.replace(/^\*\./, '')});
+            });
+
+            const container = document.getElementById('scope-items-list');
+            if (!_scopeItems.length) {
+                container.innerHTML = '<p class="text-muted">No scope items configured for this project. Use the Custom Query tab or add scope items in the project settings.</p>';
+                return;
+            }
+
+            container.innerHTML = _scopeItems.map((item, i) => `
+                <div class="form-check">
+                    <input class="form-check-input scope-item-check" type="checkbox" id="scope-item-${i}" value="${i}" checked>
+                    <label class="form-check-label" for="scope-item-${i}">
+                        <span class="badge bg-dark me-1">${escapeHtml(item.type)}</span>
+                        ${escapeHtml(item.value)}
+                    </label>
+                </div>
+            `).join('');
+        } catch (e) {
+            console.warn('loadScope:', e);
+        }
+    }
+
+    // Select All toggle
+    document.getElementById('scope-select-all').addEventListener('change', function() {
+        document.querySelectorAll('.scope-item-check').forEach(cb => cb.checked = this.checked);
+    });
+
+    // ── Start search ────────────────────────────────────────────────────
+    async function startSearch() {
+        if (IS_READONLY) { showToast('Read-only access', 'warning'); return; }
+
+        // Determine which tab is active
+        const customTab = document.getElementById('tab-custom');
+        const isCustom = customTab.classList.contains('show') && customTab.classList.contains('active');
+
+        let body = {};
+        if (isCustom) {
+            const q = document.getElementById('custom-query').value.trim();
+            if (!q) { showToast('Enter a FOFA query', 'warning'); return; }
+            body.custom_query = q;
+        } else {
+            const checked = document.querySelectorAll('.scope-item-check:checked');
+            if (!checked.length && _scopeItems.length) {
+                showToast('Select at least one scope item', 'warning');
+                return;
+            }
+            if (checked.length && _scopeItems.length) {
+                body.scope_items = Array.from(checked).map(cb => _scopeItems[parseInt(cb.value)]);
+            }
+            // If no scope items at all, the backend will use full project scope
+        }
+
+        try {
+            const resp = await fetch('/api/ia/fofa/search', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(body),
+            });
+            const data = await resp.json();
+            if (data.upgrade_required) { showToast('Feature requires plan upgrade', 'warning'); return; }
+            if (!resp.ok) throw new Error(data.error || 'Failed to start search');
+
+            bootstrap.Modal.getInstance(document.getElementById('newSearchModal')).hide();
+            showToast(`FOFA search started (${data.search_ids.length} queries)`, 'success');
+
+            // Persist task_id for polling
+            if (data.task_id) {
+                localStorage.setItem(FOFA_TASK_KEY, data.task_id);
+                pollTask(data.task_id);
+            }
+
+            loadSearches();
+        } catch (e) {
+            showToast(e.message, 'danger');
+        }
+    }
+
+    // ── Poll Celery task ────────────────────────────────────────────────
+    let _pollTimer = null;
+
+    function pollTask(taskId) {
+        if (_pollTimer) clearInterval(_pollTimer);
+
+        _pollTimer = setInterval(async () => {
+            try {
+                const resp = await fetch(`/api/ia/fofa/search/status/${taskId}`);
+                const data = await resp.json();
+
+                if (data.state === 'SUCCESS') {
+                    clearInterval(_pollTimer);
+                    _pollTimer = null;
+                    localStorage.removeItem(FOFA_TASK_KEY);
+                    if (typeof addNotification === 'function') {
+                        addNotification('FOFA search completed', 'success');
+                    }
+                    loadSearches();
+                } else if (data.state === 'FAILURE') {
+                    clearInterval(_pollTimer);
+                    _pollTimer = null;
+                    localStorage.removeItem(FOFA_TASK_KEY);
+                    if (typeof addNotification === 'function') {
+                        addNotification('FOFA search failed', 'danger');
+                    }
+                    loadSearches();
+                }
+            } catch (e) {
+                console.warn('Poll error:', e);
+            }
+        }, 3000);
+    }
+
+    // Resume polling on page load
+    function resumePoll() {
+        const taskId = localStorage.getItem(FOFA_TASK_KEY);
+        if (taskId) pollTask(taskId);
+    }
+
+    // ── View results ────────────────────────────────────────────────────
+    async function viewResults(searchId) {
+        try {
+            const resp = await fetch(`/api/ia/fofa/searches/${searchId}`);
+            if (!resp.ok) throw new Error('Failed to load search');
+            const data = await resp.json();
+            const search = data.search;
+
+            document.getElementById('results-title').textContent =
+                `#${search.id} — ${search.scope_type}:${search.scope_value || 'custom'} (${search.results_count || 0} results)`;
+
+            const results = search.results || [];
+            const tbody = document.getElementById('results-tbody');
+
+            if (!results.length) {
+                tbody.innerHTML = '<tr><td colspan="9" class="text-center text-muted py-3">No results</td></tr>';
+            } else {
+                tbody.innerHTML = results.map(r => `<tr>
+                    <td><small>${escapeHtml(r.host || '-')}</small></td>
+                    <td>${escapeHtml(r.ip || '-')}</td>
+                    <td>${escapeHtml(String(r.port || '-'))}</td>
+                    <td>${escapeHtml(r.protocol || '-')}</td>
+                    <td><small>${escapeHtml(r.title || '-')}</small></td>
+                    <td><small>${escapeHtml(r.server || '-')}</small></td>
+                    <td>${escapeHtml(r.country || '-')}</td>
+                    <td><small>${escapeHtml(r.as_organization || '-')}</small></td>
+                    <td><small>${escapeHtml(r.lastupdatetime || '-')}</small></td>
+                </tr>`).join('');
+            }
+
+            document.getElementById('results-panel').classList.remove('d-none');
+            document.getElementById('results-panel').scrollIntoView({behavior: 'smooth'});
+        } catch (e) {
+            showToast(e.message, 'danger');
+        }
+    }
+
+    function closeResults() {
+        document.getElementById('results-panel').classList.add('d-none');
+    }
+
+    // ── Delete search ───────────────────────────────────────────────────
+    let _deleteId = null;
+
+    function confirmDelete(searchId) {
+        _deleteId = searchId;
+        new bootstrap.Modal(document.getElementById('deleteConfirmModal')).show();
+    }
+
+    document.getElementById('delete-confirm-btn').addEventListener('click', async function() {
+        if (!_deleteId) return;
+        try {
+            const resp = await fetch(`/api/ia/fofa/searches/${_deleteId}`, {method: 'DELETE'});
+            if (!resp.ok) {
+                const data = await resp.json();
+                throw new Error(data.error || 'Delete failed');
+            }
+            showToast('Search deleted', 'success');
+            closeResults();
+            loadSearches();
+        } catch (e) {
+            showToast(e.message, 'danger');
+        }
+        bootstrap.Modal.getInstance(document.getElementById('deleteConfirmModal')).hide();
+        _deleteId = null;
+    });
+
+    // ── Init ────────────────────────────────────────────────────────────
+    {% if active_project %}
+    loadSearches();
+    loadScope();
+    resumePoll();
+    {% endif %}
+</script>
+{% endblock %}
