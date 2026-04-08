@@ -63,7 +63,8 @@ def create_proxy_host():
         if active_project:
             project_domains = get_project_domain_names(active_project.id)
             requested = [d.lower().strip() for d in data.get('domain_names', [])]
-            unauthorized = [d for d in requested if d not in project_domains]
+            unauthorized = [d for d in requested
+                           if not any(d == pd or d.endswith('.' + pd) for pd in project_domains)]
             if unauthorized:
                 return jsonify({'error': f'Not authorized for domain(s): {", ".join(unauthorized)}'}), 403
 

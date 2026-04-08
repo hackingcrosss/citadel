@@ -271,8 +271,8 @@
             body: JSON.stringify({access_list_id: parseInt(aclId)})
         })
         .then(r => r.json())
-        .then(data => { if (data.error) alert('Failed to update ACL: ' + data.error); })
-        .catch(err => alert('Error: ' + err));
+        .then(data => { if (data.error) showToast('Failed to update ACL: ' + data.error, 'danger'); })
+        .catch(err => showToast('Error: ' + err, 'danger'));
     }
 
     function loadHosts() {
@@ -372,13 +372,13 @@
     function createHost() {
         if (IS_READONLY) return;
         const domainsRaw = document.getElementById('new-host-domains').value.trim();
-        if (!domainsRaw) { alert('Enter at least one domain'); return; }
+        if (!domainsRaw) { showToast('Enter at least one domain', 'warning'); return; }
 
         const domains = domainsRaw.split(',').map(d => d.trim()).filter(d => d);
         const forward = document.getElementById('new-host-forward').value.trim();
         const port = document.getElementById('new-host-port').value;
 
-        if (!forward || !port) { alert('Forward host and port are required'); return; }
+        if (!forward || !port) { showToast('Forward host and port are required', 'warning'); return; }
 
         const body = {
             domain_names: domains,
@@ -398,21 +398,22 @@
         })
         .then(r => r.json())
         .then(data => {
-            if (data.error) { alert(data.error); return; }
+            if (data.error) { showToast(data.error, 'danger'); return; }
             bootstrap.Modal.getInstance(document.getElementById('addHostModal')).hide();
             document.getElementById('new-host-domains').value = '';
             document.getElementById('new-host-forward').value = '';
             document.getElementById('new-host-advanced').value = '';
             loadHosts();
+            showToast('Proxy host created', 'success');
         })
-        .catch(err => alert('Error: ' + err));
+        .catch(err => showToast('Error: ' + err, 'danger'));
     }
 
     function editHost(hostId) {
         fetch('/api/npm/hosts/' + hostId)
             .then(r => r.json())
             .then(data => {
-                if (data.error) { alert(data.error); return; }
+                if (data.error) { showToast(data.error, 'danger'); return; }
                 const h = data.host;
                 document.getElementById('edit-host-id').value = h.id;
                 document.getElementById('edit-host-domains').value = (h.domain_names || []).join(', ');
@@ -425,7 +426,7 @@
                 document.getElementById('edit-host-advanced').value = h.advanced_config || '';
                 new bootstrap.Modal(document.getElementById('editHostModal')).show();
             })
-            .catch(err => alert('Error: ' + err));
+            .catch(err => showToast('Error: ' + err, 'danger'));
     }
 
     function updateHost() {
@@ -454,11 +455,12 @@
         })
         .then(r => r.json())
         .then(data => {
-            if (data.error) { alert(data.error); return; }
+            if (data.error) { showToast(data.error, 'danger'); return; }
             bootstrap.Modal.getInstance(document.getElementById('editHostModal')).hide();
             loadHosts();
+            showToast('Proxy host updated', 'success');
         })
-        .catch(err => alert('Error: ' + err));
+        .catch(err => showToast('Error: ' + err, 'danger'));
     }
 
     function deleteHost(hostId) {

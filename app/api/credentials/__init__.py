@@ -11,6 +11,14 @@ _log = logging.getLogger(__name__)
 _MULTI_ACCOUNT_PROVIDERS = {'cloudflare', 'aws', 'azure', 'cobaltstrike'}
 
 
+@api_bp.route('/credentials/<provider>/labels', methods=['GET'])
+@login_required
+def get_credential_labels(provider):
+    """Return account labels for a multi-account provider (no credential values)."""
+    labels = credential_service.get_account_labels(provider)
+    return jsonify({'labels': labels})
+
+
 @api_bp.route('/credentials/<provider>', methods=['GET'])
 @login_required
 @admin_required
