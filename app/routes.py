@@ -376,3 +376,15 @@ def register_routes(app):
     @feature_required('initial_access')
     def ia_landing_pages():
         return render_template('ia_landing_pages.html')
+
+    @app.route('/initial-access/intel')
+    @login_required
+    @feature_required('initial_access')
+    def ia_intel():
+        return render_template('ia_intel.html')
+
+    @app.route('/initial-access/email-templates')
+    @login_required
+    @feature_required('initial_access')
+    def ia_email_templates():
+        return render_template('ia_email_templates.html')

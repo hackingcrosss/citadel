@@ -727,9 +727,9 @@
 
         {% elif is_ia_phase %}
         {# ── Frontline sidebar ───────────────────────────────────────────── #}
-        {% set ia_pages = ['ia_dashboard','ia_scope','ia_recon','ia_targets','ia_campaigns','ia_landing_pages'] %}
-        {% set ia_recon_pages = ['ia_recon'] %}
-        {% set ia_se_pages = ['ia_targets','ia_campaigns','ia_landing_pages'] %}
+        {% set ia_pages = ['ia_dashboard','ia_scope','ia_recon','ia_intel','ia_targets','ia_campaigns','ia_landing_pages','ia_email_templates'] %}
+        {% set ia_recon_pages = ['ia_recon','ia_intel'] %}
+        {% set ia_se_pages = ['ia_targets','ia_campaigns','ia_landing_pages','ia_email_templates'] %}
         <nav class="nav flex-column">
             <a class="nav-link {% if request.endpoint == 'ia_dashboard' %}active{% endif %}" href="{{ url_for('ia_dashboard') }}">
                 <i class="bi bi-speedometer2"></i> Dashboard
@@ -752,6 +752,9 @@
                 <a class="nav-link {% if request.endpoint == 'ia_recon' %}active{% endif %}" href="{{ url_for('ia_recon') }}">
                     <i class="bi bi-radar"></i> Scans
                 </a>
+                <a class="nav-link {% if request.endpoint == 'ia_intel' %}active{% endif %}" href="{{ url_for('ia_intel') }}">
+                    <i class="bi bi-journal-text"></i> Intel
+                </a>
             </div>
 
             <div class="nav-divider"></div>
@@ -770,6 +773,9 @@
                 </a>
                 <a class="nav-link {% if request.endpoint == 'ia_landing_pages' %}active{% endif %}" href="{{ url_for('ia_landing_pages') }}">
                     <i class="bi bi-window-desktop"></i> Landing Pages
+                </a>
+                <a class="nav-link {% if request.endpoint == 'ia_email_templates' %}active{% endif %}" href="{{ url_for('ia_email_templates') }}">
+                    <i class="bi bi-envelope-plus"></i> Email Templates
                 </a>
             </div>
 

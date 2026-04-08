@@ -1,0 +1,335 @@
+{% extends "base.html" %}
+
+{% block title %}Business Intel - Frontline{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1 class="h3 mb-0">Business Intelligence</h1>
+    <div>
+        <span class="text-muted small me-2" id="last-updated"></span>
+        <button class="btn btn-sm btn-outline-secondary" onclick="loadIntel()">
+            <i class="bi bi-arrow-clockwise"></i> Refresh
+        </button>
+        {% if current_user.role not in ['viewer', 'auditor', 'white_team'] and active_project_role != 'white_team' %}
+        <button class="btn btn-sm btn-infrared" id="btn-save" onclick="saveIntel()" style="display:none">
+            <i class="bi bi-floppy"></i> Save
+        </button>
+        {% endif %}
+    </div>
+</div>
+
+{% if not active_project %}
+<div class="text-center py-5">
+    <i class="bi bi-folder2-open text-warning" style="font-size: 2rem;"></i>
+    <p class="mt-2">Select a project from the top bar to manage business intelligence.</p>
+</div>
+{% else %}
+
+<!-- AI Extract Panel -->
+{% if current_user.role not in ['viewer', 'auditor', 'white_team'] and active_project_role != 'white_team' %}
+<div id="extract-panel" class="card-custom mb-4">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <span><i class="bi bi-robot"></i> AI Extract from Threat Intel Report</span>
+        <button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#extract-body" aria-expanded="true">
+            <i class="bi bi-chevron-expand"></i>
+        </button>
+    </div>
+    <div class="collapse show" id="extract-body">
+        <div class="card-body">
+            <p class="text-muted small mb-2">Paste the markdown output from your threat intelligence report (Business Intelligence, Competitive Analysis, SWOT, etc.). The AI will extract and populate the structured fields below.</p>
+            <textarea class="form-control bg-dark text-light border-secondary" id="raw_input"
+                rows="8" placeholder="Paste your threat intelligence markdown report here..."></textarea>
+            <div class="d-flex justify-content-end mt-2">
+                <button class="btn btn-sm btn-infrared" id="btn-extract" onclick="extractIntel()">
+                    <i class="bi bi-magic"></i> Extract
+                    <span class="spinner-border spinner-border-sm d-none" id="extract-spinner" role="status"></span>
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- Structured fields -->
+<div id="intel-form" style="display:none">
+    <div class="row g-4">
+        <!-- Left column -->
+        <div class="col-lg-6">
+            <div class="card-custom mb-4">
+                <div class="card-header"><i class="bi bi-building"></i> Company Overview</div>
+                <div class="card-body">
+                    <textarea class="form-control bg-dark text-light border-secondary intel-field" id="company_overview"
+                        rows="4" placeholder="Company background, mission, size, locations..."></textarea>
+                </div>
+            </div>
+
+            <div class="card-custom mb-4">
+                <div class="card-header"><i class="bi bi-box-seam"></i> Key Products / Services</div>
+                <div class="card-body">
+                    <textarea class="form-control bg-dark text-light border-secondary intel-field" id="key_products"
+                        rows="3" placeholder="Main product lines, SaaS offerings, services..."></textarea>
+                </div>
+            </div>
+
+            <div class="card-custom mb-4">
+                <div class="card-header"><i class="bi bi-newspaper"></i> Recent News &amp; Events</div>
+                <div class="card-body">
+                    <textarea class="form-control bg-dark text-light border-secondary intel-field" id="recent_news"
+                        rows="3" placeholder="Mergers, acquisitions, product launches, layoffs, conferences..."></textarea>
+                </div>
+            </div>
+
+            <div class="card-custom mb-4">
+                <div class="card-header"><i class="bi bi-cpu"></i> Technology Stack</div>
+                <div class="card-body">
+                    <textarea class="form-control bg-dark text-light border-secondary intel-field" id="tech_stack"
+                        rows="3" placeholder="Known software, cloud providers, VPN, email platform, SSO provider..."></textarea>
+                </div>
+            </div>
+        </div>
+
+        <!-- Right column -->
+        <div class="col-lg-6">
+            <div class="card-custom mb-4">
+                <div class="card-header"><i class="bi bi-diagram-3"></i> Key Departments &amp; Roles</div>
+                <div class="card-body">
+                    <textarea class="form-control bg-dark text-light border-secondary intel-field" id="key_departments"
+                        rows="3" placeholder="Executive team, IT, Finance, HR, key contacts..."></textarea>
+                </div>
+            </div>
+
+            <div class="card-custom mb-4">
+                <div class="card-header"><i class="bi bi-link-45deg"></i> Vendor / Partner Relationships</div>
+                <div class="card-body">
+                    <textarea class="form-control bg-dark text-light border-secondary intel-field" id="vendor_partners"
+                        rows="3" placeholder="Known suppliers, technology partners, contractors..."></textarea>
+                </div>
+            </div>
+
+            <div class="card-custom mb-4">
+                <div class="card-header"><i class="bi bi-megaphone"></i> Social Media Presence &amp; Tone</div>
+                <div class="card-body">
+                    <textarea class="form-control bg-dark text-light border-secondary intel-field" id="social_presence"
+                        rows="3" placeholder="LinkedIn style, Twitter activity, internal comms tone, branding..."></textarea>
+                </div>
+            </div>
+
+            <div class="card-custom mb-4">
+                <div class="card-header"><i class="bi bi-file-earmark-text"></i> Additional OSINT</div>
+                <div class="card-body">
+                    <textarea class="form-control bg-dark text-light border-secondary intel-field" id="raw_osint"
+                        rows="3" placeholder="Pastebin leaks, breach data references, dark web mentions..."></textarea>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Full-width notes -->
+    <div class="card-custom mb-4">
+        <div class="card-header"><i class="bi bi-sticky"></i> Operator Notes</div>
+        <div class="card-body">
+            <textarea class="form-control bg-dark text-light border-secondary intel-field" id="notes"
+                rows="3" placeholder="Internal notes, engagement-specific context, pretext ideas..."></textarea>
+        </div>
+    </div>
+</div>
+
+{% endif %}
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    const IS_VIEWER = {{ 'true' if current_user.is_viewer else 'false' }};
+    const IS_AUDITOR = {{ 'true' if current_user.role == 'auditor' else 'false' }};
+    const IS_WHITE_TEAM = {{ 'true' if current_user.is_white_team else 'false' }};
+    const IS_READONLY = IS_VIEWER || IS_AUDITOR || IS_WHITE_TEAM;
+
+    const INTEL_FIELDS = [
+        'company_overview', 'key_products', 'recent_news', 'tech_stack',
+        'key_departments', 'vendor_partners', 'social_presence', 'raw_osint', 'notes'
+    ];
+
+    let _dirty = false;
+
+    /* ── Load ─────────────────────────────────────────────────────────── */
+
+    function loadIntel() {
+        fetch('/api/ia/intel')
+            .then(r => { if (!r.ok) throw r; return r.json(); })
+            .then(data => {
+                const intel = data.intel;
+
+                INTEL_FIELDS.forEach(f => {
+                    const el = document.getElementById(f);
+                    if (el) {
+                        el.value = intel[f] || '';
+                        if (IS_READONLY) el.setAttribute('readonly', '');
+                    }
+                });
+
+                // Load raw_input into the extract textarea
+                const rawEl = document.getElementById('raw_input');
+                if (rawEl && intel.raw_input) rawEl.value = intel.raw_input;
+
+                document.getElementById('intel-form').style.display = '';
+
+                const btnSave = document.getElementById('btn-save');
+                if (btnSave && !IS_READONLY) btnSave.style.display = '';
+
+                const ts = document.getElementById('last-updated');
+                if (intel.updated_at) {
+                    const by = intel.updated_by ? ` by ${escapeHtml(intel.updated_by)}` : '';
+                    ts.textContent = `Updated ${new Date(intel.updated_at).toLocaleString()}${by}`;
+                } else {
+                    ts.textContent = '';
+                }
+
+                _dirty = false;
+            })
+            .catch(() => {
+                showToast('Failed to load intel', 'danger');
+                document.getElementById('intel-form').style.display = '';
+            });
+    }
+
+    /* ── Save ─────────────────────────────────────────────────────────── */
+
+    function saveIntel() {
+        if (IS_READONLY) { showToast('Read-only access', 'warning'); return; }
+
+        const payload = {};
+        INTEL_FIELDS.forEach(f => {
+            const el = document.getElementById(f);
+            if (el) payload[f] = el.value;
+        });
+
+        // Also save the raw input text
+        const rawEl = document.getElementById('raw_input');
+        if (rawEl) payload.raw_input = rawEl.value;
+
+        fetch('/api/ia/intel', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+        })
+        .then(r => { if (!r.ok) throw r; return r.json(); })
+        .then(() => {
+            showToast('Intel saved', 'success');
+            _dirty = false;
+            loadIntel();
+        })
+        .catch(() => showToast('Failed to save intel', 'danger'));
+    }
+
+    /* ── AI Extract ───────────────────────────────────────────────────── */
+
+    let _extractPollTimer = null;
+    const EXTRACT_TASK_KEY = 'infrared:intel_extract_task';
+
+    function extractIntel() {
+        if (IS_READONLY) return;
+
+        const rawText = (document.getElementById('raw_input') || {}).value || '';
+        if (!rawText.trim()) {
+            showToast('Paste a threat intel report first', 'warning');
+            return;
+        }
+
+        const btn = document.getElementById('btn-extract');
+        const spinner = document.getElementById('extract-spinner');
+        btn.disabled = true;
+        spinner.classList.remove('d-none');
+
+        fetch('/api/ia/intel/extract', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ raw_text: rawText }),
+        })
+        .then(r => {
+            if (!r.ok) return r.json().then(d => { throw new Error(d.error || 'Extraction failed'); });
+            return r.json();
+        })
+        .then(data => {
+            showToast('Extraction started. You can leave this page — a notification will appear when done.', 'info');
+            localStorage.setItem(EXTRACT_TASK_KEY, data.task_id);
+            pollExtraction(data.task_id);
+        })
+        .catch(err => {
+            showToast(err.message, 'danger');
+            btn.disabled = false;
+            spinner.classList.add('d-none');
+        });
+    }
+
+    function pollExtraction(taskId) {
+        if (_extractPollTimer) clearInterval(_extractPollTimer);
+
+        const btn = document.getElementById('btn-extract');
+        const spinner = document.getElementById('extract-spinner');
+        if (btn) btn.disabled = true;
+        if (spinner) spinner.classList.remove('d-none');
+
+        _extractPollTimer = setInterval(() => {
+            fetch(`/api/ia/intel/extract/status/${taskId}`)
+                .then(r => r.json())
+                .then(data => {
+                    if (data.state === 'SUCCESS') {
+                        clearInterval(_extractPollTimer);
+                        _extractPollTimer = null;
+                        localStorage.removeItem(EXTRACT_TASK_KEY);
+                        if (btn) btn.disabled = false;
+                        if (spinner) spinner.classList.add('d-none');
+
+                        if (data.result && data.result.status === 'failed') {
+                            showToast('Extraction failed: ' + (data.result.error || 'Unknown error'), 'danger');
+                            addNotification('Intel extraction failed', 'danger', '/initial-access/intel');
+                        } else {
+                            showToast('Fields populated. Review and click Save.', 'success');
+                            addNotification('Intel extracted from report — review fields', 'success', '/initial-access/intel');
+                            loadIntel();
+                        }
+                    } else if (data.state === 'FAILURE') {
+                        clearInterval(_extractPollTimer);
+                        _extractPollTimer = null;
+                        localStorage.removeItem(EXTRACT_TASK_KEY);
+                        if (btn) btn.disabled = false;
+                        if (spinner) spinner.classList.add('d-none');
+                        showToast('Extraction failed: ' + (data.error || 'Unknown'), 'danger');
+                        addNotification('Intel extraction failed', 'danger', '/initial-access/intel');
+                    }
+                })
+                .catch(() => {
+                    // network error — keep polling
+                });
+        }, 3000);
+    }
+
+    // Resume polling if there's an active extraction task
+    function resumeExtractPoll() {
+        const taskId = localStorage.getItem(EXTRACT_TASK_KEY);
+        if (taskId) pollExtraction(taskId);
+    }
+
+    /* ── Dirty tracking ───────────────────────────────────────────────── */
+
+    document.addEventListener('input', e => {
+        if (e.target.classList.contains('intel-field') || e.target.id === 'raw_input') _dirty = true;
+    });
+
+    window.addEventListener('beforeunload', e => {
+        if (_dirty) { e.preventDefault(); e.returnValue = ''; }
+    });
+
+    document.addEventListener('keydown', e => {
+        if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+            e.preventDefault();
+            if (!IS_READONLY) saveIntel();
+        }
+    });
+
+    {% if active_project %}
+    loadIntel();
+    resumeExtractPoll();
+    {% endif %}
+</script>
+{% endblock %}
