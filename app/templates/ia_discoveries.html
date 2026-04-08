@@ -1,0 +1,432 @@
+{% extends "base.html" %}
+
+{% block title %}Discoveries - Frontline{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1 class="h3 mb-0">Discovered Assets</h1>
+    <div class="d-flex align-items-center gap-2">
+        <select class="form-select form-select-sm" id="source-filter" style="width:auto" onchange="loadAssets()">
+            <option value="">All Sources</option>
+            <option value="scanner">Scanner Only</option>
+            <option value="fofa">FOFA Only</option>
+        </select>
+        <button class="btn btn-sm btn-outline-secondary" onclick="loadAssets()">
+            <i class="bi bi-arrow-clockwise"></i> Refresh
+        </button>
+    </div>
+</div>
+
+{% if not active_project %}
+<div class="text-center py-5">
+    <i class="bi bi-folder2-open text-warning" style="font-size: 2rem;" aria-hidden="true"></i>
+    <p class="mt-2">Select a project from the top bar to view discovered assets.</p>
+</div>
+{% else %}
+
+<!-- Summary Stats -->
+<div class="row g-3 mb-4" id="stats-row">
+    <div class="col">
+        <div class="stat-card">
+            <div class="label">Total Assets</div>
+            <h3 id="stat-total">-</h3>
+        </div>
+    </div>
+    <div class="col">
+        <div class="stat-card">
+            <div class="label">Unique IPs</div>
+            <h3 id="stat-ips">-</h3>
+        </div>
+    </div>
+    <div class="col">
+        <div class="stat-card">
+            <div class="label">Unique Hosts</div>
+            <h3 id="stat-hosts">-</h3>
+        </div>
+    </div>
+    <div class="col">
+        <div class="stat-card">
+            <div class="label">Open Ports</div>
+            <h3 id="stat-ports">-</h3>
+        </div>
+    </div>
+    <div class="col">
+        <div class="stat-card">
+            <div class="label">Countries</div>
+            <h3 id="stat-countries">-</h3>
+        </div>
+    </div>
+    <div class="col">
+        <div class="stat-card">
+            <div class="label">Sources</div>
+            <div id="stat-sources" class="mt-1">-</div>
+        </div>
+    </div>
+</div>
+
+<!-- Selection Actions Bar -->
+<div class="d-flex align-items-center gap-2 mb-3" id="action-bar" style="display:none!important">
+    <span class="text-muted small" id="selection-count">0 selected</span>
+    {% if current_user.role not in ['viewer', 'auditor', 'white_team'] and active_project_role != 'white_team' %}
+    <button class="btn btn-sm btn-outline-primary" onclick="scanSelectedFofa()" title="Run FOFA search on selected IPs/domains">
+        <i class="bi bi-globe-americas"></i> FOFA Scan
+    </button>
+    <button class="btn btn-sm btn-outline-primary" onclick="scanSelectedScanner()" title="Run external scan on selected IPs/domains">
+        <i class="bi bi-radar"></i> Scanner Scan
+    </button>
+    {% endif %}
+    <button class="btn btn-sm btn-outline-secondary" onclick="exportSelected()" title="Copy selected as CSV">
+        <i class="bi bi-clipboard"></i> Copy CSV
+    </button>
+</div>
+
+<!-- Asset Table -->
+<div class="card-custom">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <span><i class="bi bi-collection"></i> Assets</span>
+        <div class="d-flex align-items-center gap-2">
+            <input type="text" class="form-control form-control-sm" id="search-input" placeholder="Filter..." style="width:200px" oninput="filterTable()">
+            <span class="badge bg-secondary" id="asset-count-badge">0</span>
+        </div>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+        <table class="table table-sm table-hover mb-0">
+            <thead>
+                <tr>
+                    <th style="width:30px"><input type="checkbox" id="select-all" class="form-check-input" title="Select all"></th>
+                    <th class="sortable" data-col="ip" onclick="sortBy('ip')">IP <i class="bi bi-chevron-expand"></i></th>
+                    <th class="sortable" data-col="port" onclick="sortBy('port')">Port <i class="bi bi-chevron-expand"></i></th>
+                    <th class="sortable" data-col="protocol" onclick="sortBy('protocol')">Proto <i class="bi bi-chevron-expand"></i></th>
+                    <th>Host</th>
+                    <th>Title</th>
+                    <th>Server</th>
+                    <th class="sortable" data-col="country" onclick="sortBy('country')">Country <i class="bi bi-chevron-expand"></i></th>
+                    <th>ASN</th>
+                    <th>Source</th>
+                    <th>Last Seen</th>
+                </tr>
+            </thead>
+            <tbody id="asset-tbody">
+                <tr><td colspan="11" class="text-center text-muted py-3">Loading...</td></tr>
+            </tbody>
+        </table>
+        </div>
+    </div>
+</div>
+
+{% endif %}
+
+<!-- Scan from Selection Modal -->
+<div class="modal fade" id="scanModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="scanModalTitle">New Scan from Discoveries</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p class="text-muted small" id="scan-summary"></p>
+                <div class="mb-3">
+                    <label class="form-label">Items to scan</label>
+                    <textarea class="form-control" id="scan-items-textarea" rows="6" readonly></textarea>
+                    <small class="text-muted">Unique IPs and domains extracted from your selection.</small>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-infrared btn-sm" id="scan-launch-btn">
+                    <i class="bi bi-search"></i> Launch
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    const IS_VIEWER = {{ 'true' if current_user.is_viewer else 'false' }};
+    const IS_AUDITOR = {{ 'true' if current_user.role == 'auditor' else 'false' }};
+    const IS_WHITE_TEAM = {{ 'true' if current_user.is_white_team else 'false' }};
+    const IS_READONLY = IS_VIEWER || IS_AUDITOR || IS_WHITE_TEAM;
+
+    let _allAssets = [];
+    let _filteredAssets = [];
+    let _sortCol = 'ip';
+    let _sortAsc = true;
+
+    // ── Load assets ─────────────────────────────────────────────────────
+    async function loadAssets() {
+        const tbody = document.getElementById('asset-tbody');
+        const source = document.getElementById('source-filter').value;
+        const url = '/api/ia/discoveries' + (source ? '?source=' + source : '');
+
+        try {
+            const resp = await fetch(url);
+            if (!resp.ok) throw new Error(await resp.text());
+            const data = await resp.json();
+
+            _allAssets = data.assets || [];
+            const s = data.summary || {};
+
+            // Stats
+            document.getElementById('stat-total').textContent = s.total_assets || 0;
+            document.getElementById('stat-ips').textContent = s.unique_ips || 0;
+            document.getElementById('stat-hosts').textContent = s.unique_hosts || 0;
+            document.getElementById('stat-ports').textContent = s.unique_ports || 0;
+            document.getElementById('stat-countries').textContent = Object.keys(s.countries || {}).length;
+
+            let srcHtml = '';
+            if (s.scanner_count) srcHtml += `<span class="badge bg-primary me-1">Scanner ${s.scanner_count}</span>`;
+            if (s.fofa_count) srcHtml += `<span class="badge bg-info text-dark">FOFA ${s.fofa_count}</span>`;
+            document.getElementById('stat-sources').innerHTML = srcHtml || '-';
+
+            filterTable();
+        } catch (e) {
+            tbody.innerHTML = `<tr><td colspan="11" class="text-center text-danger py-3">${escapeHtml(String(e))}</td></tr>`;
+        }
+    }
+
+    // ── Filter + render ─────────────────────────────────────────────────
+    function filterTable() {
+        const q = (document.getElementById('search-input').value || '').toLowerCase();
+
+        _filteredAssets = q
+            ? _allAssets.filter(a =>
+                (a.ip || '').toLowerCase().includes(q) ||
+                (a.host || '').toLowerCase().includes(q) ||
+                (a.domain || '').toLowerCase().includes(q) ||
+                (a.title || '').toLowerCase().includes(q) ||
+                (a.server || '').toLowerCase().includes(q) ||
+                (a.country || '').toLowerCase().includes(q) ||
+                (a.asn || '').toLowerCase().includes(q) ||
+                (a.service || '').toLowerCase().includes(q) ||
+                (a.port || '').includes(q) ||
+                (a.hostnames || []).some(h => h.toLowerCase().includes(q))
+            )
+            : [..._allAssets];
+
+        applySortAndRender();
+    }
+
+    function applySortAndRender() {
+        _filteredAssets.sort((a, b) => {
+            let va = a[_sortCol] || '';
+            let vb = b[_sortCol] || '';
+            if (_sortCol === 'port') {
+                va = parseInt(va) || 0;
+                vb = parseInt(vb) || 0;
+            } else {
+                va = String(va).toLowerCase();
+                vb = String(vb).toLowerCase();
+            }
+            if (va < vb) return _sortAsc ? -1 : 1;
+            if (va > vb) return _sortAsc ? 1 : -1;
+            return 0;
+        });
+
+        renderTable();
+    }
+
+    function sortBy(col) {
+        if (_sortCol === col) {
+            _sortAsc = !_sortAsc;
+        } else {
+            _sortCol = col;
+            _sortAsc = true;
+        }
+        applySortAndRender();
+    }
+
+    function renderTable() {
+        const tbody = document.getElementById('asset-tbody');
+        document.getElementById('asset-count-badge').textContent = _filteredAssets.length;
+
+        if (!_filteredAssets.length) {
+            tbody.innerHTML = '<tr><td colspan="11" class="text-center text-muted py-3">No assets found. Run scans from the Scans or FOFA pages first.</td></tr>';
+            document.getElementById('action-bar').style.setProperty('display', 'none', 'important');
+            return;
+        }
+
+        tbody.innerHTML = _filteredAssets.map((a, i) => {
+            const srcBadges = (a.sources || []).map(s => {
+                const cls = s === 'scanner' ? 'bg-primary' : 'bg-info text-dark';
+                return `<span class="badge ${cls}" style="font-size:.6rem">${escapeHtml(s)}</span>`;
+            }).join(' ');
+
+            const hostDisplay = a.host || (a.hostnames || []).join(', ') || '-';
+            const port = a.port && a.port !== '0' ? a.port : '-';
+
+            return `<tr>
+                <td><input type="checkbox" class="form-check-input asset-check" data-idx="${i}"></td>
+                <td>${escapeHtml(a.ip || '-')}</td>
+                <td>${escapeHtml(port)}</td>
+                <td>${escapeHtml(a.protocol || a.service || '-')}</td>
+                <td><small>${escapeHtml(hostDisplay)}</small></td>
+                <td><small>${escapeHtml(a.title || '-')}</small></td>
+                <td><small>${escapeHtml(a.server || '-')}</small></td>
+                <td>${escapeHtml(a.country || '-')}</td>
+                <td><small>${escapeHtml(a.asn || '-')}</small></td>
+                <td>${srcBadges}</td>
+                <td><small>${escapeHtml(a.last_seen || '-')}</small></td>
+            </tr>`;
+        }).join('');
+
+        updateSelectionUI();
+    }
+
+    // ── Selection ───────────────────────────────────────────────────────
+    document.getElementById('select-all').addEventListener('change', function() {
+        document.querySelectorAll('.asset-check').forEach(cb => cb.checked = this.checked);
+        updateSelectionUI();
+    });
+
+    document.addEventListener('change', function(e) {
+        if (e.target.classList.contains('asset-check')) updateSelectionUI();
+    });
+
+    function getSelectedAssets() {
+        const checked = document.querySelectorAll('.asset-check:checked');
+        return Array.from(checked).map(cb => _filteredAssets[parseInt(cb.dataset.idx)]);
+    }
+
+    function updateSelectionUI() {
+        const selected = document.querySelectorAll('.asset-check:checked').length;
+        const bar = document.getElementById('action-bar');
+        if (selected > 0) {
+            bar.style.removeProperty('display');
+            document.getElementById('selection-count').textContent = `${selected} selected`;
+        } else {
+            bar.style.setProperty('display', 'none', 'important');
+        }
+    }
+
+    // ── Extract unique scan targets from selection ──────────────────────
+    function extractScanTargets(assets) {
+        const ips = new Set();
+        const domains = new Set();
+
+        for (const a of assets) {
+            if (a.ip) ips.add(a.ip);
+            if (a.domain) domains.add(a.domain);
+            for (const h of (a.hostnames || [])) {
+                // If it looks like an IP, add to IPs; otherwise domain
+                if (/^\d{1,3}(\.\d{1,3}){3}$/.test(h)) ips.add(h);
+                else if (h.includes('.')) domains.add(h);
+            }
+        }
+
+        return {
+            ips: [...ips].sort(),
+            domains: [...domains].sort(),
+        };
+    }
+
+    // ── Scan Selected → FOFA ────────────────────────────────────────────
+    function scanSelectedFofa() {
+        const assets = getSelectedAssets();
+        if (!assets.length) return;
+
+        const targets = extractScanTargets(assets);
+        const items = [];
+        targets.domains.forEach(d => items.push({type: 'domain', value: d}));
+        targets.ips.forEach(ip => items.push({type: 'ip', value: ip}));
+
+        document.getElementById('scanModalTitle').textContent = 'New FOFA Search from Discoveries';
+        document.getElementById('scan-summary').textContent =
+            `${items.length} unique targets (${targets.domains.length} domains, ${targets.ips.length} IPs) from ${assets.length} selected assets.`;
+        document.getElementById('scan-items-textarea').value =
+            items.map(i => `[${i.type}] ${i.value}`).join('\n');
+
+        const btn = document.getElementById('scan-launch-btn');
+        btn.onclick = () => launchFofaScan(items);
+
+        new bootstrap.Modal(document.getElementById('scanModal')).show();
+    }
+
+    async function launchFofaScan(items) {
+        try {
+            const resp = await fetch('/api/ia/fofa/search', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({scope_items: items}),
+            });
+            const data = await resp.json();
+            if (!resp.ok) throw new Error(data.error || 'Failed');
+
+            bootstrap.Modal.getInstance(document.getElementById('scanModal')).hide();
+            showToast(`FOFA search started (${data.search_ids.length} queries)`, 'success');
+
+            if (data.task_id) {
+                localStorage.setItem('fofa_task_id', data.task_id);
+            }
+        } catch (e) {
+            showToast(e.message, 'danger');
+        }
+    }
+
+    // ── Scan Selected → External Scanner ────────────────────────────────
+    function scanSelectedScanner() {
+        const assets = getSelectedAssets();
+        if (!assets.length) return;
+
+        const targets = extractScanTargets(assets);
+
+        document.getElementById('scanModalTitle').textContent = 'New Scanner Scan from Discoveries';
+        document.getElementById('scan-summary').textContent =
+            `${targets.domains.length} domains, ${targets.ips.length} IPs from ${assets.length} selected assets.`;
+        document.getElementById('scan-items-textarea').value =
+            [...targets.domains.map(d => `[domain] ${d}`), ...targets.ips.map(ip => `[ip] ${ip}`)].join('\n');
+
+        const btn = document.getElementById('scan-launch-btn');
+        btn.onclick = () => launchScannerScan(targets);
+
+        new bootstrap.Modal(document.getElementById('scanModal')).show();
+    }
+
+    async function launchScannerScan(targets) {
+        try {
+            const resp = await fetch('/api/ia/scans', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({scope: {domains: targets.domains, ip_ranges: targets.ips}}),
+            });
+            const data = await resp.json();
+            if (!resp.ok) throw new Error(data.error || 'Failed');
+
+            bootstrap.Modal.getInstance(document.getElementById('scanModal')).hide();
+            showToast('Scanner scan triggered', 'success');
+        } catch (e) {
+            showToast(e.message, 'danger');
+        }
+    }
+
+    // ── Copy CSV ────────────────────────────────────────────────────────
+    function exportSelected() {
+        const assets = getSelectedAssets();
+        if (!assets.length) { showToast('Select assets first', 'warning'); return; }
+
+        const header = 'IP,Port,Protocol,Host,Domain,Title,Server,Country,ASN,Sources,Last Seen';
+        const rows = assets.map(a => [
+            a.ip, a.port || '', a.protocol || a.service || '',
+            a.host || (a.hostnames || []).join(';'), a.domain || '',
+            (a.title || '').replace(/,/g, ' '), (a.server || '').replace(/,/g, ' '),
+            a.country || '', (a.asn || '').replace(/,/g, ' '),
+            (a.sources || []).join(';'), a.last_seen || '',
+        ].join(','));
+
+        const csv = header + '\n' + rows.join('\n');
+        navigator.clipboard.writeText(csv).then(
+            () => showToast(`${assets.length} assets copied as CSV`, 'success'),
+            () => showToast('Failed to copy to clipboard', 'danger')
+        );
+    }
+
+    // ── Init ────────────────────────────────────────────────────────────
+    {% if active_project %}
+    loadAssets();
+    {% endif %}
+</script>
+{% endblock %}

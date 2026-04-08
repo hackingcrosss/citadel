@@ -9,6 +9,7 @@ from app import db
 from app.models.ia_email_template import IAEmailTemplateBatch, IAEmailTemplate
 from app.models.ia_business_intel import IABusinessIntel
 from app.models.ia_scan_job import IAScanJob
+from app.models.ia_fofa_search import IAFofaSearch
 from app.models.project import Project
 from app.services.openai_service import get_client
 
@@ -17,7 +18,7 @@ _log = logging.getLogger(__name__)
 _MAX_CONTEXT_ITEMS = 20  # cap list items sent in the prompt
 
 
-def _build_prompt(project, intel, scan_results):
+def _build_prompt(project, intel, scan_results, fofa_results=None):
     """Assemble the system prompt with all available context."""
     company = project.company
     company_name = company.name if company else 'Unknown'
@@ -88,6 +89,45 @@ def _build_prompt(project, intel, scan_results):
         if parts:
             scan_block = '\n'.join(parts)
 
+    # Build FOFA findings section
+    fofa_block = ''
+    if fofa_results:
+        fofa_parts = []
+        # Collect unique servers, titles, protocols
+        servers = {}
+        titles = {}
+        protocols = {}
+        domains_seen = set()
+        for item in fofa_results[:200]:  # cap to avoid huge prompts
+            srv = item.get('server', '')
+            if srv:
+                servers[srv] = servers.get(srv, 0) + 1
+            ttl = item.get('title', '')
+            if ttl:
+                titles[ttl] = titles.get(ttl, 0) + 1
+            proto = item.get('protocol', '')
+            if proto:
+                protocols[proto] = protocols.get(proto, 0) + 1
+            dom = item.get('domain', '')
+            if dom:
+                domains_seen.add(dom)
+
+        if domains_seen:
+            shown = sorted(domains_seen)[:_MAX_CONTEXT_ITEMS]
+            fofa_parts.append(f"Exposed domains ({len(domains_seen)} total): {', '.join(shown)}")
+        if servers:
+            top = sorted(servers.items(), key=lambda x: -x[1])[:_MAX_CONTEXT_ITEMS]
+            fofa_parts.append(f"Web servers/technologies: {', '.join(f'{s} ({c})' for s, c in top)}")
+        if titles:
+            top = sorted(titles.items(), key=lambda x: -x[1])[:_MAX_CONTEXT_ITEMS]
+            fofa_parts.append(f"Page titles: {', '.join(f'{t} ({c})' for t, c in top)}")
+        if protocols:
+            fofa_parts.append(f"Protocols: {', '.join(f'{p} ({c})' for p, c in sorted(protocols.items(), key=lambda x: -x[1]))}")
+        fofa_parts.append(f"Total exposed assets: {len(fofa_results)}")
+
+        if fofa_parts:
+            fofa_block = '\n\nFOFA OSINT FINDINGS (internet-facing asset discovery):\n' + '\n'.join(fofa_parts)
+
     prompt = f"""You are a red team social engineering specialist generating phishing email templates for an authorized security awareness engagement.
 
 TARGET COMPANY:
@@ -100,6 +140,7 @@ BUSINESS INTELLIGENCE:
 
 RECON FINDINGS (from automated external surface scan):
 {scan_block}
+{fofa_block}
 
 INSTRUCTIONS:
 Generate between 3 and 6 phishing email templates. For each template:
@@ -158,8 +199,23 @@ def run_generation(batch_id, project_id, scan_job_id=None):
                 scan_results = json.loads(job.raw_results)
                 batch.scan_job_id = job.id
 
+        # Load FOFA results (aggregate all completed searches for this project)
+        fofa_results = []
+        fofa_searches = (
+            IAFofaSearch.query
+            .filter_by(project_id=project_id, status='completed')
+            .all()
+        )
+        for fs in fofa_searches:
+            if fs.raw_results:
+                try:
+                    fofa_results.extend(json.loads(fs.raw_results))
+                except (json.JSONDecodeError, TypeError):
+                    pass
+
         # Build prompt and call LLM
-        prompt = _build_prompt(project, intel, scan_results)
+        prompt = _build_prompt(project, intel, scan_results,
+                               fofa_results=fofa_results or None)
         client, deployment = get_client()
 
         response = client.chat.completions.create(

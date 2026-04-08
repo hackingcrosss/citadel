@@ -159,3 +159,4 @@ from app.api.initial_access import landing_pages    # noqa: F401, E402
 from app.api.initial_access import business_intel   # noqa: F401, E402
 from app.api.initial_access import email_templates  # noqa: F401, E402
 from app.api.initial_access import fofa             # noqa: F401, E402
+from app.api.initial_access import discoveries      # noqa: F401, E402
