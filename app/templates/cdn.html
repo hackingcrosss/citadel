@@ -723,18 +723,18 @@
         const sel = document.getElementById('c-account');
         sel.innerHTML = '<option value="">Loading…</option>';
 
-        fetch(`/api/credentials/${credProvider}`)
+        fetch(`/api/credentials/${credProvider}/labels`)
             .then(r => r.json())
             .then(data => {
-                const accounts = (data[credProvider] || {}).accounts || [];
+                const labels = data.labels || [];
                 sel.innerHTML = '';
-                if (accounts.length === 0) {
+                if (labels.length === 0) {
                     sel.innerHTML = `<option value="default">default</option>`;
                 } else {
-                    accounts.forEach(a => {
+                    labels.forEach(lbl => {
                         const opt = document.createElement('option');
-                        opt.value = a.label;
-                        opt.textContent = a.label;
+                        opt.value = lbl;
+                        opt.textContent = lbl;
                         sel.appendChild(opt);
                     });
                 }
