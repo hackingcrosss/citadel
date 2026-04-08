@@ -76,3 +76,16 @@ def extract_intel_task(self, project_id, raw_text, updated_by_id):
     except Exception as e:
         _log.exception('Intel extraction failed for project %s', project_id)
         return {'status': 'failed', 'error': str(e)}
+
+
+@celery.task(bind=True, max_retries=0, time_limit=120, soft_time_limit=90)
+def fofa_search_task(self, search_ids, project_id):
+    """Execute FOFA searches for a list of scope items."""
+    from app.services import fofa_service
+
+    try:
+        fofa_service.run_scope_search(search_ids, project_id)
+        return {'status': 'completed', 'search_ids': search_ids}
+    except Exception as e:
+        _log.exception('FOFA search task failed for project %s', project_id)
+        return {'status': 'failed', 'error': str(e)}

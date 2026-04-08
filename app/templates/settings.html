@@ -843,6 +843,43 @@
                     </div>
                 </div>
 
+                <!-- FOFA -->
+                <div class="provider-block">
+                    <button class="provider-header collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#fofa-body">
+                        <span class="d-flex align-items-center gap-2">
+                            <i class="bi bi-globe-americas text-info"></i>
+                            <strong>FOFA</strong>
+                            <span class="role-badge">Recon</span>
+                            <span class="config-status" id="fofa-cfg"></span>
+                        </span>
+                        <i class="bi bi-chevron-down chevron"></i>
+                    </button>
+                    <div class="collapse" id="fofa-body">
+                        <div class="provider-body">
+                            <div class="row g-3">
+                                <div class="col-md-6">
+                                    <label class="form-label">Email</label>
+                                    <input type="text" class="form-control" id="fofa-email" placeholder="FOFA account email">
+                                    <small class="text-muted" id="fofa-email-status"></small>
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label">API Key</label>
+                                    <div class="input-group">
+                                        <input type="password" class="form-control" id="fofa-api-key" placeholder="FOFA API key">
+                                        <button class="btn btn-outline-secondary" type="button" onclick="this.previousElementSibling.type = this.previousElementSibling.type === 'password' ? 'text' : 'password'"><i class="bi bi-eye"></i></button>
+                                    </div>
+                                    <small class="text-muted" id="fofa-api-key-status"></small>
+                                </div>
+                                <div class="col-12">
+                                    <button class="btn btn-sm btn-outline-primary" onclick="saveFofaCredentials()"><i class="bi bi-pencil"></i> Update</button>
+                                    <button class="btn btn-sm btn-outline-success" onclick="testFofaConnection()"><i class="bi bi-check-circle"></i> Test Connection</button>
+                                    <span id="fofa-test-result" class="ms-2"></span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
             </div>
         </div>
 
@@ -935,6 +972,7 @@
         loadGophishStatus();
         loadCobaltstrikeStatus();
         loadOpenAIStatus();
+        loadFofaStatus();
         loadNpmSshStatus();
         loadEc2ForNpm();
         loadConfigBadges();
@@ -992,6 +1030,7 @@
             { key: 'mailgun',      id: 'mg-cfg'       },
             { key: 'gophish',      id: 'gophish-cfg'  },
             { key: 'openai',       id: 'openai-cfg'   },
+            { key: 'fofa',         id: 'fofa-cfg'     },
         ];
         PROVIDERS.forEach(function(p) {
             fetch('/api/credentials/' + p.key)
@@ -2147,6 +2186,77 @@
             .then(data => {
                 if (data.success) {
                     resultEl.innerHTML = '<span class="text-success"><i class="bi bi-check-circle-fill"></i> Connected (model: ' + escHtml(data.result.model || 'ok') + ')</span>';
+                } else {
+                    resultEl.innerHTML = '<span class="text-danger"><i class="bi bi-x-circle-fill"></i> ' + escHtml(data.error || 'Failed') + '</span>';
+                }
+            })
+            .catch(() => {
+                resultEl.innerHTML = '<span class="text-danger"><i class="bi bi-x-circle-fill"></i> Request failed</span>';
+            });
+    }
+
+    // ── FOFA ──────────────────────────────────────────────────────────────
+    function loadFofaStatus() {
+        fetch('/api/credentials/fofa')
+            .then(r => r.json())
+            .then(data => {
+                const creds = data.fofa || {};
+                if (creds.email) {
+                    document.getElementById('fofa-email').placeholder = creds.email.masked;
+                    document.getElementById('fofa-email-status').textContent =
+                        'Last updated: ' + new Date(creds.email.updated_at).toLocaleString();
+                }
+                if (creds.api_key) {
+                    document.getElementById('fofa-api-key').placeholder = creds.api_key.masked;
+                    document.getElementById('fofa-api-key-status').textContent =
+                        'Last updated: ' + new Date(creds.api_key.updated_at).toLocaleString();
+                }
+            })
+            .catch(() => {});
+    }
+
+    function saveFofaCredentials() {
+        const email = document.getElementById('fofa-email').value;
+        const apiKey = document.getElementById('fofa-api-key').value;
+
+        const body = {};
+        if (email) body.email = email;
+        if (apiKey) body.api_key = apiKey;
+
+        if (Object.keys(body).length === 0) {
+            showToast('Enter at least one value to save.', 'warning');
+            return;
+        }
+
+        fetch('/api/credentials/fofa', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(body)
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.saved) {
+                showToast('FOFA credentials saved.');
+                document.getElementById('fofa-email').value = '';
+                document.getElementById('fofa-api-key').value = '';
+                loadFofaStatus();
+                loadConfigBadges();
+            } else {
+                showToast(escHtml(data.error || 'Failed to save.'), 'danger');
+            }
+        })
+        .catch(err => showToast('Error saving: ' + escHtml(String(err)), 'danger'));
+    }
+
+    function testFofaConnection() {
+        const resultEl = document.getElementById('fofa-test-result');
+        resultEl.innerHTML = '<span class="text-muted"><i class="bi bi-hourglass-split"></i> Testing...</span>';
+
+        fetch('/api/credentials/fofa/test', {method: 'POST'})
+            .then(r => r.json())
+            .then(data => {
+                if (data.success) {
+                    resultEl.innerHTML = '<span class="text-success"><i class="bi bi-check-circle-fill"></i> Connected</span>';
                 } else {
                     resultEl.innerHTML = '<span class="text-danger"><i class="bi bi-x-circle-fill"></i> ' + escHtml(data.error || 'Failed') + '</span>';
                 }

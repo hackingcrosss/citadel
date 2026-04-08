@@ -727,8 +727,8 @@
 
         {% elif is_ia_phase %}
         {# ── Frontline sidebar ───────────────────────────────────────────── #}
-        {% set ia_pages = ['ia_dashboard','ia_scope','ia_recon','ia_intel','ia_targets','ia_campaigns','ia_landing_pages','ia_email_templates'] %}
-        {% set ia_recon_pages = ['ia_recon','ia_intel'] %}
+        {% set ia_pages = ['ia_dashboard','ia_scope','ia_recon','ia_intel','ia_fofa','ia_targets','ia_campaigns','ia_landing_pages','ia_email_templates'] %}
+        {% set ia_recon_pages = ['ia_recon','ia_intel','ia_fofa'] %}
         {% set ia_se_pages = ['ia_targets','ia_campaigns','ia_landing_pages','ia_email_templates'] %}
         <nav class="nav flex-column">
             <a class="nav-link {% if request.endpoint == 'ia_dashboard' %}active{% endif %}" href="{{ url_for('ia_dashboard') }}">
@@ -754,6 +754,9 @@
                 </a>
                 <a class="nav-link {% if request.endpoint == 'ia_intel' %}active{% endif %}" href="{{ url_for('ia_intel') }}">
                     <i class="bi bi-journal-text"></i> Intel
+                </a>
+                <a class="nav-link {% if request.endpoint == 'ia_fofa' %}active{% endif %}" href="{{ url_for('ia_fofa') }}">
+                    <i class="bi bi-globe-americas"></i> FOFA
                 </a>
             </div>
 

@@ -128,6 +128,7 @@ def test_credentials(provider):
         'cobaltstrike': _test_cobaltstrike,
         'openai': _test_openai,
         'scanner': _test_scanner,
+        'fofa': _test_fofa,
     }
 
     tester = testers.get(provider)
@@ -251,4 +252,10 @@ def _test_azure(label='default'):
 def _test_scanner():
     from app.services import ia_scan_service
     result = ia_scan_service.test_connection()
+    return result
+
+
+def _test_fofa():
+    from app.services import fofa_service
+    result = fofa_service.test_connection()
     return result
