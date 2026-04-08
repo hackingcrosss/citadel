@@ -394,3 +394,9 @@ def register_routes(app):
     @feature_required('initial_access')
     def ia_fofa():
         return render_template('ia_fofa.html')
+
+    @app.route('/initial-access/discoveries')
+    @login_required
+    @feature_required('initial_access')
+    def ia_discoveries():
+        return render_template('ia_discoveries.html')

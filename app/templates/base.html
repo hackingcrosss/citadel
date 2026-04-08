@@ -727,8 +727,8 @@
 
         {% elif is_ia_phase %}
         {# ── Frontline sidebar ───────────────────────────────────────────── #}
-        {% set ia_pages = ['ia_dashboard','ia_scope','ia_recon','ia_intel','ia_fofa','ia_targets','ia_campaigns','ia_landing_pages','ia_email_templates'] %}
-        {% set ia_recon_pages = ['ia_recon','ia_intel','ia_fofa'] %}
+        {% set ia_pages = ['ia_dashboard','ia_scope','ia_recon','ia_intel','ia_fofa','ia_discoveries','ia_targets','ia_campaigns','ia_landing_pages','ia_email_templates'] %}
+        {% set ia_recon_pages = ['ia_recon','ia_intel','ia_fofa','ia_discoveries'] %}
         {% set ia_se_pages = ['ia_targets','ia_campaigns','ia_landing_pages','ia_email_templates'] %}
         <nav class="nav flex-column">
             <a class="nav-link {% if request.endpoint == 'ia_dashboard' %}active{% endif %}" href="{{ url_for('ia_dashboard') }}">
@@ -757,6 +757,9 @@
                 </a>
                 <a class="nav-link {% if request.endpoint == 'ia_fofa' %}active{% endif %}" href="{{ url_for('ia_fofa') }}">
                     <i class="bi bi-globe-americas"></i> FOFA
+                </a>
+                <a class="nav-link {% if request.endpoint == 'ia_discoveries' %}active{% endif %}" href="{{ url_for('ia_discoveries') }}">
+                    <i class="bi bi-collection"></i> Discoveries
                 </a>
             </div>
 
