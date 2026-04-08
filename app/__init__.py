@@ -74,12 +74,16 @@ def create_app(config_class=Config):
 
     @app.context_processor
     def inject_phase():
-        """Inject is_ia_phase flag for the phase switcher in the sidebar."""
+        """Inject phase flags for the phase switcher in the sidebar."""
         from flask import request as _req
         try:
-            return {'is_ia_phase': _req.path.startswith('/initial-access/')}
+            path = _req.path
+            return {
+                'is_ia_phase': path.startswith('/initial-access/'),
+                'is_citadel_phase': path.startswith('/citadel/'),
+            }
         except Exception:
-            return {'is_ia_phase': False}
+            return {'is_ia_phase': False, 'is_citadel_phase': False}
 
     @app.context_processor
     def inject_company():

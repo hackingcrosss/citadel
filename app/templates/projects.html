@@ -40,7 +40,7 @@
         <small class="text-muted">Projects you are assigned to</small>
     </div>
     {% if current_user.is_admin %}
-    <a href="{{ url_for('admin_projects') }}" class="btn btn-outline-danger btn-sm">
+    <a href="{{ url_for('citadel_projects') }}" class="btn btn-outline-danger btn-sm">
         <i class="bi bi-gear me-1"></i> Manage Projects
     </a>
     {% endif %}

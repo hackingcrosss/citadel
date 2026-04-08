@@ -277,20 +277,6 @@ def register_routes(app):
     def admin_license():
         return render_template('admin_license.html')
 
-    @app.route('/projects')
-    @login_required
-    @feature_required('projects')
-    def projects():
-        return render_template('projects.html')
-
-    @app.route('/admin/projects')
-    @login_required
-    def admin_projects():
-        if not current_user.can_manage_projects:
-            flash('Project Admin or Admin role required.', 'danger')
-            return redirect(url_for('dashboard'))
-        return render_template('admin_projects.html')
-
     @app.route('/admin/audit')
     @login_required
     def admin_audit():
@@ -305,19 +291,54 @@ def register_routes(app):
     def admin_domain_pool():
         return render_template('admin_domain_pool.html')
 
+    # ── Citadel phase ─────────────────────────────────────────────────
+    @app.route('/citadel/')
+    @login_required
+    def citadel_dashboard():
+        return render_template('citadel_dashboard.html')
+
+    @app.route('/citadel/projects')
+    @login_required
+    def citadel_projects():
+        from app.services.plan_service import get_current_plan
+        if not get_current_plan().is_enabled('projects'):
+            flash('This feature is not available on your current plan.', 'warning')
+            return redirect(url_for('citadel_dashboard'))
+        if current_user.can_manage_projects:
+            return render_template('admin_projects.html')
+        return render_template('projects.html')
+
+    @app.route('/citadel/companies')
+    @login_required
+    def citadel_companies():
+        from app.services.plan_service import get_current_plan
+        if not get_current_plan().is_enabled('companies'):
+            flash('This feature is not available on your current plan.', 'warning')
+            return redirect(url_for('citadel_dashboard'))
+        if current_user.is_admin:
+            return render_template('admin_companies.html')
+        return render_template('company.html')
+
+    # ── Legacy redirects (old Team routes → Citadel) ──────────────────
+    @app.route('/admin/projects')
+    @login_required
+    def admin_projects():
+        return redirect(url_for('citadel_projects'), 301)
+
+    @app.route('/projects')
+    @login_required
+    def projects():
+        return redirect(url_for('citadel_projects'), 301)
+
     @app.route('/admin/companies')
     @login_required
-    @admin_required
     def admin_companies():
-        return render_template('admin_companies.html')
+        return redirect(url_for('citadel_companies'), 301)
 
     @app.route('/company')
     @login_required
-    @feature_required('companies')
     def company_detail():
-        if current_user.is_admin:
-            return redirect(url_for('admin_companies'))
-        return render_template('company.html')
+        return redirect(url_for('citadel_companies'), 301)
 
     # ── Frontline phase ────────────────────────────────────────────────
     @app.route('/initial-access/')

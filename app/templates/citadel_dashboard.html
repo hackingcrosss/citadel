@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+
+{% block title %}Citadel — Org Management{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h4><i class="bi bi-shield-shaded me-2"></i>Citadel</h4>
+    <small class="text-muted">Organisation management hub — projects and companies shared across all phases</small>
+</div>
+
+<div class="row g-3 mb-4">
+    {% set show_projects = current_plan.is_enabled('projects') and (current_user.can_manage_projects or user_projects) %}
+    {% set show_companies = current_plan.is_enabled('companies') and (user_companies or current_user.role == 'admin') %}
+
+    {% if show_projects %}
+    <div class="col-md-6">
+        <a href="{{ url_for('citadel_projects') }}" class="text-decoration-none d-block">
+            <div class="card-custom h-100">
+                <div class="card-body d-flex align-items-center gap-3">
+                    <i class="bi bi-folder2-open" style="font-size:1.8rem;color:var(--ir-yellow)" aria-hidden="true"></i>
+                    <div>
+                        <div class="fw-semibold text-light">
+                            {% if current_user.can_manage_projects %}Projects{% else %}My Projects{% endif %}
+                        </div>
+                        <small class="text-muted">
+                            {% if user_projects %}{{ user_projects | length }} active project{{ 's' if user_projects | length != 1 }}{% else %}Manage red team projects and memberships{% endif %}
+                        </small>
+                    </div>
+                </div>
+            </div>
+        </a>
+    </div>
+    {% endif %}
+
+    {% if show_companies %}
+    <div class="col-md-6">
+        <a href="{{ url_for('citadel_companies') }}" class="text-decoration-none d-block">
+            <div class="card-custom h-100">
+                <div class="card-body d-flex align-items-center gap-3">
+                    <i class="bi bi-building" style="font-size:1.8rem;color:var(--ir-yellow)" aria-hidden="true"></i>
+                    <div>
+                        <div class="fw-semibold text-light">Companies</div>
+                        <small class="text-muted">
+                            {% if user_companies %}{{ user_companies | length }} compan{{ 'ies' if user_companies | length != 1 else 'y' }}{% else %}Target companies and exercise profiles{% endif %}
+                        </small>
+                    </div>
+                </div>
+            </div>
+        </a>
+    </div>
+    {% endif %}
+
+    {% if not show_projects and not show_companies %}
+    <div class="col-12 text-center py-5">
+        <i class="bi bi-shield-shaded text-muted" style="font-size:2rem" aria-hidden="true"></i>
+        <p class="mt-2 text-muted">No organisation features available on your current plan.</p>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
