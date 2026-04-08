@@ -53,3 +53,26 @@ def sync_active_campaigns(self):
     except Exception as e:
         _log.exception('Campaign sync failed: %s', e)
         return {'error': str(e)}
+
+
+@celery.task(bind=True, max_retries=0, time_limit=300, soft_time_limit=270)
+def generate_email_templates_task(self, batch_id, project_id, scan_job_id=None):
+    """Generate AI-powered phishing email templates for a batch."""
+    from app.services import email_template_service
+
+    email_template_service.run_generation(batch_id, project_id, scan_job_id)
+    return {'batch_id': batch_id, 'status': 'completed'}
+
+
+@celery.task(bind=True, max_retries=0, time_limit=120, soft_time_limit=90)
+def extract_intel_task(self, project_id, raw_text, updated_by_id):
+    """Extract structured business intel fields from pasted markdown via Azure OpenAI."""
+    from app.services import ia_business_intel_service
+
+    try:
+        fields = ia_business_intel_service.extract_fields_from_text(raw_text)
+        ia_business_intel_service.update_intel(project_id, fields, updated_by_id)
+        return {'status': 'completed', 'fields': list(fields.keys())}
+    except Exception as e:
+        _log.exception('Intel extraction failed for project %s', project_id)
+        return {'status': 'failed', 'error': str(e)}
