@@ -5,6 +5,7 @@ import re
 import shlex
 import string
 import yaml
+from app.services.credential_service import get_credential
 from app.services.openai_service import get_client as _get_client
 
 _EXTRA_CONTEXT_MAX = 500
