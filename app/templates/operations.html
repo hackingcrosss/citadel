@@ -1483,7 +1483,7 @@
             {id: 'host', label: 'Stager Host', type: 'text', placeholder: '0.0.0.0', required: true, col: 6, isHost: true},
             {id: 'httpHostHeader', label: 'Host Header', type: 'text', placeholder: 'Domain fronting host', col: 6},
             {id: 'profile', label: 'Profile', type: 'text', placeholder: 'default', col: 4},
-            {id: 'hostRotationStrategy', label: 'Host Rotation', type: 'select', options: ['', 'round-robin', 'random', 'failover-5x', 'failover-1x', 'failover-rr', 'rotate-1m', 'rotate-5m', 'rotate-15m', 'rotate-30m', 'rotate-1h'], col: 4},
+            {id: 'hostRotationStrategy', label: 'Host Rotation', type: 'select', options: ['', 'round-robin', 'random', 'failover-5x', 'failover-1x', 'failover-rr', 'rotate-1m', 'rotate-5m', 'rotate-15m', 'rotate-30m', 'rotate-1h'], col: 4, defaultVal: 'round-robin'},
             {id: 'color', label: 'Color', type: 'text', placeholder: 'DEFAULT', col: 4, defaultVal: 'DEFAULT'},
             {id: 'ignoreProxySettings', label: 'Ignore Proxy Settings', type: 'checkbox', col: 4},
             {id: 'maxRetryStrategy', label: 'Max Retry Strategy', type: 'text', placeholder: 'exit-10-5-5m', col: 4, defaultVal: 'exit-10-5-5m'}
@@ -1492,7 +1492,7 @@
             {id: 'host', label: 'Stager Host', type: 'text', placeholder: '0.0.0.0', required: true, col: 6, isHost: true},
             {id: 'httpHostHeader', label: 'Host Header', type: 'text', placeholder: 'Domain fronting host', col: 6},
             {id: 'profile', label: 'Profile', type: 'text', placeholder: 'default', col: 4},
-            {id: 'hostRotationStrategy', label: 'Host Rotation', type: 'select', options: ['', 'round-robin', 'random', 'failover-5x', 'failover-1x', 'failover-rr', 'rotate-1m', 'rotate-5m', 'rotate-15m', 'rotate-30m', 'rotate-1h'], col: 4},
+            {id: 'hostRotationStrategy', label: 'Host Rotation', type: 'select', options: ['', 'round-robin', 'random', 'failover-5x', 'failover-1x', 'failover-rr', 'rotate-1m', 'rotate-5m', 'rotate-15m', 'rotate-30m', 'rotate-1h'], col: 4, defaultVal: 'round-robin'},
             {id: 'color', label: 'Color', type: 'text', placeholder: 'DEFAULT', col: 4, defaultVal: 'DEFAULT'},
             {id: 'ignoreProxySettings', label: 'Ignore Proxy Settings', type: 'checkbox', col: 4},
             {id: 'maxRetryStrategy', label: 'Max Retry Strategy', type: 'text', placeholder: 'exit-10-5-5m', col: 4, defaultVal: 'exit-10-5-5m'}
@@ -1501,7 +1501,7 @@
             {id: 'host', label: 'DNS Stager Host', type: 'text', placeholder: 'ns1.example.com', required: true, col: 6, isHost: true},
             {id: 'profile', label: 'Profile', type: 'text', placeholder: 'default', col: 3},
             {id: 'color', label: 'Color', type: 'text', placeholder: 'DEFAULT', col: 3, defaultVal: 'DEFAULT'},
-            {id: 'hostRotationStrategy', label: 'Host Rotation', type: 'select', options: ['', 'round-robin', 'random', 'failover-5x', 'failover-1x', 'failover-rr', 'rotate-1m', 'rotate-5m', 'rotate-15m', 'rotate-30m', 'rotate-1h'], col: 4},
+            {id: 'hostRotationStrategy', label: 'Host Rotation', type: 'select', options: ['', 'round-robin', 'random', 'failover-5x', 'failover-1x', 'failover-rr', 'rotate-1m', 'rotate-5m', 'rotate-15m', 'rotate-30m', 'rotate-1h'], col: 4, defaultVal: 'round-robin'},
             {id: 'dnsResolver', label: 'DNS Resolver', type: 'text', placeholder: 'host.example.com', col: 4},
             {id: 'maxRetryStrategy', label: 'Max Retry Strategy', type: 'text', placeholder: 'exit-10-5-5m', col: 4, defaultVal: 'exit-10-5-5m'}
         ]
@@ -1530,7 +1530,8 @@
                 if (f.type === 'select') {
                     html += '<select class="form-select" id="' + fid + '">';
                     (f.options || []).forEach(function(opt) {
-                        html += opt === '' ? '<option value="">Select...</option>' : '<option value="' + opt + '">' + opt + '</option>';
+                        var sel = (defaultVal && opt === defaultVal) ? ' selected' : '';
+                        html += opt === '' ? '<option value=""' + (defaultVal ? '' : ' selected') + '>Select...</option>' : '<option value="' + opt + '"' + sel + '>' + opt + '</option>';
                     });
                     html += '</select>';
                 } else {
