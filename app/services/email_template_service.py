@@ -8,24 +8,36 @@ from datetime import datetime
 from app import db
 from app.models.ia_email_template import IAEmailTemplateBatch, IAEmailTemplate
 from app.models.ia_business_intel import IABusinessIntel
-from app.models.ia_scan_job import IAScanJob
-from app.models.ia_fofa_search import IAFofaSearch
 from app.models.project import Project
+from app.services import discovery_service
 from app.services.openai_service import get_client
 
 _log = logging.getLogger(__name__)
 
 _MAX_CONTEXT_ITEMS = 20  # cap list items sent in the prompt
+_MAX_ASSETS_IN_PROMPT = 200  # cap total assets fed to the prompt builder
 
 
-def _build_prompt(project, intel, scan_results, fofa_results=None):
-    """Assemble the system prompt with all available context."""
+def _build_prompt(project, intel, assets, extras, sources):
+    """Assemble the system prompt from aggregated recon data.
+
+    Parameters
+    ----------
+    project : Project
+    intel : IABusinessIntel | None
+    assets : list[dict]
+        Unified asset list from discovery_service (each has ``sources`` list).
+    extras : dict
+        Non-asset findings (``emails``, ``breaches``).
+    sources : list[str]
+        Source tags that contributed data (e.g. ``['fofa', 'scanner']``).
+    """
     company = project.company
     company_name = company.name if company else 'Unknown'
     company_industry = company.industry if company else 'Unknown'
     company_desc = (company.description or '') if company else ''
 
-    # Build intel section (only non-empty fields)
+    # ── Intel section ───────────────────────────────────────────────
     intel_parts = []
     field_labels = {
         'company_overview': 'Company Overview',
@@ -46,87 +58,81 @@ def _build_prompt(project, intel, scan_results, fofa_results=None):
 
     intel_block = '\n\n'.join(intel_parts) if intel_parts else 'No business intelligence available.'
 
-    # Build scan findings section
-    scan_block = 'No scan data available.'
-    if scan_results:
+    # ── Recon findings (aggregated from all sources) ────────────────
+    recon_block = 'No recon data available.'
+
+    capped = assets[:_MAX_ASSETS_IN_PROMPT]
+    if capped or extras.get('emails') or extras.get('breaches'):
         parts = []
-        subs = scan_results.get('subdomains', [])
-        if subs:
-            shown = subs[:_MAX_CONTEXT_ITEMS]
-            parts.append(f"Subdomains ({len(subs)} total): {', '.join(str(s) for s in shown)}")
 
-        techs = scan_results.get('technologies', [])
+        # Source attribution
+        if sources:
+            parts.append(f"Data sources: {', '.join(sources)}")
+
+        # Hostnames / subdomains
+        all_hosts = set()
+        for a in capped:
+            all_hosts.update(a.get('hostnames', []))
+        if all_hosts:
+            shown = sorted(all_hosts)[:_MAX_CONTEXT_ITEMS]
+            parts.append(f"Subdomains/Hosts ({len(all_hosts)} total): {', '.join(shown)}")
+
+        # Domains
+        all_domains = {a.get('domain') for a in capped if a.get('domain')}
+        if all_domains:
+            shown = sorted(all_domains)[:_MAX_CONTEXT_ITEMS]
+            parts.append(f"Domains ({len(all_domains)} total): {', '.join(shown)}")
+
+        # Technologies (from asset tags + server headers)
+        techs = {}
+        for a in capped:
+            for t in a.get('technologies', []):
+                techs[t] = techs.get(t, 0) + 1
+            srv = a.get('server', '')
+            if srv:
+                techs[srv] = techs.get(srv, 0) + 1
         if techs:
-            shown = techs[:_MAX_CONTEXT_ITEMS]
-            tech_strs = []
-            for t in shown:
-                if isinstance(t, dict):
-                    tech_strs.append(t.get('name', str(t)))
-                else:
-                    tech_strs.append(str(t))
-            parts.append(f"Technologies: {', '.join(tech_strs)}")
+            top = sorted(techs.items(), key=lambda x: -x[1])[:_MAX_CONTEXT_ITEMS]
+            parts.append(f"Technologies/Servers: {', '.join(f'{t} ({c})' for t, c in top)}")
 
-        emails = scan_results.get('emails', [])
+        # Open ports / services
+        port_svc = {}
+        for a in capped:
+            p = a.get('port', '')
+            if p and p != '0':
+                svc = a.get('service') or a.get('protocol') or ''
+                label = f"{p}/{svc}" if svc else str(p)
+                port_svc[label] = port_svc.get(label, 0) + 1
+        if port_svc:
+            top = sorted(port_svc.items(), key=lambda x: -x[1])[:_MAX_CONTEXT_ITEMS]
+            parts.append(f"Open ports/services: {', '.join(f'{ps} ({c})' for ps, c in top)}")
+
+        # Page titles (from FOFA / future sources)
+        titles = {}
+        for a in capped:
+            t = a.get('title', '')
+            if t:
+                titles[t] = titles.get(t, 0) + 1
+        if titles:
+            top = sorted(titles.items(), key=lambda x: -x[1])[:_MAX_CONTEXT_ITEMS]
+            parts.append(f"Page titles: {', '.join(f'{t} ({c})' for t, c in top)}")
+
+        # Emails (extras — from scanner or future sources)
+        emails = extras.get('emails', [])
         if emails:
             shown = emails[:10]
             parts.append(f"Discovered emails ({len(emails)} total): {', '.join(str(e) for e in shown)}")
 
-        ports = scan_results.get('open_ports', [])
-        if ports:
-            shown = ports[:_MAX_CONTEXT_ITEMS]
-            port_strs = []
-            for p in shown:
-                if isinstance(p, dict):
-                    port_strs.append(f"{p.get('port', '?')}/{p.get('service', '?')}")
-                else:
-                    port_strs.append(str(p))
-            parts.append(f"Open ports/services: {', '.join(port_strs)}")
-
-        breaches = scan_results.get('breaches', [])
+        # Breaches (extras — from scanner or future sources)
+        breaches = extras.get('breaches', [])
         if breaches:
             parts.append(f"Breach records found: {len(breaches)}")
 
+        # Total asset count
+        parts.append(f"Total exposed assets: {len(assets)}")
+
         if parts:
-            scan_block = '\n'.join(parts)
-
-    # Build FOFA findings section
-    fofa_block = ''
-    if fofa_results:
-        fofa_parts = []
-        # Collect unique servers, titles, protocols
-        servers = {}
-        titles = {}
-        protocols = {}
-        domains_seen = set()
-        for item in fofa_results[:200]:  # cap to avoid huge prompts
-            srv = item.get('server', '')
-            if srv:
-                servers[srv] = servers.get(srv, 0) + 1
-            ttl = item.get('title', '')
-            if ttl:
-                titles[ttl] = titles.get(ttl, 0) + 1
-            proto = item.get('protocol', '')
-            if proto:
-                protocols[proto] = protocols.get(proto, 0) + 1
-            dom = item.get('domain', '')
-            if dom:
-                domains_seen.add(dom)
-
-        if domains_seen:
-            shown = sorted(domains_seen)[:_MAX_CONTEXT_ITEMS]
-            fofa_parts.append(f"Exposed domains ({len(domains_seen)} total): {', '.join(shown)}")
-        if servers:
-            top = sorted(servers.items(), key=lambda x: -x[1])[:_MAX_CONTEXT_ITEMS]
-            fofa_parts.append(f"Web servers/technologies: {', '.join(f'{s} ({c})' for s, c in top)}")
-        if titles:
-            top = sorted(titles.items(), key=lambda x: -x[1])[:_MAX_CONTEXT_ITEMS]
-            fofa_parts.append(f"Page titles: {', '.join(f'{t} ({c})' for t, c in top)}")
-        if protocols:
-            fofa_parts.append(f"Protocols: {', '.join(f'{p} ({c})' for p, c in sorted(protocols.items(), key=lambda x: -x[1]))}")
-        fofa_parts.append(f"Total exposed assets: {len(fofa_results)}")
-
-        if fofa_parts:
-            fofa_block = '\n\nFOFA OSINT FINDINGS (internet-facing asset discovery):\n' + '\n'.join(fofa_parts)
+            recon_block = '\n'.join(parts)
 
     prompt = f"""You are a red team social engineering specialist generating phishing email templates for an authorized security awareness engagement.
 
@@ -138,9 +144,8 @@ Description: {company_desc}
 BUSINESS INTELLIGENCE:
 {intel_block}
 
-RECON FINDINGS (from automated external surface scan):
-{scan_block}
-{fofa_block}
+AGGREGATED RECON FINDINGS (from {', '.join(sources) if sources else 'no sources'}):
+{recon_block}
 
 INSTRUCTIONS:
 Generate between 3 and 6 phishing email templates. For each template:
@@ -169,7 +174,7 @@ Return ONLY a JSON array with this exact schema (no markdown, no preamble):
     return prompt
 
 
-def run_generation(batch_id, project_id, scan_job_id=None):
+def run_generation(batch_id, project_id):
     """Execute the email template generation pipeline. Updates the batch record in-place."""
     batch = IAEmailTemplateBatch.query.get(batch_id)
     if not batch:
@@ -183,46 +188,24 @@ def run_generation(batch_id, project_id, scan_job_id=None):
         # Load business intel
         intel = IABusinessIntel.query.filter_by(project_id=project_id).first()
 
-        # Load scan results
-        scan_results = None
-        if scan_job_id:
-            job = IAScanJob.query.get(scan_job_id)
-            if job and job.raw_results:
-                scan_results = json.loads(job.raw_results)
-        else:
-            # Use most recent completed scan for this project
-            job = (IAScanJob.query
-                   .filter_by(project_id=project_id, status='completed')
-                   .order_by(IAScanJob.completed_at.desc())
-                   .first())
-            if job and job.raw_results:
-                scan_results = json.loads(job.raw_results)
-                batch.scan_job_id = job.id
+        # Aggregate all recon data
+        data = discovery_service.aggregate_assets(project_id)
+        assets = data['assets']
+        extras = data['extras']
+        sources = data['sources']
 
-        # Load FOFA results (aggregate all completed searches for this project)
-        fofa_results = []
-        fofa_searches = (
-            IAFofaSearch.query
-            .filter_by(project_id=project_id, status='completed')
-            .all()
-        )
-        for fs in fofa_searches:
-            if fs.raw_results:
-                try:
-                    fofa_results.extend(json.loads(fs.raw_results))
-                except (json.JSONDecodeError, TypeError):
-                    pass
+        # Record which sources fed this batch
+        batch.data_sources = json.dumps(sources)
 
         # Build prompt and call LLM
-        prompt = _build_prompt(project, intel, scan_results,
-                               fofa_results=fofa_results or None)
+        prompt = _build_prompt(project, intel, assets, extras, sources)
         client, deployment = get_client()
+        from app.services.openai_service import completion_kwargs
 
         response = client.chat.completions.create(
             model=deployment,
             messages=[{'role': 'user', 'content': prompt}],
-            max_tokens=8000,
-            temperature=0.7,
+            **completion_kwargs(max_tokens=8000, temperature=0.7),
         )
         content = response.choices[0].message.content
 

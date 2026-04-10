@@ -83,11 +83,12 @@ Return your response as valid JSON with this structure:
 
 Make this unique and tailored specifically to {category}. Avoid generic, cookie-cutter designs.{extra_hint}"""
 
+    from app.services.openai_service import completion_kwargs
+
     response = client.chat.completions.create(
         model=deployment,
         messages=[{"role": "user", "content": planning_prompt}],
-        max_tokens=4000,
-        temperature=0.7,
+        **completion_kwargs(max_tokens=4000, temperature=0.7),
     )
 
     content = response.choices[0].message.content

@@ -828,10 +828,73 @@
                                     <input type="text" class="form-control" id="openai-endpoint" placeholder="https://swedencentral.api.cognitive.microsoft.com/">
                                     <small class="text-muted" id="openai-endpoint-status"></small>
                                 </div>
-                                <div class="col-md-4">
+                                <div class="col-md-2">
                                     <label class="form-label">Deployment <small class="text-muted">(optional)</small></label>
                                     <input type="text" class="form-control" id="openai-deployment" placeholder="model-router">
                                     <small class="text-muted" id="openai-deployment-status"></small>
+                                </div>
+                                <div class="col-md-2">
+                                    <label class="form-label">API Version <small class="text-muted">(optional)</small></label>
+                                    <input type="text" class="form-control" id="openai-api-version" placeholder="2025-01-01-preview" title="Set to 'none' to omit from requests">
+                                    <small class="text-muted" id="openai-api-version-status"></small>
+                                </div>
+                                <div class="col-12 mt-2">
+                                    <a class="small text-muted" data-bs-toggle="collapse" href="#openai-advanced" role="button">
+                                        <i class="bi bi-gear"></i> Advanced parameters
+                                    </a>
+                                </div>
+                                <div class="collapse col-12" id="openai-advanced">
+                                    <div class="row g-3 mt-0">
+                                        <div class="col-md-2">
+                                            <label class="form-label">Token Param</label>
+                                            <select class="form-select" id="openai-token-param">
+                                                <option value="">max_tokens (default)</option>
+                                                <option value="max_completion_tokens">max_completion_tokens</option>
+                                                <option value="none">none (omit)</option>
+                                            </select>
+                                            <small class="text-muted" id="openai-token-param-status"></small>
+                                        </div>
+                                        <div class="col-md-2">
+                                            <label class="form-label">Temperature</label>
+                                            <input type="number" class="form-control" id="openai-temperature" placeholder="default" min="0" max="2" step="0.1">
+                                            <small class="text-muted" id="openai-temperature-status"></small>
+                                        </div>
+                                        <div class="col-md-2">
+                                            <label class="form-label">Top P</label>
+                                            <input type="number" class="form-control" id="openai-top-p" placeholder="default" min="0" max="1" step="0.05">
+                                            <small class="text-muted" id="openai-top-p-status"></small>
+                                        </div>
+                                        <div class="col-md-2">
+                                            <label class="form-label">Frequency Penalty</label>
+                                            <input type="number" class="form-control" id="openai-frequency-penalty" placeholder="default" min="-2" max="2" step="0.1">
+                                            <small class="text-muted" id="openai-frequency-penalty-status"></small>
+                                        </div>
+                                        <div class="col-md-2">
+                                            <label class="form-label">Presence Penalty</label>
+                                            <input type="number" class="form-control" id="openai-presence-penalty" placeholder="default" min="-2" max="2" step="0.1">
+                                            <small class="text-muted" id="openai-presence-penalty-status"></small>
+                                        </div>
+                                        <div class="col-md-2">
+                                            <label class="form-label">Reasoning Effort</label>
+                                            <select class="form-select" id="openai-reasoning-effort">
+                                                <option value="">default (off)</option>
+                                                <option value="low">low</option>
+                                                <option value="medium">medium</option>
+                                                <option value="high">high</option>
+                                            </select>
+                                            <small class="text-muted" id="openai-reasoning-effort-status"></small>
+                                        </div>
+                                        <div class="col-md-2">
+                                            <label class="form-label">Timeout <small class="text-muted">(seconds)</small></label>
+                                            <input type="number" class="form-control" id="openai-timeout" placeholder="default" min="1" step="1">
+                                            <small class="text-muted" id="openai-timeout-status"></small>
+                                        </div>
+                                        <div class="col-md-2">
+                                            <label class="form-label">Max Retries</label>
+                                            <input type="number" class="form-control" id="openai-max-retries" placeholder="default" min="0" step="1">
+                                            <small class="text-muted" id="openai-max-retries-status"></small>
+                                        </div>
+                                    </div>
                                 </div>
                                 <div class="col-12">
                                     <button class="btn btn-sm btn-outline-primary" onclick="saveOpenAICredentials()"><i class="bi bi-pencil"></i> Update</button>
@@ -2118,25 +2181,50 @@
 
     // --- OpenAI ---
 
+    // OpenAI field definitions: { key, elId, type: 'text'|'select' }
+    const _OAI_TEXT_FIELDS = [
+        'api_key', 'endpoint', 'deployment', 'api_version',
+        'temperature', 'top_p', 'frequency_penalty', 'presence_penalty',
+        'timeout', 'max_retries',
+    ];
+    const _OAI_SELECT_FIELDS = ['token_param', 'reasoning_effort'];
+
+    function _oaiElId(key) { return 'openai-' + key.replace(/_/g, '-'); }
+
     function loadOpenAIStatus() {
         fetch('/api/credentials/openai')
             .then(r => r.json())
             .then(data => {
                 const creds = data.openai || {};
-                if (creds.api_key) {
-                    document.getElementById('openai-api-key').placeholder = creds.api_key.masked;
-                    document.getElementById('openai-api-key-status').textContent =
-                        'Last updated: ' + new Date(creds.api_key.updated_at).toLocaleString();
-                }
-                if (creds.endpoint) {
-                    document.getElementById('openai-endpoint').placeholder = creds.endpoint.masked;
-                    document.getElementById('openai-endpoint-status').textContent =
-                        'Last updated: ' + new Date(creds.endpoint.updated_at).toLocaleString();
-                }
-                if (creds.deployment) {
-                    document.getElementById('openai-deployment').placeholder = creds.deployment.masked;
-                    document.getElementById('openai-deployment-status').textContent =
-                        'Last updated: ' + new Date(creds.deployment.updated_at).toLocaleString();
+                // Text/number inputs — set placeholder from masked value
+                _OAI_TEXT_FIELDS.forEach(key => {
+                    if (!creds[key]) return;
+                    const el = document.getElementById(_oaiElId(key));
+                    const st = document.getElementById(_oaiElId(key) + '-status');
+                    if (el) el.placeholder = creds[key].masked;
+                    if (st) st.textContent = 'Last updated: ' + new Date(creds[key].updated_at).toLocaleString();
+                });
+                // Selects — fetch actual value to match option
+                _OAI_SELECT_FIELDS.forEach(key => {
+                    if (!creds[key]) return;
+                    const st = document.getElementById(_oaiElId(key) + '-status');
+                    if (st) st.textContent = 'Last updated: ' + new Date(creds[key].updated_at).toLocaleString();
+                    fetch('/api/credentials/openai/' + key)
+                        .then(r => r.ok ? r.json() : null)
+                        .then(d => {
+                            if (!d) return;
+                            const sel = document.getElementById(_oaiElId(key));
+                            if (sel) for (const opt of sel.options) {
+                                if (opt.value === d.value) { opt.selected = true; break; }
+                            }
+                        }).catch(() => {});
+                });
+                // Expand advanced section if any advanced param is configured
+                const advKeys = ['token_param', 'temperature', 'top_p', 'frequency_penalty',
+                                 'presence_penalty', 'reasoning_effort', 'timeout', 'max_retries'];
+                if (advKeys.some(k => creds[k])) {
+                    const adv = document.getElementById('openai-advanced');
+                    if (adv && !adv.classList.contains('show')) adv.classList.add('show');
                 }
             })
             .catch(err => console.error('Failed to load OpenAI credentials:', err));
@@ -2144,12 +2232,16 @@
 
     function saveOpenAICredentials() {
         const body = {};
-        const apiKey    = document.getElementById('openai-api-key').value;
-        const endpoint  = document.getElementById('openai-endpoint').value;
-        const deployment = document.getElementById('openai-deployment').value;
-        if (apiKey)    body.api_key    = apiKey;
-        if (endpoint)  body.endpoint   = endpoint;
-        if (deployment) body.deployment = deployment;
+        // Text/number inputs
+        _OAI_TEXT_FIELDS.forEach(key => {
+            const val = document.getElementById(_oaiElId(key))?.value;
+            if (val) body[key] = val;
+        });
+        // Select inputs
+        _OAI_SELECT_FIELDS.forEach(key => {
+            const val = document.getElementById(_oaiElId(key))?.value;
+            if (val) body[key] = val;
+        });
 
         if (Object.keys(body).length === 0) {
             showToast('Enter at least one value to save.', 'warning');
@@ -2165,9 +2257,14 @@
         .then(data => {
             if (data.saved) {
                 showToast('OpenAI credentials saved.');
-                document.getElementById('openai-api-key').value = '';
-                document.getElementById('openai-endpoint').value = '';
-                document.getElementById('openai-deployment').value = '';
+                _OAI_TEXT_FIELDS.forEach(key => {
+                    const el = document.getElementById(_oaiElId(key));
+                    if (el) el.value = '';
+                });
+                _OAI_SELECT_FIELDS.forEach(key => {
+                    const el = document.getElementById(_oaiElId(key));
+                    if (el) el.selectedIndex = 0;
+                });
                 loadOpenAIStatus();
                 loadConfigBadges();
             } else {
