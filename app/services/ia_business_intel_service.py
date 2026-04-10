@@ -63,14 +63,15 @@ Return ONLY a JSON object with these 9 keys. Every value must be a string (use n
 
     client, deployment = get_client()
 
+    from app.services.openai_service import completion_kwargs
+
     response = client.chat.completions.create(
         model=deployment,
         messages=[
             {'role': 'system', 'content': prompt},
             {'role': 'user', 'content': raw_text[:15000]},  # cap to stay within context
         ],
-        max_tokens=4000,
-        temperature=0.2,
+        **completion_kwargs(max_tokens=4000, temperature=0.2),
     )
 
     content = response.choices[0].message.content

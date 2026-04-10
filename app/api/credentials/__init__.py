@@ -219,12 +219,12 @@ def _test_cobaltstrike(label='default'):
 
 
 def _test_openai():
-    from app.services import website_generator_service
-    client, deployment = website_generator_service._get_client()
+    from app.services.openai_service import get_client, completion_kwargs
+    client, deployment = get_client()
     response = client.chat.completions.create(
         model=deployment,
         messages=[{"role": "user", "content": "Say 'ok' in one word."}],
-        max_tokens=5,
+        **completion_kwargs(max_tokens=5, temperature=0.1),
     )
     return {'status': 'ok', 'model': deployment, 'reply': response.choices[0].message.content.strip()}
 
