@@ -142,7 +142,7 @@ def test_credentials(provider):
         return jsonify({'success': True, 'result': result})
     except Exception as e:
         _log.warning('Credential test failed for provider %s: %s', provider, e)
-        return jsonify({'success': False, 'error': 'Connection test failed'}), 400
+        return jsonify({'success': False, 'error': str(e) or 'Connection test failed'}), 400
 
 
 _PUBLIC_CREDENTIAL_KEYS = {

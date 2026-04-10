@@ -1160,12 +1160,12 @@
             if (resultEl) {
                 resultEl.innerHTML = data.success
                     ? '<span class="text-success"><i class="bi bi-check-circle-fill"></i> ' + escHtml(data.result?.account || 'OK') + '</span>'
-                    : '<span class="text-danger"><i class="bi bi-x-circle-fill"></i></span>';
+                    : '<span class="text-danger"><i class="bi bi-x-circle-fill"></i> ' + escHtml(data.error || 'Failed') + '</span>';
             }
         })
         .catch(() => {
             if (btn) btn.disabled = false;
-            if (resultEl) resultEl.innerHTML = '<span class="text-danger"><i class="bi bi-x-circle-fill"></i></span>';
+            if (resultEl) resultEl.innerHTML = '<span class="text-danger"><i class="bi bi-x-circle-fill"></i> Request failed</span>';
         });
     }
 
@@ -1295,12 +1295,12 @@
             if (resultEl) {
                 resultEl.innerHTML = data.success
                     ? `<span class="text-success"><i class="bi bi-check-circle-fill"></i> ${escHtml(data.result?.resource_group_count ?? '')} RGs</span>`
-                    : '<span class="text-danger"><i class="bi bi-x-circle-fill"></i></span>';
+                    : '<span class="text-danger"><i class="bi bi-x-circle-fill"></i> ' + escHtml(data.error || 'Failed') + '</span>';
             }
         })
         .catch(() => {
             if (btn) btn.disabled = false;
-            if (resultEl) resultEl.innerHTML = '<span class="text-danger"><i class="bi bi-x-circle-fill"></i></span>';
+            if (resultEl) resultEl.innerHTML = '<span class="text-danger"><i class="bi bi-x-circle-fill"></i> Request failed</span>';
         });
     }
 
@@ -1418,12 +1418,12 @@
             if (resultEl) {
                 resultEl.innerHTML = data.success
                     ? '<span class="text-success"><i class="bi bi-check-circle-fill"></i></span>'
-                    : '<span class="text-danger"><i class="bi bi-x-circle-fill"></i></span>';
+                    : '<span class="text-danger"><i class="bi bi-x-circle-fill"></i> ' + escHtml(data.error || 'Failed') + '</span>';
             }
         })
         .catch(() => {
             if (btn) btn.disabled = false;
-            if (resultEl) resultEl.innerHTML = '<span class="text-danger"><i class="bi bi-x-circle-fill"></i></span>';
+            if (resultEl) resultEl.innerHTML = '<span class="text-danger"><i class="bi bi-x-circle-fill"></i> Request failed</span>';
         });
     }
 
@@ -1974,12 +1974,12 @@
             if (resultEl) {
                 resultEl.innerHTML = data.success
                     ? '<span class="text-success"><i class="bi bi-check-circle-fill"></i> ' + escHtml(String(data.result?.listener_count ?? 0)) + ' listeners</span>'
-                    : '<span class="text-danger"><i class="bi bi-x-circle-fill"></i> Failed</span>';
+                    : '<span class="text-danger"><i class="bi bi-x-circle-fill"></i> ' + escHtml(data.error || 'Failed') + '</span>';
             }
         })
         .catch(() => {
             if (btn) btn.disabled = false;
-            if (resultEl) resultEl.innerHTML = '<span class="text-danger"><i class="bi bi-x-circle-fill"></i></span>';
+            if (resultEl) resultEl.innerHTML = '<span class="text-danger"><i class="bi bi-x-circle-fill"></i> Request failed</span>';
         });
     }
 
