@@ -15,7 +15,6 @@ class IAEmailTemplateBatch(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     project_id = db.Column(db.Integer, db.ForeignKey('projects.id'), nullable=False, index=True)
-    scan_job_id = db.Column(db.Integer, db.ForeignKey('ia_scan_jobs.id'), nullable=True)  # legacy — kept for backward compat
     data_sources = db.Column(db.Text)  # JSON array: ["scanner", "fofa", ...]
     status = db.Column(db.String(20), nullable=False, default='pending')
     error_message = db.Column(db.Text)
@@ -23,7 +22,6 @@ class IAEmailTemplateBatch(db.Model):
     generated_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     project = db.relationship('Project', foreign_keys=[project_id])
-    scan_job = db.relationship('IAScanJob', foreign_keys=[scan_job_id])
     generated_by = db.relationship('User', foreign_keys=[generated_by_id])
     templates = db.relationship('IAEmailTemplate', back_populates='batch', cascade='all, delete-orphan',
                                 order_by='IAEmailTemplate.relevance_score.desc()')
@@ -41,7 +39,6 @@ class IAEmailTemplateBatch(db.Model):
         d = {
             'id': self.id,
             'project_id': self.project_id,
-            'scan_job_id': self.scan_job_id,
             'data_sources': self.parsed_data_sources,
             'status': self.status,
             'error_message': self.error_message,
