@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <!-- Shield body -->
+  <path d="M16 2 L28 7 L28 17 C28 23.5 22.5 28.5 16 30 C9.5 28.5 4 23.5 4 17 L4 7 Z"
+        fill="#dc2626" stroke="#991b1b" stroke-width="1.5"/>
+  <!-- Inner shield highlight -->
+  <path d="M16 5.5 L25.5 9.5 L25.5 17 C25.5 22 21.5 26.2 16 27.5 C10.5 26.2 6.5 22 6.5 17 L6.5 9.5 Z"
+        fill="#b91c1c" opacity="0.5"/>
+  <!-- C letter -->
+  <text x="16" y="21" font-family="sans-serif" font-weight="700" font-size="13"
+        fill="white" text-anchor="middle">C</text>
+</svg>
