@@ -73,6 +73,26 @@ def ia_delete_template_batch(batch_id):
     return jsonify({'ok': True})
 
 
+# ── Data-source summary (pre-generation check) ────────────────────────
+
+@api_bp.route('/ia/email-templates/sources', methods=['GET'])
+@login_required
+@feature_required('initial_access')
+def ia_template_data_sources():
+    """Return which recon sources have data for the active project."""
+    from app.services import discovery_service
+
+    project = get_active_project(current_user)
+    if not project:
+        return jsonify({'error': 'No active project selected'}), 400
+
+    data = discovery_service.aggregate_assets(project.id)
+    return jsonify({
+        'sources': data['sources'],
+        'summary': data['summary'],
+    })
+
+
 # ── Generation ──────────────────────────────────────────────────────────
 
 @api_bp.route('/ia/email-templates/generate', methods=['POST'])
@@ -87,12 +107,8 @@ def ia_generate_templates():
     if not current_user.can_write_infra:
         return jsonify({'error': 'Write access required'}), 403
 
-    data = request.get_json(silent=True) or {}
-    scan_job_id = data.get('scan_job_id')
-
     batch = IAEmailTemplateBatch(
         project_id=project.id,
-        scan_job_id=scan_job_id,
         status='pending',
         generated_by_id=current_user.id,
     )
@@ -100,11 +116,11 @@ def ia_generate_templates():
     db.session.commit()
 
     audit_service.log('ia.email_generate', 'ia_email_template_batch', batch.id,
-                      f'project:{project.code}', {'scan_job_id': scan_job_id})
+                      f'project:{project.code}', {})
 
     # Dispatch Celery task
     from app.tasks.initial_access_tasks import generate_email_templates_task
-    result = generate_email_templates_task.delay(batch.id, project.id, scan_job_id)
+    result = generate_email_templates_task.delay(batch.id, project.id)
 
     return jsonify({
         'batch_id': batch.id,
