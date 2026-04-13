@@ -15,7 +15,8 @@ class IAEmailTemplateBatch(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     project_id = db.Column(db.Integer, db.ForeignKey('projects.id'), nullable=False, index=True)
-    scan_job_id = db.Column(db.Integer, db.ForeignKey('ia_scan_jobs.id'), nullable=True)
+    scan_job_id = db.Column(db.Integer, db.ForeignKey('ia_scan_jobs.id'), nullable=True)  # legacy — kept for backward compat
+    data_sources = db.Column(db.Text)  # JSON array: ["scanner", "fofa", ...]
     status = db.Column(db.String(20), nullable=False, default='pending')
     error_message = db.Column(db.Text)
     generated_by_id = db.Column(db.Integer, db.ForeignKey('users.id'))
@@ -27,11 +28,21 @@ class IAEmailTemplateBatch(db.Model):
     templates = db.relationship('IAEmailTemplate', back_populates='batch', cascade='all, delete-orphan',
                                 order_by='IAEmailTemplate.relevance_score.desc()')
 
+    @property
+    def parsed_data_sources(self):
+        if not self.data_sources:
+            return []
+        try:
+            return json.loads(self.data_sources)
+        except (json.JSONDecodeError, TypeError):
+            return []
+
     def to_dict(self, include_templates=False):
         d = {
             'id': self.id,
             'project_id': self.project_id,
             'scan_job_id': self.scan_job_id,
+            'data_sources': self.parsed_data_sources,
             'status': self.status,
             'error_message': self.error_message,
             'generated_by': self.generated_by.display_name if self.generated_by else None,

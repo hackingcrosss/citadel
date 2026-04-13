@@ -56,11 +56,11 @@ def sync_active_campaigns(self):
 
 
 @celery.task(bind=True, max_retries=0, time_limit=300, soft_time_limit=270)
-def generate_email_templates_task(self, batch_id, project_id, scan_job_id=None):
+def generate_email_templates_task(self, batch_id, project_id):
     """Generate AI-powered phishing email templates for a batch."""
     from app.services import email_template_service
 
-    email_template_service.run_generation(batch_id, project_id, scan_job_id)
+    email_template_service.run_generation(batch_id, project_id)
     return {'batch_id': batch_id, 'status': 'completed'}
 
 
