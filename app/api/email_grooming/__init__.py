@@ -346,13 +346,16 @@ def email_grooming_domain_stats():
             EmailGroomingConfig.domain_id.in_(allowed_ids)
         ).with_entities(EmailGroomingConfig.id).all()} if allowed_ids else set()
 
+    # Exclude rows with missing/malformed from_address (would produce blank-domain ghost row)
+    valid_sender = EmailGroomingLog.from_address.isnot(None) & EmailGroomingLog.from_address.like('%@%')
+
     # Total counts per sender domain
     total_q = db.session.query(
         sender_domain.label('domain'),
         func.count().label('total'),
         func.sum(db.case((EmailGroomingLog.success == True, 1), else_=0)).label('success'),
         func.sum(db.case((EmailGroomingLog.success == False, 1), else_=0)).label('failed'),
-    )
+    ).filter(valid_sender)
     if allowed_config_ids is not None:
         total_q = total_q.filter(EmailGroomingLog.config_id.in_(allowed_config_ids)) if allowed_config_ids else total_q.filter(db.false())
     total_rows = total_q.group_by(sender_domain).order_by(func.count().desc()).all()
@@ -363,7 +366,7 @@ def email_grooming_domain_stats():
         func.count().label('total'),
         func.sum(db.case((EmailGroomingLog.success == True, 1), else_=0)).label('success'),
         func.sum(db.case((EmailGroomingLog.success == False, 1), else_=0)).label('failed'),
-    ).filter(EmailGroomingLog.sent_at >= today_start)
+    ).filter(valid_sender, EmailGroomingLog.sent_at >= today_start)
     if allowed_config_ids is not None:
         today_q = today_q.filter(EmailGroomingLog.config_id.in_(allowed_config_ids)) if allowed_config_ids else today_q.filter(db.false())
     today_rows = today_q.group_by(sender_domain).order_by(func.count().desc()).all()
