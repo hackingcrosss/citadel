@@ -150,6 +150,22 @@ def ia_template_generation_status(task_id):
 
 # ── Individual templates ────────────────────────────────────────────────
 
+@api_bp.route('/ia/email-templates/<int:template_id>', methods=['GET'])
+@login_required
+@feature_required('initial_access')
+def ia_get_template(template_id):
+    """Get a single email template."""
+    project = get_active_project(current_user)
+    if not project:
+        return jsonify({'error': 'No active project selected'}), 400
+
+    tpl = IAEmailTemplate.query.get(template_id)
+    if not tpl or tpl.project_id != project.id:
+        return jsonify({'error': 'Template not found'}), 404
+
+    return jsonify({'template': tpl.to_dict()})
+
+
 @api_bp.route('/ia/email-templates/<int:template_id>', methods=['PATCH'])
 @login_required
 @feature_required('initial_access')
