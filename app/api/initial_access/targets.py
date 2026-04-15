@@ -104,6 +104,29 @@ def ia_get_target(target_id):
     return jsonify(target.to_dict())
 
 
+@api_bp.route('/ia/targets/<int:target_id>/campaigns', methods=['GET'])
+@login_required
+@feature_required('initial_access')
+def ia_target_campaigns(target_id):
+    """List campaigns that include this target."""
+    target = ia_target_service.get_target(target_id)
+    if not target:
+        return jsonify({'error': 'Target not found'}), 404
+
+    project = _require_active_project()
+    if not project or target.project_id != project.id:
+        if not current_user.is_admin:
+            return jsonify({'error': 'Access denied'}), 403
+
+    campaigns = [
+        {'id': c.id, 'name': c.name, 'vector': c.vector, 'status': c.status,
+         'emails_sent': c.emails_sent, 'opens_count': c.opens_count,
+         'clicks_count': c.clicks_count, 'creds_captured': c.creds_captured}
+        for c in target.campaigns.all()
+    ]
+    return jsonify({'campaigns': campaigns})
+
+
 @api_bp.route('/ia/targets/<int:target_id>', methods=['PATCH'])
 @login_required
 @feature_required('initial_access')

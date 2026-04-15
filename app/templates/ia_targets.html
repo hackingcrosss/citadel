@@ -536,8 +536,46 @@
             html += `<div class="text-center text-muted py-3"><i class="bi bi-info-circle"></i> No OSINT data. Click <strong>Enrich</strong> to match against scan results.</div>`;
         }
 
+        html += `<div class="mb-3" id="target-campaigns-section">
+            <strong><i class="bi bi-bullseye"></i> Campaigns</strong>
+            <div id="target-campaigns-body" class="mt-1"><small class="text-muted">Loading...</small></div>
+        </div>`;
+
         document.getElementById('detail-body').innerHTML = html;
         new bootstrap.Modal(document.getElementById('detailModal')).show();
+        loadTargetCampaigns(id);
+    }
+
+    async function loadTargetCampaigns(targetId) {
+        const container = document.getElementById('target-campaigns-body');
+        try {
+            const resp = await fetch(`/api/ia/targets/${targetId}/campaigns`);
+            if (!resp.ok) throw new Error('Failed to load');
+            const data = await resp.json();
+            const campaigns = data.campaigns || [];
+
+            if (!campaigns.length) {
+                container.innerHTML = '<small class="text-muted">Not assigned to any campaigns.</small>';
+                return;
+            }
+
+            const statusMap = {draft:'bg-secondary', active:'bg-success', paused:'bg-warning text-dark',
+                               completed:'bg-primary', archived:'bg-dark'};
+            container.innerHTML = `<table class="table table-sm mb-0">
+                <thead><tr><th>Campaign</th><th>Vector</th><th>Status</th><th>Sent</th><th>Opens</th><th>Clicks</th><th>Creds</th></tr></thead>
+                <tbody>${campaigns.map(c => `<tr>
+                    <td>${escapeHtml(c.name)}</td>
+                    <td>${escapeHtml(c.vector)}</td>
+                    <td><span class="badge ${statusMap[c.status] || 'bg-secondary'}">${escapeHtml(c.status)}</span></td>
+                    <td>${c.emails_sent || 0}</td>
+                    <td>${c.opens_count || 0}</td>
+                    <td>${c.clicks_count || 0}</td>
+                    <td>${c.creds_captured || 0}</td>
+                </tr>`).join('')}</tbody>
+            </table>`;
+        } catch (e) {
+            container.innerHTML = '<small class="text-danger">Failed to load campaigns.</small>';
+        }
     }
 
     // ── CSV Import ─────────────────────────────────────────────────────

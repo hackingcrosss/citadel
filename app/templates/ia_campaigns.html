@@ -54,9 +54,8 @@
             <thead>
                 <tr>
                     <th>Name</th>
-                    <th>Vector</th>
+                    <th>Source</th>
                     <th>Status</th>
-                    <th>Domain</th>
                     <th>Targets</th>
                     <th>Sent</th>
                     <th>Opens</th>
@@ -66,7 +65,7 @@
                 </tr>
             </thead>
             <tbody id="campaigns-tbody">
-                <tr><td colspan="10" class="text-center text-muted py-3">Loading...</td></tr>
+                <tr><td colspan="9" class="text-center text-muted py-3">Loading...</td></tr>
             </tbody>
         </table>
         </div>
@@ -252,6 +251,45 @@
     </div>
 </div>
 
+
+<!-- GoPhish Campaign Detail -->
+<div id="gp-detail-panel" class="d-none">
+    <div class="card-custom mb-4">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <span><i class="bi bi-fish"></i> GoPhish — <span id="gp-detail-name"></span></span>
+            <button class="btn btn-sm btn-outline-secondary" onclick="document.getElementById('gp-detail-panel').classList.add('d-none')">
+                <i class="bi bi-x-lg"></i> Close
+            </button>
+        </div>
+        <div class="card-body">
+            <ul class="nav nav-tabs mb-3">
+                <li class="nav-item"><button class="nav-link active" onclick="showGpDetailTab('summary')" id="gp-tab-summary">Summary</button></li>
+                <li class="nav-item"><button class="nav-link" onclick="showGpDetailTab('timeline')" id="gp-tab-timeline">Timeline</button></li>
+                <li class="nav-item"><button class="nav-link" onclick="showGpDetailTab('results')" id="gp-tab-results">Results</button></li>
+            </ul>
+            <div id="gp-panel-summary">
+                <div class="row g-3" id="gp-summary-content"></div>
+            </div>
+            <div id="gp-panel-timeline" class="d-none">
+                <div class="table-responsive">
+                <table class="table table-sm mb-0">
+                    <thead><tr><th>Time</th><th>Email</th><th>Message</th></tr></thead>
+                    <tbody id="gp-timeline-tbody"></tbody>
+                </table>
+                </div>
+            </div>
+            <div id="gp-panel-results" class="d-none">
+                <div class="table-responsive">
+                <table class="table table-sm mb-0">
+                    <thead><tr><th>Name</th><th>Email</th><th>Position</th><th>Status</th></tr></thead>
+                    <tbody id="gp-results-tbody"></tbody>
+                </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
 {% endif %}
 
 <!-- Create Campaign Modal -->
@@ -405,70 +443,127 @@
     const IS_READONLY = IS_VIEWER || IS_WHITE_TEAM;
 
     let _campaigns = [];
+    let _gpCampaigns = [];
     let _currentCampaignId = null;
     let _availableDomains = [];
     let _allProjectTargets = [];
 
-    // ── Load campaigns ─────────────────────────────────────────────────
+    // ── Load campaigns (merged: Frontline + GoPhish-only) ────────────
     async function loadCampaigns() {
         const tbody = document.getElementById('campaigns-tbody');
         const status = document.getElementById('status-filter')?.value || '';
         const qs = status ? `?status=${encodeURIComponent(status)}` : '';
 
         try {
-            const resp = await fetch(`/api/ia/campaigns${qs}`);
-            if (!resp.ok) throw new Error(await resp.text());
-            const data = await resp.json();
-            _campaigns = data.campaigns || [];
+            // Fetch both sources in parallel
+            const [flResp, gpResp] = await Promise.all([
+                fetch(`/api/ia/campaigns${qs}`),
+                fetch('/api/gophish/campaigns').catch(() => null),
+            ]);
 
+            if (!flResp.ok) throw new Error(await flResp.text());
+            const flData = await flResp.json();
+            const frontlineCampaigns = flData.campaigns || [];
+
+            // GoPhish campaigns — filter out ones already linked from Frontline
+            let gpOnlyCampaigns = [];
+            if (gpResp && gpResp.ok) {
+                const gpData = await gpResp.json();
+                _gpCampaigns = gpData.campaigns || [];
+                const linkedGpIds = new Set(frontlineCampaigns.map(c => c.gophish_campaign_id).filter(Boolean));
+                gpOnlyCampaigns = _gpCampaigns.filter(c => !linkedGpIds.has(c.id));
+            }
+
+            // Normalize GoPhish-only campaigns into unified format
+            const gpNormalized = gpOnlyCampaigns.map(c => {
+                const gpStatus = (c.status || '').toLowerCase();
+                const statusMap = {'completed': 'completed', 'queued': 'active', 'in progress': 'active'};
+                return {
+                    _source: 'gophish',
+                    _gp_id: c.id,
+                    id: null,
+                    name: c.name || `GoPhish #${c.id}`,
+                    status: statusMap[gpStatus] || gpStatus || 'active',
+                    _gp_status: c.status,
+                    targets_count: (c.results || []).length,
+                    emails_sent: (c.timeline || []).filter(e => e.message === 'Email Sent').length,
+                    opens_count: (c.timeline || []).filter(e => e.message === 'Email Opened').length,
+                    clicks_count: (c.timeline || []).filter(e => e.message === 'Clicked Link').length,
+                    creds_captured: (c.timeline || []).filter(e => e.message === 'Submitted Data').length,
+                    gp_template_name: c.template?.name || null,
+                    created_date: c.created_date,
+                };
+            });
+
+            // Tag Frontline campaigns
+            const flTagged = frontlineCampaigns.map(c => ({...c, _source: 'frontline'}));
+
+            // Merge and apply status filter to GP-only campaigns
+            let merged = [...flTagged, ...gpNormalized];
+            if (status) {
+                merged = merged.filter(c => c.status === status);
+            }
+
+            _campaigns = merged;
             updateStats(_campaigns);
             document.getElementById('campaign-count-badge').textContent = _campaigns.length;
 
             if (!_campaigns.length) {
-                tbody.innerHTML = '<tr><td colspan="10" class="text-center text-muted py-3">No campaigns yet. Create your first campaign above.</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="9" class="text-center text-muted py-3">No campaigns yet. Create your first campaign above.</td></tr>';
                 return;
             }
 
             tbody.innerHTML = _campaigns.map(c => {
+                const isGpOnly = c._source === 'gophish';
                 const statusBadge = _statusBadge(c.status);
-                const vectorBadge = _vectorBadge(c.vector);
+                const srcBadge = isGpOnly
+                    ? '<span class="badge bg-dark" style="font-size:0.65rem"><i class="bi bi-fish"></i> GoPhish</span>'
+                    : '<span class="badge bg-secondary" style="font-size:0.65rem"><i class="bi bi-bullseye"></i> Frontline</span>';
 
-                let actions = `<button class="btn btn-sm btn-outline-primary" onclick="viewCampaign(${c.id})" title="View"><i class="bi bi-eye"></i></button>`;
-                if (!IS_READONLY) {
-                    if (c.status === 'draft' || c.status === 'paused') {
-                        actions += ` <button class="btn btn-sm btn-outline-secondary" onclick="editCampaign(${c.id})" title="Edit"><i class="bi bi-pencil"></i></button>`;
-                        actions += ` <button class="btn btn-sm btn-outline-success" onclick="launchCampaign(${c.id})" title="Launch"><i class="bi bi-rocket-takeoff"></i></button>`;
-                    }
-                    if (c.status === 'active') {
-                        actions += ` <button class="btn btn-sm btn-outline-info" onclick="syncSingle(${c.id})" title="Sync"><i class="bi bi-arrow-repeat"></i></button>`;
-                    }
-                    if (c.vector !== 'phishing' || c.status === 'active') {
-                        actions += ` <button class="btn btn-sm btn-outline-warning" onclick="openLogEvent(${c.id})" title="Log event"><i class="bi bi-journal-plus"></i></button>`;
-                    }
-                    if (c.status !== 'archived') {
-                        actions += ` <button class="btn btn-sm btn-outline-danger" onclick="archiveCampaign(${c.id}, '${escapeAttr(c.name)}')" title="Archive"><i class="bi bi-archive"></i></button>`;
+                let actions = '';
+                if (isGpOnly) {
+                    actions = `<button class="btn btn-sm btn-outline-primary" onclick="viewGpCampaign(${c._gp_id})" title="View"><i class="bi bi-eye"></i></button>`;
+                } else {
+                    const viewFn = c.gophish_campaign_id
+                        ? `viewBothCampaign(${c.id}, ${c.gophish_campaign_id})`
+                        : `viewCampaign(${c.id})`;
+                    actions = `<button class="btn btn-sm btn-outline-primary" onclick="${viewFn}" title="View"><i class="bi bi-eye"></i></button>`;
+                    if (!IS_READONLY) {
+                        if (c.status === 'draft' || c.status === 'paused') {
+                            actions += ` <button class="btn btn-sm btn-outline-secondary" onclick="editCampaign(${c.id})" title="Edit"><i class="bi bi-pencil"></i></button>`;
+                            actions += ` <button class="btn btn-sm btn-outline-success" onclick="launchCampaign(${c.id})" title="Launch"><i class="bi bi-rocket-takeoff"></i></button>`;
+                        }
+                        if (c.status === 'active') {
+                            actions += ` <button class="btn btn-sm btn-outline-info" onclick="syncSingle(${c.id})" title="Sync"><i class="bi bi-arrow-repeat"></i></button>`;
+                        }
+                        if (c.vector !== 'phishing' || c.status === 'active') {
+                            actions += ` <button class="btn btn-sm btn-outline-warning" onclick="openLogEvent(${c.id})" title="Log event"><i class="bi bi-journal-plus"></i></button>`;
+                        }
+                        if (c.status !== 'archived') {
+                            actions += ` <button class="btn btn-sm btn-outline-danger" onclick="archiveCampaign(${c.id}, '${escapeAttr(c.name)}')" title="Archive"><i class="bi bi-archive"></i></button>`;
+                        }
                     }
                 }
 
-                const tplBadge = c.email_template_name
-                    ? `<br><span class="badge bg-info text-dark" style="font-size:0.7rem"><i class="bi bi-envelope-paper"></i> ${escapeHtml(c.email_template_name)}</span>`
+                const tplName = c.email_template_name || c.gp_template_name;
+                const tplBadge = tplName
+                    ? `<br><span class="badge bg-info text-dark" style="font-size:0.7rem"><i class="bi bi-envelope-paper"></i> ${escapeHtml(tplName)}</span>`
                     : '';
 
                 return `<tr>
                     <td>${escapeHtml(c.name)}${tplBadge}</td>
-                    <td>${vectorBadge}</td>
+                    <td>${srcBadge}</td>
                     <td>${statusBadge}</td>
-                    <td><small>${escapeHtml(c.domain_name || '-')}</small></td>
-                    <td>${c.targets_count}</td>
-                    <td>${c.emails_sent}</td>
-                    <td>${c.opens_count}</td>
-                    <td>${c.clicks_count}</td>
-                    <td>${c.creds_captured}</td>
+                    <td>${c.targets_count || 0}</td>
+                    <td>${c.emails_sent || 0}</td>
+                    <td>${c.opens_count || 0}</td>
+                    <td>${c.clicks_count || 0}</td>
+                    <td>${c.creds_captured || 0}</td>
                     <td class="text-nowrap">${actions}</td>
                 </tr>`;
             }).join('');
         } catch (e) {
-            tbody.innerHTML = `<tr><td colspan="10" class="text-center text-danger py-3">${escapeHtml(e.message || 'Failed to load')}</td></tr>`;
+            tbody.innerHTML = `<tr><td colspan="9" class="text-center text-danger py-3">${escapeHtml(e.message || 'Failed to load')}</td></tr>`;
         }
     }
 
@@ -1034,6 +1129,97 @@
         } catch (e) {
             showToast(e.message, 'danger');
         }
+    }
+
+    // ── View both Frontline + GoPhish detail ────────────────────────
+    function viewBothCampaign(frontlineId, gophishId) {
+        viewCampaign(frontlineId);
+        viewGpCampaign(gophishId);
+    }
+
+    // ── GoPhish campaign detail ──────────────────────────────────────
+    async function viewGpCampaign(id) {
+        const panel = document.getElementById('gp-detail-panel');
+        panel.classList.remove('d-none');
+
+        const c = _gpCampaigns.find(x => x.id === id);
+        document.getElementById('gp-detail-name').textContent = c?.name || `#${id}`;
+        showGpDetailTab('summary');
+
+        try {
+            const resp = await fetch(`/api/gophish/campaigns/${id}`);
+            if (!resp.ok) throw new Error('Failed to load campaign');
+            const data = await resp.json();
+            const camp = data.campaign;
+
+            // Summary
+            const stats = camp.stats || {};
+            const smtpName = camp.smtp?.name || '-';
+            const tplName = camp.template?.name || '-';
+            const pageName = camp.page?.name || '-';
+            const url = camp.url || '-';
+            const launchDate = camp.launch_date && !camp.launch_date.startsWith('0001') ? new Date(camp.launch_date).toLocaleString() : '-';
+            const sendBy = camp.send_by_date && !camp.send_by_date.startsWith('0001') ? new Date(camp.send_by_date).toLocaleString() : '-';
+            const groups = (camp.groups || []).map(g => escapeHtml(g.name)).join(', ') || '-';
+
+            document.getElementById('gp-summary-content').innerHTML = `
+                <div class="col-md-4"><small class="text-muted d-block">Status</small><span class="badge bg-secondary">${escapeHtml(camp.status || '-')}</span></div>
+                <div class="col-md-4"><small class="text-muted d-block">Template</small>${escapeHtml(tplName)}</div>
+                <div class="col-md-4"><small class="text-muted d-block">Sending Profile</small>${escapeHtml(smtpName)}</div>
+                <div class="col-md-4"><small class="text-muted d-block">Landing Page</small>${escapeHtml(pageName)}</div>
+                <div class="col-md-4"><small class="text-muted d-block">URL</small><span class="text-break">${escapeHtml(url)}</span></div>
+                <div class="col-md-4"><small class="text-muted d-block">Groups</small>${groups}</div>
+                <div class="col-md-4"><small class="text-muted d-block">Launch Date</small>${launchDate}</div>
+                <div class="col-md-4"><small class="text-muted d-block">Send By</small>${sendBy}</div>
+                <div class="col-md-4"><small class="text-muted d-block">Total</small>${stats.total || (camp.results || []).length}</div>
+                <div class="col-md-3"><small class="text-muted d-block">Sent</small>${stats.sent || 0}</div>
+                <div class="col-md-3"><small class="text-muted d-block">Opened</small>${stats.opened || 0}</div>
+                <div class="col-md-3"><small class="text-muted d-block">Clicked</small>${stats.clicked || 0}</div>
+                <div class="col-md-3"><small class="text-muted d-block">Submitted</small>${stats.submitted_data || 0}</div>
+            `;
+
+            // Timeline
+            const timeline = camp.timeline || [];
+            const tlTbody = document.getElementById('gp-timeline-tbody');
+            if (!timeline.length) {
+                tlTbody.innerHTML = '<tr><td colspan="3" class="text-center text-muted py-3">No events</td></tr>';
+            } else {
+                tlTbody.innerHTML = timeline.map(e => `<tr>
+                    <td><small>${e.time ? new Date(e.time).toLocaleString() : '-'}</small></td>
+                    <td><small>${escapeHtml(e.email || '-')}</small></td>
+                    <td><small>${escapeHtml(e.message || '-')}</small></td>
+                </tr>`).join('');
+            }
+
+            // Results
+            const results = camp.results || [];
+            const resTbody = document.getElementById('gp-results-tbody');
+            if (!results.length) {
+                resTbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted py-3">No results</td></tr>';
+            } else {
+                resTbody.innerHTML = results.map(r => {
+                    const st = escapeHtml(r.status || '-');
+                    const stCls = st === 'Email Sent' ? 'bg-secondary' : st === 'Email Opened' ? 'bg-info' : st === 'Clicked Link' ? 'bg-warning text-dark' : st === 'Submitted Data' ? 'bg-danger' : 'bg-secondary';
+                    return `<tr>
+                        <td>${escapeHtml(r.first_name || '')} ${escapeHtml(r.last_name || '')}</td>
+                        <td><small>${escapeHtml(r.email || '-')}</small></td>
+                        <td><small>${escapeHtml(r.position || '-')}</small></td>
+                        <td><span class="badge ${stCls}">${st}</span></td>
+                    </tr>`;
+                }).join('');
+            }
+
+            panel.scrollIntoView({behavior: 'smooth'});
+        } catch (e) {
+            document.getElementById('gp-summary-content').innerHTML = `<div class="col-12 text-danger">${escapeHtml(e.message)}</div>`;
+        }
+    }
+
+    function showGpDetailTab(tab) {
+        ['summary', 'timeline', 'results'].forEach(t => {
+            document.getElementById('gp-tab-' + t).classList.toggle('active', tab === t);
+            document.getElementById('gp-panel-' + t).classList.toggle('d-none', tab !== t);
+        });
     }
 
     // ── Init ───────────────────────────────────────────────────────────
