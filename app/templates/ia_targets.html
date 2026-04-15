@@ -222,6 +222,10 @@
                         <div class="col"><span class="badge bg-secondary fs-6" id="import-skipped">0</span><br><small>Skipped</small></div>
                         <div class="col"><span class="badge bg-danger fs-6" id="import-errors">0</span><br><small>Errors</small></div>
                     </div>
+                    <div id="import-skipped-details" class="mt-2 d-none">
+                        <small class="text-warning"><strong>Skipped:</strong></small>
+                        <div class="font-mono small mt-1" id="import-skipped-list" style="max-height:120px;overflow-y:auto;white-space:pre-line"></div>
+                    </div>
                     <div id="import-error-details" class="mt-2 d-none">
                         <small class="text-danger" id="import-error-list"></small>
                     </div>
@@ -570,6 +574,13 @@
             document.getElementById('import-errors').textContent = data.errors;
             document.getElementById('import-result').classList.remove('d-none');
 
+            if (data.skipped_details && data.skipped_details.length) {
+                document.getElementById('import-skipped-list').textContent = data.skipped_details.join('\n');
+                document.getElementById('import-skipped-details').classList.remove('d-none');
+            } else {
+                document.getElementById('import-skipped-details').classList.add('d-none');
+            }
+
             if (data.error_details && data.error_details.length) {
                 document.getElementById('import-error-list').textContent = data.error_details.join('; ');
                 document.getElementById('import-error-details').classList.remove('d-none');
@@ -592,6 +603,7 @@
         document.getElementById('csv-text').value = '';
         document.getElementById('csv-file').value = '';
         document.getElementById('import-result').classList.add('d-none');
+        document.getElementById('import-skipped-details').classList.add('d-none');
         document.getElementById('import-error-details').classList.add('d-none');
     });
 
