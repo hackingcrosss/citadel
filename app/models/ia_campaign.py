@@ -24,9 +24,11 @@ class IACampaign(db.Model):
 
     # Infrastructure links
     domain_id = db.Column(db.Integer, db.ForeignKey('domains.id'), nullable=True)
+    email_template_id = db.Column(db.Integer, db.ForeignKey('ia_email_templates.id'), nullable=True)
     gophish_campaign_id = db.Column(db.Integer)       # GoPhish campaign ID once launched
     gophish_smtp_id = db.Column(db.Integer)           # GoPhish sending profile ID
     landing_page_id = db.Column(db.Integer)           # FK to ia_landing_pages (Phase 5)
+    phishing_url = db.Column(db.String(500))          # URL for {{.URL}} placeholder in GoPhish
 
     # Scheduling + RoE
     scheduled_start = db.Column(db.DateTime)
@@ -47,6 +49,7 @@ class IACampaign(db.Model):
 
     project = db.relationship('Project', foreign_keys=[project_id])
     domain = db.relationship('Domain', foreign_keys=[domain_id])
+    email_template = db.relationship('IAEmailTemplate', foreign_keys=[email_template_id])
     created_by = db.relationship('User', foreign_keys=[created_by_id])
     targets = db.relationship('IATarget', secondary=ia_campaign_targets,
                               backref=db.backref('campaigns', lazy='dynamic'),
@@ -63,9 +66,12 @@ class IACampaign(db.Model):
             'status': self.status,
             'domain_id': self.domain_id,
             'domain_name': self.domain.name if self.domain else None,
+            'email_template_id': self.email_template_id,
+            'email_template_name': self.email_template.name if self.email_template else None,
             'gophish_campaign_id': self.gophish_campaign_id,
             'gophish_smtp_id': self.gophish_smtp_id,
             'landing_page_id': self.landing_page_id,
+            'phishing_url': self.phishing_url,
             'scheduled_start': self.scheduled_start.isoformat() if self.scheduled_start else None,
             'scheduled_end': self.scheduled_end.isoformat() if self.scheduled_end else None,
             'roe_enforced': self.roe_enforced,

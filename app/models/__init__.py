@@ -15,3 +15,4 @@ from app.models.ia_target import IATarget
 from app.models.ia_campaign import IACampaign, ia_campaign_targets
 from app.models.ia_campaign_event import IACampaignEvent
 from app.models.ia_landing_page import IALandingPage
+from app.models.ia_email_template import IAEmailTemplateBatch, IAEmailTemplate, ia_template_target_assignments

@@ -248,9 +248,12 @@ def run_generation(batch_id, project_id):
         raise
 
 
-def push_template_to_gophish(template_id):
-    """Push a generated template to GoPhish and record the GoPhish template ID."""
-    from app.services import gophish_service
+def push_template_to_gophish(template_id, user_id=None):
+    """Push a generated template and its assigned targets as a group to GoPhish.
+
+    Also creates a draft IACampaign pre-loaded with the template and targets.
+    """
+    from app.services import gophish_service, ia_campaign_service
 
     tpl = IAEmailTemplate.query.get(template_id)
     if not tpl:
@@ -263,9 +266,46 @@ def push_template_to_gophish(template_id):
         'text': tpl.text_body or '',
     }
     result = gophish_service.create_template(gp_data)
-
     tpl.gophish_template_id = result.get('id')
+
+    group_result = None
+    assigned = tpl.assigned_targets.all()
+    if assigned:
+        gp_targets = []
+        for t in assigned:
+            if not t.email:
+                continue
+            gp_targets.append({
+                'first_name': t.first_name or '',
+                'last_name': t.last_name or '',
+                'email': t.email,
+                'position': t.job_title or '',
+            })
+
+        if gp_targets:
+            ts = int(datetime.utcnow().timestamp())
+            group_name = f'[Citadel] {tpl.name or tpl.subject[:40]} ({len(gp_targets)}) - {ts}'
+            group_result = gophish_service.create_group({
+                'name': group_name,
+                'targets': gp_targets,
+            })
+            tpl.gophish_group_id = group_result.get('id')
+
     tpl.pushed_at = datetime.utcnow()
     db.session.commit()
 
-    return result
+    # Create a draft campaign pre-loaded with template + targets
+    campaign_dict = None
+    if user_id:
+        campaign_name = f'{tpl.name or tpl.subject[:60]}'
+        campaign = ia_campaign_service.create_campaign(
+            tpl.project_id,
+            {'name': campaign_name, 'vector': 'phishing', 'email_template_id': tpl.id},
+            user_id,
+        )
+        target_ids = [t.id for t in assigned]
+        if target_ids:
+            ia_campaign_service.add_targets(campaign, target_ids)
+        campaign_dict = campaign.to_dict()
+
+    return {'template': result, 'group': group_result, 'campaign': campaign_dict}

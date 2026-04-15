@@ -39,6 +39,12 @@
             <span id="templates-badge" class="badge bg-secondary ms-1 d-none">0</span>
         </button>
     </li>
+    <li class="nav-item">
+        <button class="nav-link" onclick="switchGpTab('groups')">
+            <i class="bi bi-people"></i> User Groups
+            <span id="groups-badge" class="badge bg-secondary ms-1 d-none">0</span>
+        </button>
+    </li>
 </ul>
 
 <!-- Profiles Tab -->
@@ -95,6 +101,57 @@
                     </tr>
                 </tbody>
             </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Groups Tab -->
+<div id="pane-groups" class="d-none">
+    <div class="card-custom">
+        <div class="card-body p-0">
+            <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Name</th>
+                        <th>Targets</th>
+                        <th>Modified</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="groups-table">
+                    <tr>
+                        <td colspan="5" class="text-center text-muted py-4">
+                            <span class="spinner-border spinner-border-sm"></span> Loading...
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- View Group Modal -->
+<div class="modal fade" id="viewGroupModal" tabindex="-1" aria-labelledby="viewGroupModalLabel">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="viewGroupModalLabel"><i class="bi bi-people"></i> <span id="view-group-name"></span></h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body p-0">
+                <div class="table-responsive">
+                <table class="table table-sm mb-0">
+                    <thead><tr><th>First Name</th><th>Last Name</th><th>Email</th><th>Position</th></tr></thead>
+                    <tbody id="view-group-targets"></tbody>
+                </table>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
             </div>
         </div>
     </div>
@@ -287,8 +344,10 @@
         var tabs = document.querySelectorAll('#gophish-tabs .nav-link');
         tabs[0].classList.toggle('active', name === 'profiles');
         tabs[1].classList.toggle('active', name === 'templates');
+        tabs[2].classList.toggle('active', name === 'groups');
         document.getElementById('pane-profiles').classList.toggle('d-none', name !== 'profiles');
         document.getElementById('pane-templates').classList.toggle('d-none', name !== 'templates');
+        document.getElementById('pane-groups').classList.toggle('d-none', name !== 'groups');
         var btnP = document.getElementById('btn-new-profile');
         var btnT = document.getElementById('btn-new-template');
         if (btnP) { btnP.classList.toggle('d-none', name !== 'profiles'); }
@@ -297,7 +356,8 @@
 
     function refreshCurrentTab() {
         if (_currentTab === 'profiles') loadProfiles();
-        else loadTemplates();
+        else if (_currentTab === 'templates') loadTemplates();
+        else loadGroups();
     }
 
     // ── Init ─────────────────────────────────────────────────────────────────
@@ -305,6 +365,7 @@
     document.addEventListener('DOMContentLoaded', function() {
         loadProfiles();
         loadTemplates();
+        loadGroups();
         switchGpTab('profiles');
     });
 
@@ -319,6 +380,7 @@
                     document.getElementById('not-configured').classList.remove('d-none');
                     document.getElementById('pane-profiles').classList.add('d-none');
                     document.getElementById('pane-templates').classList.add('d-none');
+                    document.getElementById('pane-groups').classList.add('d-none');
                     return;
                 }
                 document.getElementById('not-configured').classList.add('d-none');
@@ -593,6 +655,83 @@
                 .then(function(data) {
                     if (data.error) { showToast('Failed: ' + data.error, 'danger'); return; }
                     loadTemplates();
+                })
+                .catch(function(err) { showToast('Request failed: ' + err, 'danger'); });
+        });
+    }
+
+    // ── User Groups ─────────────────────────────────────────────────────────
+
+    function loadGroups() {
+        fetch('/api/gophish/groups')
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (data.upgrade_required) { showUpgradeRequired(data.error); return; }
+                if (data.error) return;
+                var groups = data.groups || [];
+                var badge = document.getElementById('groups-badge');
+                if (groups.length) { badge.textContent = groups.length; badge.classList.remove('d-none'); }
+                else { badge.classList.add('d-none'); }
+
+                var tbody = document.getElementById('groups-table');
+                if (!groups.length) {
+                    tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-4">No user groups found</td></tr>';
+                    return;
+                }
+
+                tbody.innerHTML = groups.map(function(g) {
+                    var targetCount = (g.targets || []).length;
+                    var modified = g.modified_date ? new Date(g.modified_date).toLocaleDateString() : '-';
+                    var actions = '';
+                    actions += '<button class="btn btn-sm btn-outline-info me-1" onclick="viewGroup(' + g.id + ')" title="View targets"><i class="bi bi-eye"></i></button>';
+                    if (!IS_READONLY) {
+                        actions += '<button class="btn btn-sm btn-outline-danger" onclick="deleteGroup(' + g.id + ',\'' + escapeAttr(g.name) + '\')" title="Delete"><i class="bi bi-trash"></i></button>';
+                    }
+                    return '<tr>'
+                        + '<td>' + g.id + '</td>'
+                        + '<td><strong>' + escapeHtml(g.name) + '</strong></td>'
+                        + '<td><span class="badge bg-secondary">' + targetCount + '</span></td>'
+                        + '<td>' + modified + '</td>'
+                        + '<td>' + actions + '</td>'
+                        + '</tr>';
+                }).join('');
+            })
+            .catch(function() { showToast('Failed to load groups', 'danger'); });
+    }
+
+    function viewGroup(id) {
+        fetch('/api/gophish/groups/' + id)
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (data.error) { showToast(data.error, 'danger'); return; }
+                var g = data.group;
+                document.getElementById('view-group-name').textContent = g.name || '';
+                var targets = g.targets || [];
+                var tbody = document.getElementById('view-group-targets');
+                if (!targets.length) {
+                    tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted py-3">No targets</td></tr>';
+                } else {
+                    tbody.innerHTML = targets.map(function(t) {
+                        return '<tr>'
+                            + '<td>' + escapeHtml(t.first_name || '-') + '</td>'
+                            + '<td>' + escapeHtml(t.last_name || '-') + '</td>'
+                            + '<td>' + escapeHtml(t.email || '-') + '</td>'
+                            + '<td>' + escapeHtml(t.position || '-') + '</td>'
+                            + '</tr>';
+                    }).join('');
+                }
+                new bootstrap.Modal(document.getElementById('viewGroupModal')).show();
+            })
+            .catch(function() { showToast('Failed to load group', 'danger'); });
+    }
+
+    function deleteGroup(id, name) {
+        showConfirm('Delete Group', 'Delete user group <strong>' + escapeHtml(name) + '</strong>?', 'Delete', function() {
+            fetch('/api/gophish/groups/' + id, {method: 'DELETE'})
+                .then(function(r) { return r.json(); })
+                .then(function(data) {
+                    if (data.error) { showToast('Failed: ' + data.error, 'danger'); return; }
+                    loadGroups();
                 })
                 .catch(function(err) { showToast('Request failed: ' + err, 'danger'); });
         });
