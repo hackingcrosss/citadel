@@ -241,3 +241,40 @@ def delete_gophish_group(group_id):
         return jsonify({'deleted': True})
     except Exception as e:
         return jsonify({'error': str(e)}), 400
+
+
+# ---------------------------------------------------------------------------
+# Campaigns (GoPhish-native)
+# ---------------------------------------------------------------------------
+
+@api_bp.route('/gophish/campaigns', methods=['GET'])
+@login_required
+@feature_required('gophish')
+def list_gophish_campaigns():
+    try:
+        campaigns = gophish_service.list_campaigns()
+        return jsonify({'campaigns': campaigns if isinstance(campaigns, list) else []})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 400
+
+
+@api_bp.route('/gophish/campaigns/<int:campaign_id>', methods=['GET'])
+@login_required
+@feature_required('gophish')
+def get_gophish_campaign(campaign_id):
+    try:
+        campaign = gophish_service.get_campaign(campaign_id)
+        return jsonify({'campaign': campaign})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 400
+
+
+@api_bp.route('/gophish/campaigns/<int:campaign_id>/summary', methods=['GET'])
+@login_required
+@feature_required('gophish')
+def get_gophish_campaign_summary(campaign_id):
+    try:
+        summary = gophish_service.get_campaign_summary(campaign_id)
+        return jsonify({'summary': summary})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 400
