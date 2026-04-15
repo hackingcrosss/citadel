@@ -121,6 +121,7 @@ def import_csv(project_id, csv_text, user_id):
     skipped = 0
     errors = 0
     error_details = []
+    skipped_details = []
 
     for row_num, row in enumerate(reader, start=2):
         try:
@@ -133,10 +134,12 @@ def import_csv(project_id, csv_text, user_id):
             email = mapped.get('email')
             if not email:
                 skipped += 1
+                skipped_details.append(f'Row {row_num}: missing email')
                 continue
 
             if email.lower() in existing:
                 skipped += 1
+                skipped_details.append(f'Row {row_num}: duplicate ({email})')
                 continue
 
             target = IATarget(
@@ -157,7 +160,8 @@ def import_csv(project_id, csv_text, user_id):
 
     _log.info('CSV import for project %s: %d created, %d skipped, %d errors',
               project_id, created, skipped, errors)
-    return {'created': created, 'skipped': skipped, 'errors': errors, 'error_details': error_details}
+    return {'created': created, 'skipped': skipped, 'errors': errors,
+            'error_details': error_details, 'skipped_details': skipped_details}
 
 
 def enrich_from_scan(target, scan_results):
