@@ -408,6 +408,8 @@
                 document.getElementById('tpl-count').textContent = templates.length;
 
                 const container = document.getElementById('templates-container');
+                templates.forEach(t => { _templateCache[t.id] = t; });
+
                 if (!templates.length) {
                     container.innerHTML = '<div class="col-12 text-center text-muted py-3">No templates in this batch.</div>';
                 } else {
@@ -585,7 +587,14 @@
                     _templateCache[data.template.id] = data.template;
                     if (_currentBatchId) viewBatch(_currentBatchId);
                 })
-                .catch(() => showToast('Failed to push to GoPhish', 'danger'));
+                .catch(err => {
+                    if (err instanceof Response) {
+                        err.json().then(d => showToast(d.error || 'Failed to push to GoPhish', 'danger'))
+                           .catch(() => showToast('Failed to push to GoPhish', 'danger'));
+                    } else {
+                        showToast(err.message || 'Failed to push to GoPhish', 'danger');
+                    }
+                });
         });
     }
 

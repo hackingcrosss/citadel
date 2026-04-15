@@ -259,8 +259,9 @@ def push_template_to_gophish(template_id, user_id=None):
     if not tpl:
         raise ValueError('Template not found')
 
+    ts = int(datetime.utcnow().timestamp())
     gp_data = {
-        'name': f'[Citadel] {tpl.name} - {tpl.subject[:50]}',
+        'name': f'[Citadel] {tpl.name} - {tpl.subject[:50]} ({ts})',
         'subject': tpl.subject,
         'html': tpl.html_body or '',
         'text': tpl.text_body or '',

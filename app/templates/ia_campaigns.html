@@ -90,9 +90,80 @@
         <div class="card-body">
             <!-- Tabs -->
             <ul class="nav nav-tabs mb-3">
+                <li class="nav-item"><button class="nav-link" onclick="showDetailTab('config')" id="tab-config"><i class="bi bi-gear"></i> Config</button></li>
                 <li class="nav-item"><button class="nav-link active" onclick="showDetailTab('events')" id="tab-events">Events</button></li>
                 <li class="nav-item"><button class="nav-link" onclick="showDetailTab('targets')" id="tab-targets">Targets</button></li>
+                <li class="nav-item d-none" id="tab-template-li"><button class="nav-link" onclick="showDetailTab('template')" id="tab-template"><i class="bi bi-envelope-paper"></i> Email Template</button></li>
             </ul>
+
+            <!-- Config tab -->
+            <div id="panel-config" class="d-none">
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <small class="text-muted d-block">Name</small>
+                        <strong id="cfg-name">-</strong>
+                    </div>
+                    <div class="col-md-3">
+                        <small class="text-muted d-block">Vector</small>
+                        <span id="cfg-vector">-</span>
+                    </div>
+                    <div class="col-md-3">
+                        <small class="text-muted d-block">Status</small>
+                        <span id="cfg-status">-</span>
+                    </div>
+                </div>
+                <hr class="my-3">
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <small class="text-muted d-block">Email Template</small>
+                        <span id="cfg-template">-</span>
+                    </div>
+                    <div class="col-md-6">
+                        <small class="text-muted d-block">Sender Domain</small>
+                        <span id="cfg-domain">-</span>
+                    </div>
+                </div>
+                <div class="row g-3 mt-1">
+                    <div class="col-md-6">
+                        <small class="text-muted d-block">Sending Profile (GoPhish SMTP)</small>
+                        <span id="cfg-smtp">-</span>
+                    </div>
+                    <div class="col-md-6">
+                        <small class="text-muted d-block">Phishing URL</small>
+                        <span id="cfg-url" class="text-break">-</span>
+                    </div>
+                </div>
+                <hr class="my-3">
+                <div class="row g-3">
+                    <div class="col-md-4">
+                        <small class="text-muted d-block">Scheduled Start</small>
+                        <span id="cfg-start">-</span>
+                    </div>
+                    <div class="col-md-4">
+                        <small class="text-muted d-block">Scheduled End</small>
+                        <span id="cfg-end">-</span>
+                    </div>
+                    <div class="col-md-4">
+                        <small class="text-muted d-block">Rules of Engagement</small>
+                        <span id="cfg-roe">-</span>
+                    </div>
+                </div>
+                <hr class="my-3">
+                <div class="row g-3">
+                    <div class="col-md-4">
+                        <small class="text-muted d-block">GoPhish Campaign ID</small>
+                        <span id="cfg-gp-id">-</span>
+                    </div>
+                    <div class="col-md-4">
+                        <small class="text-muted d-block">Created By</small>
+                        <span id="cfg-created-by">-</span>
+                    </div>
+                    <div class="col-md-4">
+                        <small class="text-muted d-block">Created At</small>
+                        <span id="cfg-created-at">-</span>
+                    </div>
+                </div>
+            </div>
 
             <!-- Events tab -->
             <div id="panel-events">
@@ -119,6 +190,62 @@
                     <thead><tr><th>Name</th><th>Email</th><th>Job Title</th><th>Actions</th></tr></thead>
                     <tbody id="campaign-targets-tbody"></tbody>
                 </table>
+                </div>
+            </div>
+
+            <!-- Email Template tab -->
+            <div id="panel-template" class="d-none">
+                <div id="tpl-preview-loading" class="text-center text-muted py-3">Loading template...</div>
+                <div id="tpl-preview-content" class="d-none">
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-6">
+                            <small class="text-muted d-block">Subject</small>
+                            <strong id="tpl-subject"></strong>
+                        </div>
+                        <div class="col-md-3">
+                            <small class="text-muted d-block">Category</small>
+                            <span id="tpl-category"></span>
+                        </div>
+                        <div class="col-md-3">
+                            <small class="text-muted d-block">Sender</small>
+                            <span id="tpl-sender"></span>
+                        </div>
+                    </div>
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-6">
+                            <small class="text-muted d-block">Target Roles</small>
+                            <span id="tpl-roles"></span>
+                        </div>
+                        <div class="col-md-3">
+                            <small class="text-muted d-block">Relevance</small>
+                            <span id="tpl-score"></span>
+                        </div>
+                        <div class="col-md-3">
+                            <small class="text-muted d-block">Assigned Targets</small>
+                            <span id="tpl-assigned-count"></span>
+                        </div>
+                    </div>
+                    <div class="mb-2">
+                        <small class="text-muted d-block mb-1">Notes</small>
+                        <span id="tpl-notes" class="text-muted fst-italic"></span>
+                    </div>
+                    <hr>
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <strong>Email Preview</strong>
+                        <div>
+                            <button class="btn btn-sm btn-outline-secondary active" id="btn-preview-html" onclick="togglePreviewMode('html')">HTML</button>
+                            <button class="btn btn-sm btn-outline-secondary" id="btn-preview-text" onclick="togglePreviewMode('text')">Text</button>
+                        </div>
+                    </div>
+                    <div id="tpl-html-preview" style="border:1px solid var(--ir-border); border-radius:6px; background:#fff; min-height:200px;">
+                        <iframe id="tpl-iframe" style="width:100%; min-height:400px; border:none;"></iframe>
+                    </div>
+                    <div id="tpl-text-preview" class="d-none">
+                        <pre id="tpl-text-body" style="white-space:pre-wrap; max-height:400px; overflow-y:auto; background:var(--ir-bg-card); border:1px solid var(--ir-border); border-radius:6px; padding:1rem; color:var(--ir-text);"></pre>
+                    </div>
+                </div>
+                <div id="tpl-preview-none" class="d-none text-center text-muted py-3">
+                    No email template linked to this campaign.
                 </div>
             </div>
         </div>
@@ -602,6 +729,7 @@
     // ── View campaign detail ───────────────────────────────────────────
     async function viewCampaign(id) {
         _currentCampaignId = id;
+        _loadedTemplateId = null;
         const c = _campaigns.find(x => x.id === id);
         if (c) document.getElementById('detail-name').textContent = c.name;
 
@@ -610,6 +738,8 @@
             const editable = c && (c.status === 'draft' || c.status === 'paused' || c.status === 'active');
             addBtn.classList.toggle('d-none', !editable);
         }
+
+        document.getElementById('tab-template-li').classList.toggle('d-none', !c?.email_template_id);
 
         document.getElementById('detail-panel').classList.remove('d-none');
         showDetailTab('events');
@@ -676,15 +806,104 @@
     }
 
     function showDetailTab(tab) {
-        document.getElementById('tab-events').classList.toggle('active', tab === 'events');
-        document.getElementById('tab-targets').classList.toggle('active', tab === 'targets');
-        document.getElementById('panel-events').classList.toggle('d-none', tab !== 'events');
-        document.getElementById('panel-targets').classList.toggle('d-none', tab !== 'targets');
+        ['config', 'events', 'targets', 'template'].forEach(t => {
+            document.getElementById('tab-' + t).classList.toggle('active', tab === t);
+            document.getElementById('panel-' + t).classList.toggle('d-none', tab !== t);
+        });
+        if (tab === 'template') loadTemplatePreview();
+        if (tab === 'config') loadConfigPanel();
     }
 
     function closeDetail() {
         document.getElementById('detail-panel').classList.add('d-none');
         _currentCampaignId = null;
+    }
+
+    // ── Config panel ──────────────────────────────────────────────────
+    function loadConfigPanel() {
+        const c = _campaigns.find(x => x.id === _currentCampaignId);
+        if (!c) return;
+
+        document.getElementById('cfg-name').textContent = c.name || '-';
+        document.getElementById('cfg-vector').innerHTML = _vectorBadge(c.vector);
+        document.getElementById('cfg-status').innerHTML = _statusBadge(c.status);
+
+        document.getElementById('cfg-template').innerHTML = c.email_template_name
+            ? `<span class="badge bg-info text-dark"><i class="bi bi-envelope-paper"></i> ${escapeHtml(c.email_template_name)}</span>`
+            : '<span class="text-muted">None (default Grooming template)</span>';
+
+        document.getElementById('cfg-domain').textContent = c.domain_name || 'Not configured';
+        document.getElementById('cfg-smtp').textContent = c.gophish_smtp_id ? `Profile #${c.gophish_smtp_id}` : 'Not configured';
+        document.getElementById('cfg-url').textContent = c.phishing_url || 'Not configured';
+
+        document.getElementById('cfg-start').textContent = c.scheduled_start ? new Date(c.scheduled_start).toLocaleString() : 'Not set';
+        document.getElementById('cfg-end').textContent = c.scheduled_end ? new Date(c.scheduled_end).toLocaleString() : 'Not set';
+        document.getElementById('cfg-roe').innerHTML = c.roe_enforced !== false
+            ? '<span class="badge bg-success"><i class="bi bi-shield-check"></i> Enforced</span>'
+            : '<span class="badge bg-warning text-dark"><i class="bi bi-shield-exclamation"></i> Not enforced</span>';
+
+        document.getElementById('cfg-gp-id').textContent = c.gophish_campaign_id || 'Not launched';
+        document.getElementById('cfg-created-by').textContent = c.created_by || '-';
+        document.getElementById('cfg-created-at').textContent = c.created_at ? new Date(c.created_at).toLocaleString() : '-';
+    }
+
+    // ── Template preview ──────────────────────────────────────────────
+    let _loadedTemplateId = null;
+
+    async function loadTemplatePreview() {
+        const c = _campaigns.find(x => x.id === _currentCampaignId);
+        if (!c || !c.email_template_id) {
+            document.getElementById('tpl-preview-loading').classList.add('d-none');
+            document.getElementById('tpl-preview-content').classList.add('d-none');
+            document.getElementById('tpl-preview-none').classList.remove('d-none');
+            return;
+        }
+
+        if (_loadedTemplateId === c.email_template_id) return;
+
+        document.getElementById('tpl-preview-loading').classList.remove('d-none');
+        document.getElementById('tpl-preview-content').classList.add('d-none');
+        document.getElementById('tpl-preview-none').classList.add('d-none');
+
+        try {
+            const resp = await fetch(`/api/ia/email-templates/${c.email_template_id}`);
+            if (!resp.ok) throw new Error('Failed to load template');
+            const data = await resp.json();
+            const tpl = data.template;
+
+            document.getElementById('tpl-subject').textContent = tpl.subject || '-';
+            document.getElementById('tpl-category').textContent = tpl.pretext_category || '-';
+            document.getElementById('tpl-sender').textContent = tpl.sender_suggestion || '-';
+            document.getElementById('tpl-notes').textContent = tpl.notes || '-';
+            document.getElementById('tpl-assigned-count').textContent = tpl.assigned_targets_count || 0;
+
+            const score = tpl.relevance_score || 0;
+            const scoreColor = score >= 7 ? 'success' : score >= 4 ? 'warning' : 'secondary';
+            document.getElementById('tpl-score').innerHTML = `<span class="badge bg-${scoreColor}">${score}/10</span>`;
+
+            const roles = (tpl.target_roles || []).map(r => `<span class="badge bg-info text-dark me-1">${escapeHtml(r)}</span>`).join('');
+            document.getElementById('tpl-roles').innerHTML = roles || '<span class="text-muted">-</span>';
+
+            // HTML preview in sandboxed iframe
+            const iframe = document.getElementById('tpl-iframe');
+            iframe.srcdoc = tpl.html_body || '<p style="color:#888;text-align:center;padding:2rem;">No HTML body</p>';
+
+            // Text preview
+            document.getElementById('tpl-text-body').textContent = tpl.text_body || '(no text body)';
+
+            _loadedTemplateId = c.email_template_id;
+            document.getElementById('tpl-preview-loading').classList.add('d-none');
+            document.getElementById('tpl-preview-content').classList.remove('d-none');
+        } catch (e) {
+            document.getElementById('tpl-preview-loading').innerHTML = `<span class="text-danger">${escapeHtml(e.message)}</span>`;
+        }
+    }
+
+    function togglePreviewMode(mode) {
+        document.getElementById('tpl-html-preview').classList.toggle('d-none', mode !== 'html');
+        document.getElementById('tpl-text-preview').classList.toggle('d-none', mode !== 'text');
+        document.getElementById('btn-preview-html').classList.toggle('active', mode === 'html');
+        document.getElementById('btn-preview-text').classList.toggle('active', mode === 'text');
     }
 
     // ── Add / Remove targets ───────────────────────────────────────────
