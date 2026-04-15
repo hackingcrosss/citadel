@@ -218,17 +218,20 @@
             const data = await resp.json();
             if (data.upgrade_required) { showToast('Feature requires plan upgrade', 'warning'); return; }
             if (!resp.ok) throw new Error(data.error || 'Failed');
-            const campaigns = data.campaigns || [];
+            const allCampaigns = data.campaigns || [];
+            const campaigns = allCampaigns.filter(c => c.status === 'active' || c.status === 'draft');
 
             const active = campaigns.filter(c => c.status === 'active').length;
+            const drafts = campaigns.filter(c => c.status === 'draft').length;
             const totalSent = campaigns.reduce((s, c) => s + (c.emails_sent || 0), 0);
             document.getElementById('campaign-count').textContent = active;
-            document.getElementById('campaign-sub').textContent = campaigns.length
-                ? `${campaigns.length} total, ${totalSent} emails sent`
-                : 'No campaigns';
+            const parts = [];
+            if (drafts) parts.push(`${drafts} draft`);
+            if (totalSent) parts.push(`${totalSent} emails sent`);
+            document.getElementById('campaign-sub').textContent = parts.length ? parts.join(', ') : 'No active campaigns';
 
             if (!campaigns.length) {
-                tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-3">No campaigns. Go to <a href="/initial-access/campaigns">Campaigns</a> to create one.</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-3">No active or draft campaigns. Go to <a href="/initial-access/campaigns">Campaigns</a> to create one.</td></tr>';
                 return;
             }
 
