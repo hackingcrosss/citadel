@@ -19,8 +19,8 @@ _log = logging.getLogger(__name__)
 _VALID_VECTORS = {'phishing', 'vishing', 'smishing'}
 _VALID_STATUSES = {'draft', 'active', 'paused', 'completed', 'archived'}
 _EDITABLE_FIELDS = {'name', 'vector', 'domain_id', 'gophish_smtp_id',
-                    'landing_page_id', 'scheduled_start', 'scheduled_end',
-                    'roe_enforced'}
+                    'landing_page_id', 'email_template_id', 'phishing_url',
+                    'scheduled_start', 'scheduled_end', 'roe_enforced'}
 
 
 # ── CRUD ────────────────────────────────────────────────────────────────
@@ -47,8 +47,10 @@ def create_campaign(project_id, data, user_id):
         vector=vector,
         status='draft',
         domain_id=data.get('domain_id'),
+        email_template_id=data.get('email_template_id'),
         gophish_smtp_id=data.get('gophish_smtp_id'),
         landing_page_id=data.get('landing_page_id'),
+        phishing_url=data.get('phishing_url', ''),
         roe_enforced=data.get('roe_enforced', True),
         created_by_id=user_id,
     )
@@ -84,6 +86,8 @@ def update_campaign(campaign, data):
                 continue
         if field == 'name' and val:
             val = str(val)[:200]
+        if field == 'phishing_url' and val:
+            val = str(val)[:500]
         setattr(campaign, field, val)
 
     campaign.updated_at = datetime.utcnow()
@@ -180,26 +184,43 @@ def launch_campaign(campaign):
     if not ok:
         raise ValueError(f'RoE violation: {reason}')
 
-    # Build GoPhish target group
-    gp_targets = []
-    for t in targets_list:
-        if not t.email:
-            continue
-        gp_targets.append({
-            'first_name': t.first_name or '',
-            'last_name': t.last_name or '',
-            'email': t.email,
-            'position': t.job_title or '',
+    # Resolve template — linked or fallback to Citadel Grooming
+    gp_template_name = 'Citadel Grooming'
+    reuse_group = None
+
+    if campaign.email_template_id:
+        from app.models.ia_email_template import IAEmailTemplate
+        tpl = IAEmailTemplate.query.get(campaign.email_template_id)
+        if not tpl or not tpl.gophish_template_id:
+            raise ValueError('Linked email template has not been pushed to GoPhish')
+        gp_tpl = gophish_service.get_template(tpl.gophish_template_id)
+        gp_template_name = gp_tpl['name']
+        if tpl.gophish_group_id:
+            reuse_group = gophish_service.get_group(tpl.gophish_group_id)
+
+    # Build or reuse GoPhish target group
+    if reuse_group:
+        gp_group = reuse_group
+    else:
+        gp_targets = []
+        for t in targets_list:
+            if not t.email:
+                continue
+            gp_targets.append({
+                'first_name': t.first_name or '',
+                'last_name': t.last_name or '',
+                'email': t.email,
+                'position': t.job_title or '',
+            })
+
+        if not gp_targets:
+            raise ValueError('No targets with valid email addresses')
+
+        group_name = f'Citadel_{campaign.project_id}_{campaign.id}_{int(datetime.utcnow().timestamp())}'
+        gp_group = gophish_service.create_group({
+            'name': group_name,
+            'targets': gp_targets,
         })
-
-    if not gp_targets:
-        raise ValueError('No targets with valid email addresses')
-
-    group_name = f'Citadel_{campaign.project_id}_{campaign.id}_{int(datetime.utcnow().timestamp())}'
-    gp_group = gophish_service.create_group({
-        'name': group_name,
-        'targets': gp_targets,
-    })
 
     # Get the sending profile
     smtp_profile = gophish_service.get_sending_profile(campaign.gophish_smtp_id)
@@ -209,9 +230,9 @@ def launch_campaign(campaign):
         'name': f'Citadel: {campaign.name[:150]}',
         'smtp': smtp_profile,
         'groups': [{'name': gp_group['name']}],
-        'template': {'name': 'Citadel Grooming'},  # uses the grooming template
+        'template': {'name': gp_template_name},
         'page': {'name': 'Blank', 'html': '<html><body></body></html>'},
-        'url': '',
+        'url': campaign.phishing_url or '',
     }
 
     if campaign.scheduled_start:

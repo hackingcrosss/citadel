@@ -109,7 +109,7 @@
                 <div class="d-flex justify-content-between align-items-center mb-2">
                     <span class="text-muted">Assigned targets</span>
                     {% if current_user.role not in ['viewer', 'auditor', 'white_team'] and active_project_role != 'white_team' %}
-                    <button class="btn btn-sm btn-outline-primary" onclick="openAddTargets()">
+                    <button class="btn btn-sm btn-outline-primary d-none" id="btn-add-targets" onclick="openAddTargets()">
                         <i class="bi bi-plus"></i> Add Targets
                     </button>
                     {% endif %}
@@ -132,9 +132,10 @@
     <div class="modal-dialog">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title">New Campaign</h5>
+                <h5 class="modal-title" id="campaignModalTitle">New Campaign</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
+            <input type="hidden" id="c-edit-id" value="">
             <div class="modal-body">
                 <div class="mb-2">
                     <label class="form-label">Name <span class="text-danger">*</span></label>
@@ -149,6 +150,13 @@
                     </select>
                 </div>
                 <div class="mb-2">
+                    <label class="form-label">Email Template</label>
+                    <select class="form-select" id="c-template">
+                        <option value="">None (uses default Grooming template)</option>
+                    </select>
+                    <div class="form-text">Pushed templates from the Email Templates page.</div>
+                </div>
+                <div class="mb-2">
                     <label class="form-label">Sender Domain</label>
                     <select class="form-select" id="c-domain">
                         <option value="">Loading domains...</option>
@@ -159,6 +167,11 @@
                     <select class="form-select" id="c-smtp">
                         <option value="">Select after choosing domain</option>
                     </select>
+                </div>
+                <div class="mb-2">
+                    <label class="form-label">Phishing URL</label>
+                    <input type="url" class="form-control" id="c-url" placeholder="https://login.example.com">
+                    <div class="form-text">Landing page URL — replaces <code>{{ '{{.URL}}' }}</code> in the template.</div>
                 </div>
                 <div class="row g-2">
                     <div class="col-6">
@@ -177,7 +190,7 @@
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                <button type="button" class="btn btn-infrared" onclick="createCampaign()">
+                <button type="button" class="btn btn-infrared" id="campaignModalSubmitBtn" onclick="saveCampaign()">
                     <i class="bi bi-plus-circle"></i> Create
                 </button>
             </div>
@@ -296,6 +309,7 @@
                 let actions = `<button class="btn btn-sm btn-outline-primary" onclick="viewCampaign(${c.id})" title="View"><i class="bi bi-eye"></i></button>`;
                 if (!IS_READONLY) {
                     if (c.status === 'draft' || c.status === 'paused') {
+                        actions += ` <button class="btn btn-sm btn-outline-secondary" onclick="editCampaign(${c.id})" title="Edit"><i class="bi bi-pencil"></i></button>`;
                         actions += ` <button class="btn btn-sm btn-outline-success" onclick="launchCampaign(${c.id})" title="Launch"><i class="bi bi-rocket-takeoff"></i></button>`;
                     }
                     if (c.status === 'active') {
@@ -304,11 +318,17 @@
                     if (c.vector !== 'phishing' || c.status === 'active') {
                         actions += ` <button class="btn btn-sm btn-outline-warning" onclick="openLogEvent(${c.id})" title="Log event"><i class="bi bi-journal-plus"></i></button>`;
                     }
-                    actions += ` <button class="btn btn-sm btn-outline-danger" onclick="archiveCampaign(${c.id}, '${escapeAttr(c.name)}')" title="Archive"><i class="bi bi-archive"></i></button>`;
+                    if (c.status !== 'archived') {
+                        actions += ` <button class="btn btn-sm btn-outline-danger" onclick="archiveCampaign(${c.id}, '${escapeAttr(c.name)}')" title="Archive"><i class="bi bi-archive"></i></button>`;
+                    }
                 }
 
+                const tplBadge = c.email_template_name
+                    ? `<br><span class="badge bg-info text-dark" style="font-size:0.7rem"><i class="bi bi-envelope-paper"></i> ${escapeHtml(c.email_template_name)}</span>`
+                    : '';
+
                 return `<tr>
-                    <td>${escapeHtml(c.name)}</td>
+                    <td>${escapeHtml(c.name)}${tplBadge}</td>
                     <td>${vectorBadge}</td>
                     <td>${statusBadge}</td>
                     <td><small>${escapeHtml(c.domain_name || '-')}</small></td>
@@ -338,6 +358,11 @@
         const map = {draft:'bg-secondary', active:'bg-success', paused:'bg-warning text-dark',
                      completed:'bg-primary', archived:'bg-dark'};
         return `<span class="badge ${map[status] || 'bg-secondary'}">${escapeHtml(status)}</span>`;
+    }
+
+    function _isCampaignEditable(id) {
+        const c = _campaigns.find(x => x.id === id);
+        return c && c.status !== 'archived' && c.status !== 'completed';
     }
 
     function _vectorBadge(vector) {
@@ -382,12 +407,108 @@
         }
     });
 
-    async function createCampaign() {
+    async function loadPushedTemplates() {
+        try {
+            const resp = await fetch('/api/ia/email-templates/batches');
+            if (!resp.ok) return;
+            const data = await resp.json();
+            const sel = document.getElementById('c-template');
+            const opts = ['<option value="">None (uses default Grooming template)</option>'];
+            (data.batches || []).forEach(b => {
+                if (b.status !== 'completed') return;
+                // Load batch templates to find pushed ones
+                fetch(`/api/ia/email-templates/batches/${b.id}`)
+                    .then(r => r.json())
+                    .then(bd => {
+                        (bd.batch?.templates || []).forEach(t => {
+                            if (t.gophish_template_id) {
+                                const opt = document.createElement('option');
+                                opt.value = t.id;
+                                opt.textContent = `${t.name || t.subject} (GoPhish #${t.gophish_template_id})`;
+                                sel.appendChild(opt);
+                            }
+                        });
+                    });
+            });
+            sel.innerHTML = opts.join('');
+        } catch (e) { /* ignore */ }
+    }
+
+    function resetCampaignModal() {
+        document.getElementById('c-edit-id').value = '';
+        document.getElementById('c-name').value = '';
+        document.getElementById('c-vector').value = 'phishing';
+        document.getElementById('c-template').value = '';
+        document.getElementById('c-domain').value = '';
+        document.getElementById('c-smtp').innerHTML = '<option value="">Select domain first</option>';
+        document.getElementById('c-url').value = '';
+        document.getElementById('c-start').value = '';
+        document.getElementById('c-end').value = '';
+        document.getElementById('c-roe').checked = true;
+        document.getElementById('campaignModalTitle').textContent = 'New Campaign';
+        document.getElementById('campaignModalSubmitBtn').innerHTML = '<i class="bi bi-plus-circle"></i> Create';
+    }
+
+    document.getElementById('createCampaignModal')?.addEventListener('hidden.bs.modal', resetCampaignModal);
+
+    function editCampaign(id) {
+        const c = _campaigns.find(x => x.id === id);
+        if (!c) return;
+
+        resetCampaignModal();
+        document.getElementById('c-edit-id').value = c.id;
+        document.getElementById('c-name').value = c.name || '';
+        document.getElementById('c-vector').value = c.vector || 'phishing';
+        document.getElementById('campaignModalTitle').textContent = 'Edit Campaign';
+        document.getElementById('campaignModalSubmitBtn').innerHTML = '<i class="bi bi-check-circle"></i> Save';
+
+        // Set template
+        if (c.email_template_id) {
+            const tplSel = document.getElementById('c-template');
+            if (tplSel.querySelector(`option[value="${c.email_template_id}"]`)) {
+                tplSel.value = c.email_template_id;
+            }
+        }
+
+        // Set domain and SMTP
+        if (c.domain_id) {
+            const domSel = document.getElementById('c-domain');
+            domSel.value = c.domain_id;
+            domSel.dispatchEvent(new Event('change'));
+            setTimeout(() => {
+                if (c.gophish_smtp_id) {
+                    document.getElementById('c-smtp').value = c.gophish_smtp_id;
+                }
+            }, 100);
+        }
+
+        // Set URL
+        document.getElementById('c-url').value = c.phishing_url || '';
+
+        // Set dates
+        if (c.scheduled_start) {
+            const dt = new Date(c.scheduled_start);
+            document.getElementById('c-start').value = dt.toISOString().slice(0, 16);
+        }
+        if (c.scheduled_end) {
+            const dt = new Date(c.scheduled_end);
+            document.getElementById('c-end').value = dt.toISOString().slice(0, 16);
+        }
+
+        document.getElementById('c-roe').checked = c.roe_enforced !== false;
+
+        new bootstrap.Modal(document.getElementById('createCampaignModal')).show();
+    }
+
+    async function saveCampaign() {
+        const editId = document.getElementById('c-edit-id').value;
         const payload = {
             name: document.getElementById('c-name').value.trim(),
             vector: document.getElementById('c-vector').value,
+            email_template_id: parseInt(document.getElementById('c-template').value) || null,
             domain_id: parseInt(document.getElementById('c-domain').value) || null,
             gophish_smtp_id: parseInt(document.getElementById('c-smtp').value) || null,
+            phishing_url: document.getElementById('c-url').value.trim() || null,
             scheduled_start: document.getElementById('c-start').value || null,
             scheduled_end: document.getElementById('c-end').value || null,
             roe_enforced: document.getElementById('c-roe').checked,
@@ -399,16 +520,19 @@
         }
 
         try {
-            const resp = await fetch('/api/ia/campaigns', {
-                method: 'POST',
+            const url = editId ? `/api/ia/campaigns/${editId}` : '/api/ia/campaigns';
+            const method = editId ? 'PATCH' : 'POST';
+
+            const resp = await fetch(url, {
+                method,
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify(payload),
             });
             const data = await resp.json();
-            if (!resp.ok) throw new Error(data.error || 'Failed to create campaign');
+            if (!resp.ok) throw new Error(data.error || (editId ? 'Failed to update' : 'Failed to create'));
 
             bootstrap.Modal.getInstance(document.getElementById('createCampaignModal')).hide();
-            showToast('Campaign created', 'success');
+            showToast(editId ? 'Campaign updated' : 'Campaign created', 'success');
             loadCampaigns();
         } catch (e) {
             showToast(e.message, 'danger');
@@ -419,7 +543,11 @@
     async function launchCampaign(id) {
         const c = _campaigns.find(x => x.id === id);
         if (!c) return;
-        if (!confirm(`Launch campaign "${c.name}"? This will start sending emails via GoPhish.`)) return;
+        const tplNote = c.email_template_name ? ` using template "<strong>${escapeHtml(c.email_template_name)}</strong>"` : ' using default Grooming template';
+        const confirmed = await showConfirm('Launch Campaign',
+            `Launch campaign "<strong>${escapeHtml(c.name)}</strong>"${tplNote}?<br>This will start sending emails via GoPhish.`,
+            'Launch');
+        if (!confirmed) return;
 
         try {
             const resp = await fetch(`/api/ia/campaigns/${id}/launch`, {method: 'POST'});
@@ -435,7 +563,10 @@
 
     // ── Archive campaign ───────────────────────────────────────────────
     async function archiveCampaign(id, name) {
-        if (!confirm(`Archive campaign "${name}"?`)) return;
+        const confirmed = await showConfirm('Archive Campaign',
+            `Archive campaign "<strong>${escapeHtml(name)}</strong>"? This will move it to the archive.`,
+            'Archive');
+        if (!confirmed) return;
 
         try {
             const resp = await fetch(`/api/ia/campaigns/${id}`, {method: 'DELETE'});
@@ -473,6 +604,12 @@
         _currentCampaignId = id;
         const c = _campaigns.find(x => x.id === id);
         if (c) document.getElementById('detail-name').textContent = c.name;
+
+        const addBtn = document.getElementById('btn-add-targets');
+        if (addBtn) {
+            const editable = c && (c.status === 'draft' || c.status === 'paused' || c.status === 'active');
+            addBtn.classList.toggle('d-none', !editable);
+        }
 
         document.getElementById('detail-panel').classList.remove('d-none');
         showDetailTab('events');
@@ -516,7 +653,7 @@
                     <td>${escapeHtml(t.full_name || '-')}</td>
                     <td><small>${escapeHtml(t.email || '-')}</small></td>
                     <td><small>${escapeHtml(t.job_title || '-')}</small></td>
-                    <td>${!IS_READONLY ? `<button class="btn btn-sm btn-outline-danger" onclick="removeTarget(${id}, ${t.id})" title="Remove"><i class="bi bi-x"></i></button>` : ''}</td>
+                    <td>${!IS_READONLY && _isCampaignEditable(id) ? `<button class="btn btn-sm btn-outline-danger" onclick="removeTarget(${id}, ${t.id})" title="Remove"><i class="bi bi-x"></i></button>` : ''}</td>
                 </tr>`).join('');
             }
         } catch (e) { /* ignore */ }
@@ -684,6 +821,7 @@
     {% if active_project %}
     loadCampaigns();
     loadDomains();
+    loadPushedTemplates();
     {% endif %}
 </script>
 {% endblock %}

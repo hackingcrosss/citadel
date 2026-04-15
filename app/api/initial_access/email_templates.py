@@ -5,7 +5,9 @@ from app import db
 from app.api import api_bp
 from app.models.ia_email_template import (
     IAEmailTemplateBatch, IAEmailTemplate, TEMPLATE_EDITABLE_FIELDS,
+    ia_template_target_assignments,
 )
+from app.models.ia_target import IATarget
 from app.services import audit_service
 from app.services.project_service import get_active_project
 from app.utils.decorators import feature_required
@@ -196,13 +198,170 @@ def ia_push_template_to_gophish(template_id):
 
     try:
         from app.services.email_template_service import push_template_to_gophish
-        result = push_template_to_gophish(template_id)
+        result = push_template_to_gophish(template_id, user_id=current_user.id)
     except Exception as e:
         _log.exception('Failed to push template %s to GoPhish', template_id)
         return jsonify({'error': str(e)}), 502
 
+    campaign_data = result.get('campaign')
     audit_service.log('ia.email_push_gophish', 'ia_email_template', tpl.id,
                       f'project:{project.code}',
-                      {'gophish_template_id': tpl.gophish_template_id})
+                      {'gophish_template_id': tpl.gophish_template_id,
+                       'gophish_group_id': tpl.gophish_group_id,
+                       'campaign_id': campaign_data.get('id') if campaign_data else None})
 
     return jsonify({'template': tpl.to_dict(), 'gophish_result': result})
+
+
+# ── Target assignments ─────────────────────────────────────────────────
+
+@api_bp.route('/ia/email-templates/<int:template_id>/targets', methods=['GET'])
+@login_required
+@feature_required('initial_access')
+def ia_list_template_targets(template_id):
+    """List targets assigned to a template."""
+    project = get_active_project(current_user)
+    if not project:
+        return jsonify({'error': 'No active project selected'}), 400
+
+    tpl = IAEmailTemplate.query.get(template_id)
+    if not tpl or tpl.project_id != project.id:
+        return jsonify({'error': 'Template not found'}), 404
+
+    targets = tpl.assigned_targets.all()
+    return jsonify({'targets': [t.to_dict() for t in targets]})
+
+
+@api_bp.route('/ia/email-templates/<int:template_id>/targets', methods=['POST'])
+@login_required
+@feature_required('initial_access')
+def ia_assign_template_targets(template_id):
+    """Assign targets to a template. Body: {target_ids: [int]}"""
+    project = get_active_project(current_user)
+    if not project:
+        return jsonify({'error': 'No active project selected'}), 400
+
+    if not current_user.can_write_infra:
+        return jsonify({'error': 'Write access required'}), 403
+
+    tpl = IAEmailTemplate.query.get(template_id)
+    if not tpl or tpl.project_id != project.id:
+        return jsonify({'error': 'Template not found'}), 404
+
+    data = request.get_json(silent=True) or {}
+    target_ids = data.get('target_ids', [])
+    if not target_ids:
+        return jsonify({'error': 'No target_ids provided'}), 400
+
+    existing = set(t.id for t in tpl.assigned_targets.all())
+    added = 0
+
+    for tid in target_ids:
+        if tid in existing:
+            continue
+        target = IATarget.query.get(tid)
+        if not target or target.project_id != project.id:
+            continue
+        tpl.assigned_targets.append(target)
+        existing.add(tid)
+        added += 1
+
+    if added:
+        db.session.commit()
+        audit_service.log('ia.template_assign_targets', 'ia_email_template', tpl.id,
+                          f'project:{project.code}', {'added': added})
+
+    return jsonify({'added': added, 'assigned_targets_count': tpl.assigned_targets.count()})
+
+
+@api_bp.route('/ia/email-templates/<int:template_id>/targets/<int:target_id>', methods=['DELETE'])
+@login_required
+@feature_required('initial_access')
+def ia_unassign_template_target(template_id, target_id):
+    """Unassign a target from a template."""
+    project = get_active_project(current_user)
+    if not project:
+        return jsonify({'error': 'No active project selected'}), 400
+
+    if not current_user.can_write_infra:
+        return jsonify({'error': 'Write access required'}), 403
+
+    tpl = IAEmailTemplate.query.get(template_id)
+    if not tpl or tpl.project_id != project.id:
+        return jsonify({'error': 'Template not found'}), 404
+
+    target = IATarget.query.get(target_id)
+    if not target or target not in tpl.assigned_targets.all():
+        return jsonify({'error': 'Target not assigned'}), 404
+
+    tpl.assigned_targets.remove(target)
+    db.session.commit()
+
+    return jsonify({'ok': True, 'assigned_targets_count': tpl.assigned_targets.count()})
+
+
+def _compute_role_match(target, roles):
+    """Score how well a target matches the template's target_roles."""
+    score = 0
+    reasons = []
+    title = (target.job_title or '').lower()
+    dept = (target.department or '').lower()
+
+    for role in roles:
+        role_lower = role.lower()
+        role_words = [w for w in role_lower.split() if len(w) > 2]
+
+        if role_lower == dept:
+            score += 3
+            reasons.append(f'Department matches "{role}"')
+        elif role_lower in dept or dept and dept in role_lower:
+            score += 2
+            reasons.append(f'Department contains "{role}"')
+
+        if role_lower in title:
+            score += 2
+            reasons.append(f'Title contains "{role}"')
+        else:
+            for word in role_words:
+                if word in title:
+                    score += 1
+                    reasons.append(f'Title contains "{word}" from "{role}"')
+                    break
+
+    return score, reasons
+
+
+@api_bp.route('/ia/email-templates/<int:template_id>/suggest-targets', methods=['POST'])
+@login_required
+@feature_required('initial_access')
+def ia_suggest_template_targets(template_id):
+    """Auto-suggest target assignments based on target_roles matching."""
+    project = get_active_project(current_user)
+    if not project:
+        return jsonify({'error': 'No active project selected'}), 400
+
+    tpl = IAEmailTemplate.query.get(template_id)
+    if not tpl or tpl.project_id != project.id:
+        return jsonify({'error': 'Template not found'}), 404
+
+    roles = tpl.parsed_target_roles
+    if not roles:
+        return jsonify({'suggestions': [], 'message': 'Template has no target_roles to match against'})
+
+    already_assigned = set(t.id for t in tpl.assigned_targets.all())
+    targets = IATarget.query.filter_by(project_id=project.id).all()
+
+    suggestions = []
+    for target in targets:
+        if target.id in already_assigned:
+            continue
+        score, reasons = _compute_role_match(target, roles)
+        if score > 0:
+            suggestions.append({
+                'target': target.to_dict(),
+                'match_score': score,
+                'match_reasons': reasons,
+            })
+
+    suggestions.sort(key=lambda s: s['match_score'], reverse=True)
+    return jsonify({'suggestions': suggestions})

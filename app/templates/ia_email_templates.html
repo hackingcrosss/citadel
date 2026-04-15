@@ -155,6 +155,60 @@
     </div>
 </div>
 
+<!-- Assign Targets Modal -->
+<div class="modal fade" id="assignTargetsModal" tabindex="-1" aria-labelledby="assignTargetsModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content bg-dark text-light">
+            <div class="modal-header border-secondary">
+                <h5 class="modal-title" id="assignTargetsModalLabel">
+                    <i class="bi bi-people"></i> Assign Targets to Template
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <h6 class="mb-2">Assigned Targets <span class="badge bg-secondary" id="assigned-count">0</span></h6>
+                <div class="table-responsive mb-3" style="max-height:200px;overflow-y:auto;">
+                    <table class="table table-sm mb-0">
+                        <thead><tr><th>Name</th><th>Email</th><th>Title</th><th>Dept</th><th></th></tr></thead>
+                        <tbody id="assigned-targets-tbody">
+                            <tr><td colspan="5" class="text-center text-muted py-2">Loading...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+                {% if current_user.role not in ['viewer', 'auditor', 'white_team'] and active_project_role != 'white_team' %}
+                <hr class="border-secondary">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <h6 class="mb-0">Add Targets</h6>
+                    <button class="btn btn-sm btn-outline-info" onclick="suggestTargets()" id="btn-suggest">
+                        <i class="bi bi-magic"></i> Auto-Suggest
+                    </button>
+                </div>
+                <div class="mb-2">
+                    <input type="text" class="form-control form-control-sm bg-dark text-light border-secondary"
+                           id="tgt-search" placeholder="Search targets..." oninput="filterTargetsForAssign()">
+                </div>
+                <div class="table-responsive" style="max-height:300px;overflow-y:auto;">
+                    <table class="table table-sm mb-0">
+                        <thead><tr>
+                            <th style="width:30px"><input type="checkbox" id="tgt-select-all" onchange="toggleSelectAllTargets()" aria-label="Select all targets"></th>
+                            <th>Name</th><th>Email</th><th>Title</th><th>Dept</th><th>Match</th>
+                        </tr></thead>
+                        <tbody id="available-targets-tbody"></tbody>
+                    </table>
+                </div>
+                {% endif %}
+            </div>
+            <div class="modal-footer border-secondary">
+                <button class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                {% if current_user.role not in ['viewer', 'auditor', 'white_team'] and active_project_role != 'white_team' %}
+                <button class="btn btn-infrared" onclick="assignSelectedTargets()">
+                    <i class="bi bi-plus"></i> Assign Selected
+                </button>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
 
 {% endblock %}
 
@@ -375,14 +429,22 @@
         const roles = (t.target_roles || []).map(r => `<span class="badge bg-info text-dark me-1">${escapeHtml(r)}</span>`).join('');
         const score = t.relevance_score || 0;
         const scoreColor = score >= 7 ? 'success' : score >= 4 ? 'warning' : 'secondary';
-        const pushed = t.gophish_template_id
-            ? `<span class="badge bg-success"><i class="bi bi-check-circle"></i> GoPhish #${t.gophish_template_id}</span>`
-            : '';
+        let pushed = '';
+        if (t.gophish_template_id) {
+            pushed = `<span class="badge bg-success"><i class="bi bi-check-circle"></i> GoPhish #${t.gophish_template_id}</span>`;
+            if (t.gophish_group_id) pushed += ` <span class="badge bg-success"><i class="bi bi-people"></i> Group #${t.gophish_group_id}</span>`;
+        }
+
+        const tgtCount = t.assigned_targets_count || 0;
+        const tgtBadge = tgtCount ? ` <span class="badge bg-primary rounded-pill">${tgtCount}</span>` : '';
 
         let actions = `<button class="btn btn-sm btn-outline-info" onclick="previewTemplate(${t.id})" title="Preview HTML"><i class="bi bi-eye"></i></button> `;
+        actions += `<button class="btn btn-sm btn-outline-primary" onclick="openAssignTargets(${t.id})" title="Assign Targets"><i class="bi bi-people"></i>${tgtBadge}</button> `;
         if (!IS_READONLY) {
             actions += `<button class="btn btn-sm btn-outline-warning" onclick="editTemplate(${t.id})" title="Edit"><i class="bi bi-pencil"></i></button> `;
-            if (!t.gophish_template_id) {
+            if (t.gophish_template_id) {
+                actions += `<button class="btn btn-sm btn-outline-success" onclick="pushToGophish(${t.id})" title="Re-push to GoPhish (new campaign draft)"><i class="bi bi-arrow-repeat"></i></button>`;
+            } else {
                 actions += `<button class="btn btn-sm btn-outline-success" onclick="pushToGophish(${t.id})" title="Push to GoPhish"><i class="bi bi-send"></i></button>`;
             }
         }
@@ -497,16 +559,190 @@
     function pushToGophish(id) {
         if (IS_READONLY) { showToast('Read-only access', 'warning'); return; }
 
-        showConfirm('Push to GoPhish', 'Push this template to GoPhish?', 'Push', () => {
+        const tpl = _templateCache[id];
+        const tgtCount = tpl?.assigned_targets_count || 0;
+        const isRepush = !!tpl?.gophish_template_id;
+        let msg = tgtCount
+            ? `Push this template and ${tgtCount} assigned target(s) as a GoPhish group?`
+            : 'Push this template to GoPhish? (No targets assigned — group will not be created.)';
+        if (isRepush) msg = `This template was already pushed. Re-pushing will create a <strong>new</strong> GoPhish template, group, and draft campaign with the current target data.<br><br>${msg}`;
+
+        showConfirm(isRepush ? 'Re-push to GoPhish' : 'Push to GoPhish', msg, isRepush ? 'Re-push' : 'Push', () => {
             fetch(`/api/ia/email-templates/${id}/push`, { method: 'POST' })
                 .then(r => { if (!r.ok) throw r; return r.json(); })
                 .then(data => {
-                    showToast(`Pushed to GoPhish (ID: ${data.template.gophish_template_id})`, 'success');
+                    const parts = [`Template #${data.template.gophish_template_id}`];
+                    if (data.template.gophish_group_id) parts.push(`Group #${data.template.gophish_group_id}`);
+
+                    const gpResult = data.gophish_result || {};
+                    if (gpResult.campaign) {
+                        parts.push(`Draft campaign created`);
+                        showToast(`Pushed to GoPhish: ${parts.join(', ')}. <a href="/initial-access/campaigns" class="alert-link">View campaign →</a>`, 'success');
+                    } else {
+                        showToast(`Pushed to GoPhish: ${parts.join(', ')}`, 'success');
+                    }
+
                     _templateCache[data.template.id] = data.template;
                     if (_currentBatchId) viewBatch(_currentBatchId);
                 })
                 .catch(() => showToast('Failed to push to GoPhish', 'danger'));
         });
+    }
+
+    /* ── Assign Targets ──────────────────────────────────────────────── */
+
+    let _assignTemplateId = null;
+    let _allProjectTargets = [];
+    let _suggestScores = {};
+
+    function openAssignTargets(templateId) {
+        _assignTemplateId = templateId;
+        _suggestScores = {};
+        const searchEl = document.getElementById('tgt-search');
+        if (searchEl) searchEl.value = '';
+        const selectAll = document.getElementById('tgt-select-all');
+        if (selectAll) selectAll.checked = false;
+
+        loadAssignedTargets(templateId);
+
+        fetch('/api/ia/targets')
+            .then(r => r.json())
+            .then(data => {
+                _allProjectTargets = data.targets || [];
+                renderAvailableTargets(_allProjectTargets);
+            })
+            .catch(() => {});
+
+        new bootstrap.Modal(document.getElementById('assignTargetsModal')).show();
+    }
+
+    function loadAssignedTargets(templateId) {
+        fetch(`/api/ia/email-templates/${templateId}/targets`)
+            .then(r => r.json())
+            .then(data => {
+                const targets = data.targets || [];
+                document.getElementById('assigned-count').textContent = targets.length;
+                const tbody = document.getElementById('assigned-targets-tbody');
+                if (!targets.length) {
+                    tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-2">No targets assigned</td></tr>';
+                    return;
+                }
+                tbody.innerHTML = targets.map(t => `<tr>
+                    <td>${escapeHtml(t.full_name || '-')}</td>
+                    <td><small>${escapeHtml(t.email || '-')}</small></td>
+                    <td><small>${escapeHtml(t.job_title || '-')}</small></td>
+                    <td><small>${escapeHtml(t.department || '-')}</small></td>
+                    <td>${!IS_READONLY ? `<button class="btn btn-sm btn-outline-danger py-0 px-1" onclick="unassignTarget(${templateId}, ${t.id})" title="Unassign"><i class="bi bi-x"></i></button>` : ''}</td>
+                </tr>`).join('');
+            })
+            .catch(() => {});
+    }
+
+    function renderAvailableTargets(targets) {
+        const tbody = document.getElementById('available-targets-tbody');
+        if (!tbody) return;
+        if (!targets.length) {
+            tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-2">No targets available</td></tr>';
+            return;
+        }
+        tbody.innerHTML = targets.map(t => {
+            const info = _suggestScores[t.id];
+            const matchBadge = info
+                ? `<span class="badge bg-info" title="${escapeAttr(info.reasons.join(', '))}">${info.score}</span>`
+                : '';
+            return `<tr>
+                <td><input type="checkbox" class="tgt-check" value="${t.id}" aria-label="Select ${escapeAttr(t.email || '')}"></td>
+                <td>${escapeHtml(t.full_name || '-')}</td>
+                <td><small>${escapeHtml(t.email || '-')}</small></td>
+                <td><small>${escapeHtml(t.job_title || '-')}</small></td>
+                <td><small>${escapeHtml(t.department || '-')}</small></td>
+                <td>${matchBadge}</td>
+            </tr>`;
+        }).join('');
+    }
+
+    function filterTargetsForAssign() {
+        const q = (document.getElementById('tgt-search')?.value || '').toLowerCase();
+        if (!q) { renderAvailableTargets(_allProjectTargets); return; }
+        renderAvailableTargets(_allProjectTargets.filter(t =>
+            (t.full_name || '').toLowerCase().includes(q) ||
+            (t.email || '').toLowerCase().includes(q) ||
+            (t.job_title || '').toLowerCase().includes(q) ||
+            (t.department || '').toLowerCase().includes(q)
+        ));
+    }
+
+    function toggleSelectAllTargets() {
+        const checked = document.getElementById('tgt-select-all').checked;
+        document.querySelectorAll('.tgt-check').forEach(cb => cb.checked = checked);
+    }
+
+    function assignSelectedTargets() {
+        if (IS_READONLY) { showToast('Read-only access', 'warning'); return; }
+        const ids = Array.from(document.querySelectorAll('.tgt-check:checked')).map(cb => parseInt(cb.value));
+        if (!ids.length) { showToast('Select at least one target', 'warning'); return; }
+
+        fetch(`/api/ia/email-templates/${_assignTemplateId}/targets`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({target_ids: ids}),
+        })
+        .then(r => { if (!r.ok) throw r; return r.json(); })
+        .then(data => {
+            showToast(`Assigned ${data.added} target(s)`, 'success');
+            loadAssignedTargets(_assignTemplateId);
+            if (_currentBatchId) viewBatch(_currentBatchId);
+        })
+        .catch(() => showToast('Failed to assign targets', 'danger'));
+    }
+
+    function unassignTarget(templateId, targetId) {
+        if (IS_READONLY) { showToast('Read-only access', 'warning'); return; }
+
+        fetch(`/api/ia/email-templates/${templateId}/targets/${targetId}`, {method: 'DELETE'})
+            .then(r => { if (!r.ok) throw r; return r.json(); })
+            .then(() => {
+                loadAssignedTargets(templateId);
+                if (_currentBatchId) viewBatch(_currentBatchId);
+            })
+            .catch(() => showToast('Failed to unassign target', 'danger'));
+    }
+
+    function suggestTargets() {
+        if (!_assignTemplateId) return;
+        const btn = document.getElementById('btn-suggest');
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Suggesting...';
+
+        fetch(`/api/ia/email-templates/${_assignTemplateId}/suggest-targets`, {method: 'POST'})
+            .then(r => { if (!r.ok) throw r; return r.json(); })
+            .then(data => {
+                const suggestions = data.suggestions || [];
+                _suggestScores = {};
+                suggestions.forEach(s => {
+                    _suggestScores[s.target.id] = {score: s.match_score, reasons: s.match_reasons};
+                });
+
+                _allProjectTargets.sort((a, b) => {
+                    const sa = (_suggestScores[a.id] || {score: 0}).score;
+                    const sb = (_suggestScores[b.id] || {score: 0}).score;
+                    return sb - sa;
+                });
+
+                renderAvailableTargets(_allProjectTargets);
+
+                suggestions.forEach(s => {
+                    const cb = document.querySelector(`.tgt-check[value="${s.target.id}"]`);
+                    if (cb && s.match_score >= 2) cb.checked = true;
+                });
+
+                showToast(`Found ${suggestions.length} suggested match(es)`, 'info');
+            })
+            .catch(() => showToast('Failed to get suggestions', 'danger'))
+            .finally(() => {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="bi bi-magic"></i> Auto-Suggest';
+            });
     }
 
     /* ── Init ─────────────────────────────────────────────────────────── */

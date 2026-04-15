@@ -5,6 +5,17 @@ from datetime import datetime
 
 BATCH_STATUSES = ('pending', 'completed', 'failed')
 
+# Many-to-many join table: email templates <-> SE targets
+ia_template_target_assignments = db.Table(
+    'ia_template_target_assignments',
+    db.Column('template_id', db.Integer, db.ForeignKey('ia_email_templates.id', ondelete='CASCADE'),
+              primary_key=True),
+    db.Column('target_id', db.Integer, db.ForeignKey('ia_targets.id', ondelete='CASCADE'),
+              primary_key=True),
+    db.Column('assigned_at', db.DateTime, default=datetime.utcnow),
+    db.Column('suggested', db.Boolean, default=False),
+)
+
 TEMPLATE_EDITABLE_FIELDS = frozenset({
     'name', 'subject', 'html_body', 'text_body', 'notes',
 })
@@ -69,12 +80,16 @@ class IAEmailTemplate(db.Model):
     notes = db.Column(db.Text)
 
     gophish_template_id = db.Column(db.Integer, nullable=True)
+    gophish_group_id = db.Column(db.Integer, nullable=True)
     pushed_at = db.Column(db.DateTime, nullable=True)
 
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     batch = db.relationship('IAEmailTemplateBatch', back_populates='templates')
+    assigned_targets = db.relationship('IATarget', secondary=ia_template_target_assignments,
+                                       backref=db.backref('assigned_templates', lazy='dynamic'),
+                                       lazy='dynamic')
 
     @property
     def parsed_target_roles(self):
@@ -100,6 +115,8 @@ class IAEmailTemplate(db.Model):
             'relevance_score': self.relevance_score,
             'notes': self.notes,
             'gophish_template_id': self.gophish_template_id,
+            'gophish_group_id': self.gophish_group_id,
             'pushed_at': self.pushed_at.isoformat() if self.pushed_at else None,
             'created_at': self.created_at.isoformat() if self.created_at else None,
+            'assigned_targets_count': self.assigned_targets.count(),
         }

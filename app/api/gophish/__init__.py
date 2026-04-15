@@ -204,3 +204,40 @@ def import_gophish_template():
         return jsonify({'template': result}), 200
     except Exception as e:
         return jsonify({'error': str(e)}), 400
+
+
+# ---------------------------------------------------------------------------
+# User Groups
+# ---------------------------------------------------------------------------
+
+@api_bp.route('/gophish/groups', methods=['GET'])
+@login_required
+@feature_required('gophish')
+def list_gophish_groups():
+    try:
+        groups = gophish_service.list_groups()
+        return jsonify({'groups': groups if isinstance(groups, list) else []})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 400
+
+
+@api_bp.route('/gophish/groups/<int:group_id>', methods=['GET'])
+@login_required
+@feature_required('gophish')
+def get_gophish_group(group_id):
+    try:
+        group = gophish_service.get_group(group_id)
+        return jsonify({'group': group})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 400
+
+
+@api_bp.route('/gophish/groups/<int:group_id>', methods=['DELETE'])
+@login_required
+@feature_required('gophish')
+def delete_gophish_group(group_id):
+    try:
+        gophish_service.delete_group(group_id)
+        return jsonify({'deleted': True})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 400
