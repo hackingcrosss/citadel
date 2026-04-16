@@ -251,6 +251,40 @@ def launch_campaign(campaign):
     return campaign
 
 
+# ── Reschedule active campaign ─────────────────────────────────────────
+
+def reschedule_campaign(campaign, scheduled_start, scheduled_end=None):
+    """Reschedule an active/queued GoPhish campaign.
+
+    Deletes the existing GoPhish campaign, updates the schedule,
+    then re-launches with the new dates.
+    """
+    if campaign.status != 'active':
+        raise ValueError('Can only reschedule active campaigns')
+    if not campaign.gophish_campaign_id:
+        raise ValueError('Campaign has no GoPhish campaign to reschedule')
+
+    if isinstance(scheduled_start, str):
+        scheduled_start = datetime.fromisoformat(scheduled_start)
+    if isinstance(scheduled_end, str):
+        scheduled_end = datetime.fromisoformat(scheduled_end)
+
+    gp_id = campaign.gophish_campaign_id
+
+    gophish_service.complete_campaign(gp_id)
+    gophish_service.delete_campaign(gp_id)
+
+    campaign.gophish_campaign_id = None
+    campaign.scheduled_start = scheduled_start
+    if scheduled_end is not None:
+        campaign.scheduled_end = scheduled_end
+    campaign.status = 'paused'
+    campaign.updated_at = datetime.utcnow()
+    db.session.commit()
+
+    return launch_campaign(campaign)
+
+
 # ── Event sync from GoPhish ─────────────────────────────────────────────
 
 _EVENT_TYPE_MAP = {
