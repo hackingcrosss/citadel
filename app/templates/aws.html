@@ -239,12 +239,12 @@
     </div>
 </div>
 
-<!-- Security Groups Modal -->
+<!-- Security Groups / Firewall Modal -->
 <div class="modal fade" id="sgModal" tabindex="-1" aria-labelledby="sgModalLabel">
-    <div class="modal-dialog modal-lg">
+    <div class="modal-dialog modal-xl">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title" id="sgModalLabel">Security Group Details</h5>
+                <h5 class="modal-title" id="sgModalLabel"><i class="bi bi-shield-lock"></i> Firewall Rules</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body" id="sgBody">
@@ -573,6 +573,7 @@
                         ${!IS_READONLY && inst.state === 'running' ? `<button class="btn btn-outline-warning btn-sm" title="Stop" onclick="instanceAction('stop', '${idAttr}')"><i class="bi bi-stop-fill"></i></button>` : ''}
                         ${!IS_READONLY && inst.state === 'running' ? `<button class="btn btn-outline-info btn-sm" title="Reboot" onclick="instanceAction('reboot', '${idAttr}')"><i class="bi bi-arrow-repeat"></i></button>` : ''}
                         ${!IS_READONLY ? `<button class="btn btn-outline-danger btn-sm" title="Terminate" onclick="confirmTerminate('${idAttr}', '${nameAttr}')"><i class="bi bi-trash"></i></button>` : ''}
+                        <button class="btn btn-outline-primary btn-sm" title="Firewall Rules" onclick="showFirewall('${idAttr}', '${nameAttr}')"><i class="bi bi-shield-lock"></i></button>
                         <button class="btn btn-outline-secondary btn-sm" title="Status Checks" onclick="showStatusChecks('${idAttr}', '${nameAttr}')"><i class="bi bi-shield-check"></i></button>
                     </div>
                 </td>
@@ -937,7 +938,105 @@
             });
     }
 
-    // --- Security Group Detail ---
+    // --- Security Group / Firewall ---
+
+    function _renderSgRuleRow(r) {
+        const proto = r.protocol === '-1' ? 'All' : escapeHtml(r.protocol.toUpperCase());
+        const port = r.protocol === '-1' ? 'All' : escapeHtml(String(r.from_port === r.to_port ? r.from_port : r.from_port + '-' + r.to_port));
+        return `<tr><td>${proto}</td><td>${port}</td><td><code>${escapeHtml(r.cidr)}</code></td><td><small>${escapeHtml(r.description || '-')}</small></td></tr>`;
+    }
+
+    function _renderSgBlock(sg) {
+        const inbound = (sg.inbound_rules || []).map(_renderSgRuleRow).join('');
+        const outbound = (sg.outbound_rules || []).map(_renderSgRuleRow).join('');
+        return `
+            <div class="card mb-3">
+                <div class="card-header py-2 d-flex justify-content-between align-items-center">
+                    <span><i class="bi bi-shield-lock me-1"></i> <strong>${escapeHtml(sg.name)}</strong> <code class="ms-2">${escapeHtml(sg.id)}</code></span>
+                    ${sg.description ? `<small class="text-muted">${escapeHtml(sg.description)}</small>` : ''}
+                </div>
+                <div class="card-body py-2">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <h6 class="fw-bold text-success"><i class="bi bi-box-arrow-in-down me-1"></i>Inbound (${sg.inbound_rules.length})</h6>
+                            ${inbound ? `<div class="table-responsive"><table class="table table-sm table-striped mb-0">
+                                <thead><tr><th>Protocol</th><th>Port</th><th>Source</th><th>Description</th></tr></thead>
+                                <tbody>${inbound}</tbody>
+                            </table></div>` : '<p class="text-muted mb-0">No inbound rules — all traffic blocked</p>'}
+                        </div>
+                        <div class="col-md-6">
+                            <h6 class="fw-bold text-info"><i class="bi bi-box-arrow-up me-1"></i>Outbound (${sg.outbound_rules.length})</h6>
+                            ${outbound ? `<div class="table-responsive"><table class="table table-sm table-striped mb-0">
+                                <thead><tr><th>Protocol</th><th>Port</th><th>Destination</th><th>Description</th></tr></thead>
+                                <tbody>${outbound}</tbody>
+                            </table></div>` : '<p class="text-muted mb-0">No outbound rules</p>'}
+                        </div>
+                    </div>
+                </div>
+            </div>`;
+    }
+
+    function showFirewall(instanceId, instanceName) {
+        const modal = new bootstrap.Modal(document.getElementById('sgModal'));
+        const body = document.getElementById('sgBody');
+        const label = document.getElementById('sgModalLabel');
+        label.innerHTML = `<i class="bi bi-shield-lock"></i> Firewall Rules — ${escapeHtml(instanceName || instanceId)}`;
+        body.innerHTML = '<div class="text-center py-4"><div class="spinner-border text-secondary"></div></div>';
+        modal.show();
+
+        fetch(`/api/aws/instances/${instanceId}?region=${getRegion()}`)
+            .then(r => r.json())
+            .then(async data => {
+                if (data.error) { body.innerHTML = `<div class="alert alert-danger">${escapeHtml(String(data.error))}</div>`; return; }
+                const sgs = data.instance.security_groups || [];
+                if (sgs.length === 0) { body.innerHTML = '<div class="alert alert-warning">No security groups attached to this instance.</div>'; return; }
+
+                const results = await Promise.all(sgs.map(sg =>
+                    fetch(`/api/aws/security-groups/${sg.id}?region=${getRegion()}`).then(r => r.json())
+                ));
+
+                const allInbound = [];
+                const blocks = [];
+                for (const res of results) {
+                    if (res.error || !res.security_group) continue;
+                    const sg = res.security_group;
+                    blocks.push(_renderSgBlock(sg));
+                    (sg.inbound_rules || []).forEach(r => allInbound.push({...r, _sg: sg.name}));
+                }
+
+                const publicCount = allInbound.filter(r => r.cidr === '0.0.0.0/0' || r.cidr === '::/0').length;
+                const summaryRows = allInbound.map(r => {
+                    const proto = r.protocol === '-1' ? 'All' : escapeHtml(r.protocol.toUpperCase());
+                    const port = r.protocol === '-1' ? 'All' : escapeHtml(String(r.from_port === r.to_port ? r.from_port : r.from_port + '-' + r.to_port));
+                    const open = r.cidr === '0.0.0.0/0' || r.cidr === '::/0';
+                    const cidrBadge = open
+                        ? `<code class="text-danger fw-bold">${escapeHtml(r.cidr)}</code> <span class="badge bg-danger">Public</span>`
+                        : `<code>${escapeHtml(r.cidr)}</code>`;
+                    return `<tr${open ? ' style="background:rgba(220,53,69,0.12)"' : ''}><td>${proto}</td><td><strong>${port}</strong></td><td>${cidrBadge}</td><td><small>${escapeHtml(r._sg)}</small></td><td><small>${escapeHtml(r.description || '-')}</small></td></tr>`;
+                }).join('');
+
+                const collapseId = 'fw-summary-' + instanceId.replace(/[^a-zA-Z0-9]/g, '');
+                const summarySection = summaryRows ? `
+                    <div class="mb-3">
+                        <a class="btn btn-sm btn-outline-secondary" data-bs-toggle="collapse" href="#${collapseId}" role="button" aria-expanded="false">
+                            <i class="bi bi-exclamation-triangle me-1"></i> Exposed Ports Summary (${allInbound.length} rules${publicCount ? ', <span class="text-danger fw-bold">' + publicCount + ' public</span>' : ''})
+                        </a>
+                        <div class="collapse mt-2" id="${collapseId}">
+                            <div class="table-responsive"><table class="table table-sm table-hover mb-0">
+                                <thead class="table-dark"><tr><th>Protocol</th><th>Port</th><th>Source</th><th>Security Group</th><th>Description</th></tr></thead>
+                                <tbody>${summaryRows}</tbody>
+                            </table></div>
+                        </div>
+                    </div>` : '';
+
+                body.innerHTML = `
+                    <h6 class="fw-bold mb-3">Security Groups (${sgs.length})</h6>
+                    ${blocks.join('')}
+                    ${summarySection}
+                `;
+            })
+            .catch(err => { body.innerHTML = `<div class="alert alert-danger">Error: ${escapeHtml(String(err))}</div>`; });
+    }
 
     function showSecurityGroup(groupId) {
         const detailModal = bootstrap.Modal.getInstance(document.getElementById('detailModal'));
@@ -945,50 +1044,18 @@
 
         const modal = new bootstrap.Modal(document.getElementById('sgModal'));
         const body = document.getElementById('sgBody');
+        const label = document.getElementById('sgModalLabel');
+        label.innerHTML = '<i class="bi bi-shield-lock"></i> Security Group Details';
         body.innerHTML = '<div class="text-center py-3"><div class="spinner-border text-secondary"></div></div>';
         modal.show();
 
         fetch(`/api/aws/security-groups/${groupId}?region=${getRegion()}`)
             .then(r => r.json())
             .then(data => {
-                if (data.error) {
-                    body.innerHTML = `<div class="alert alert-danger">${escapeHtml(String(data.error))}</div>`;
-                    return;
-                }
-                const sg = data.security_group;
-                const renderRule = r => `
-                    <tr>
-                        <td>${r.protocol === '-1' ? 'All' : escapeHtml(r.protocol.toUpperCase())}</td>
-                        <td>${r.protocol === '-1' ? 'All' : escapeHtml(String(r.from_port === r.to_port ? r.from_port : r.from_port + '-' + r.to_port))}</td>
-                        <td><code>${escapeHtml(r.cidr)}</code></td>
-                        <td><small>${escapeHtml(r.description || '-')}</small></td>
-                    </tr>`;
-                body.innerHTML = `
-                    <table class="table table-sm mb-3">
-                        <tr><th style="width:30%">Group ID</th><td><code>${escapeHtml(sg.id)}</code></td></tr>
-                        <tr><th>Name</th><td>${escapeHtml(sg.name)}</td></tr>
-                        <tr><th>Description</th><td>${escapeHtml(sg.description || '-')}</td></tr>
-                        <tr><th>VPC</th><td><code>${escapeHtml(sg.vpc_id || '-')}</code></td></tr>
-                    </table>
-
-                    <h6 class="fw-bold">Inbound Rules</h6>
-                    ${sg.inbound_rules.length > 0 ? `
-                    <table class="table table-sm">
-                        <thead><tr><th>Protocol</th><th>Port Range</th><th>Source</th><th>Description</th></tr></thead>
-                        <tbody>${sg.inbound_rules.map(renderRule).join('')}</tbody>
-                    </table>` : '<p class="text-muted">No inbound rules</p>'}
-
-                    <h6 class="fw-bold mt-3">Outbound Rules</h6>
-                    ${sg.outbound_rules.length > 0 ? `
-                    <table class="table table-sm">
-                        <thead><tr><th>Protocol</th><th>Port Range</th><th>Destination</th><th>Description</th></tr></thead>
-                        <tbody>${sg.outbound_rules.map(renderRule).join('')}</tbody>
-                    </table>` : '<p class="text-muted">No outbound rules</p>'}
-                `;
+                if (data.error) { body.innerHTML = `<div class="alert alert-danger">${escapeHtml(String(data.error))}</div>`; return; }
+                body.innerHTML = _renderSgBlock(data.security_group);
             })
-            .catch(err => {
-                body.innerHTML = `<div class="alert alert-danger">Error: ${escapeHtml(String(err))}</div>`;
-            });
+            .catch(err => { body.innerHTML = `<div class="alert alert-danger">Error: ${escapeHtml(String(err))}</div>`; });
     }
 
     // --- SSH Config ---
