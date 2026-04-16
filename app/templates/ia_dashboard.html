@@ -210,15 +210,39 @@
         }
     }
 
-    // ── Load campaigns ─────────────────────────────────────────────────
+    // ── Load campaigns (Frontline + GoPhish) ─────────────────────────
     async function loadCampaigns() {
         const tbody = document.getElementById('campaigns-tbody');
         try {
-            const resp = await fetch('/api/ia/campaigns');
-            const data = await resp.json();
-            if (data.upgrade_required) { showToast('Feature requires plan upgrade', 'warning'); return; }
-            if (!resp.ok) throw new Error(data.error || 'Failed');
-            const allCampaigns = data.campaigns || [];
+            const [flResp, gpResp] = await Promise.all([
+                fetch('/api/ia/campaigns'),
+                fetch('/api/gophish/campaigns').catch(() => null),
+            ]);
+            const flData = await flResp.json();
+            if (flData.upgrade_required) { showToast('Feature requires plan upgrade', 'warning'); return; }
+            if (!flResp.ok) throw new Error(flData.error || 'Failed');
+            const frontline = (flData.campaigns || []).map(c => ({...c, _source: 'frontline'}));
+
+            let gpOnly = [];
+            if (gpResp && gpResp.ok) {
+                const gpData = await gpResp.json();
+                const linkedIds = new Set(frontline.map(c => c.gophish_campaign_id).filter(Boolean));
+                gpOnly = (gpData.campaigns || [])
+                    .filter(c => !linkedIds.has(c.id))
+                    .map(c => {
+                        const st = (c.status || '').toLowerCase();
+                        const statusMap = {'completed': 'completed', 'queued': 'active', 'in progress': 'active'};
+                        return {
+                            _source: 'gophish', name: c.name || `GoPhish #${c.id}`,
+                            status: statusMap[st] || st || 'active', vector: 'phishing',
+                            emails_sent: (c.timeline || []).filter(e => e.message === 'Email Sent').length,
+                            clicks_count: (c.timeline || []).filter(e => e.message === 'Clicked Link').length,
+                            creds_captured: (c.timeline || []).filter(e => e.message === 'Submitted Data').length,
+                        };
+                    });
+            }
+
+            const allCampaigns = [...frontline, ...gpOnly];
             const campaigns = allCampaigns.filter(c => c.status === 'active' || c.status === 'draft');
 
             const active = campaigns.filter(c => c.status === 'active').length;
@@ -238,9 +262,10 @@
             const recent = campaigns.slice(0, 5);
             tbody.innerHTML = recent.map(c => {
                 const vectorMap = {phishing: 'bi-envelope', vishing: 'bi-telephone', smishing: 'bi-phone'};
+                const src = c._source === 'gophish' ? ' <span class="badge bg-dark" style="font-size:0.6rem">GP</span>' : '';
                 return `<tr>
-                    <td>${escapeHtml(c.name)}</td>
-                    <td><i class="bi ${vectorMap[c.vector] || 'bi-envelope'}"></i> ${escapeHtml(c.vector)}</td>
+                    <td>${escapeHtml(c.name)}${src}</td>
+                    <td><i class="bi ${vectorMap[c.vector] || 'bi-envelope'}"></i> ${escapeHtml(c.vector || 'phishing')}</td>
                     <td>${_statusBadge(c.status)}</td>
                     <td>${c.emails_sent || 0}</td>
                     <td>${c.clicks_count || 0}</td>
