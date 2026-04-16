@@ -142,6 +142,39 @@ def ia_launch_campaign(campaign_id):
     return jsonify(launched.to_dict())
 
 
+@api_bp.route('/ia/campaigns/<int:campaign_id>/reschedule', methods=['POST'])
+@login_required
+@feature_required('initial_access')
+def ia_reschedule_campaign(campaign_id):
+    campaign, err, code = _get_campaign_or_404(campaign_id)
+    if err:
+        return err, code
+    if not current_user.can_write_infra:
+        return jsonify({'error': 'Write access required'}), 403
+
+    data = request.get_json(silent=True) or {}
+    scheduled_start = data.get('scheduled_start')
+    if not scheduled_start:
+        return jsonify({'error': 'scheduled_start is required'}), 400
+
+    try:
+        updated = ia_campaign_service.reschedule_campaign(
+            campaign, scheduled_start,
+            scheduled_end=data.get('scheduled_end'),
+        )
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
+    except Exception as e:
+        _log.exception('Failed to reschedule campaign %s', campaign_id)
+        return jsonify({'error': f'GoPhish error: {e}'}), 502
+
+    project = _require_active_project()
+    audit_service.log('ia.campaign_reschedule', 'ia_campaign', campaign.id,
+                      f'project:{project.code}',
+                      {'scheduled_start': scheduled_start, 'gophish_id': updated.gophish_campaign_id})
+    return jsonify(updated.to_dict())
+
+
 @api_bp.route('/ia/campaigns/<int:campaign_id>/sync', methods=['POST'])
 @login_required
 @feature_required('initial_access')
