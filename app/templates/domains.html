@@ -111,12 +111,26 @@
     </div>
 </div>
 
-<!-- DNS Records Table -->
-<div class="card-custom">
+<!-- Tabs: DNS Records / Security -->
+<ul class="nav nav-tabs mb-0" id="zoneTabs" role="tablist">
+    <li class="nav-item" role="presentation">
+        <button class="nav-link active" id="dns-tab" data-bs-toggle="tab" data-bs-target="#dns-panel"
+                type="button" role="tab"><i class="bi bi-diagram-3 me-1"></i>DNS Records
+            <span class="badge bg-secondary ms-1" id="record-count">0</span></button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link" id="security-tab" data-bs-toggle="tab" data-bs-target="#security-panel"
+                type="button" role="tab" onclick="loadSecurityTab()"><i class="bi bi-shield-lock me-1"></i>Security</button>
+    </li>
+</ul>
+
+<div class="tab-content">
+<!-- DNS Records Panel -->
+<div class="tab-pane fade show active" id="dns-panel" role="tabpanel">
+<div class="card-custom" style="border-top-left-radius:0;border-top-right-radius:0">
     <div class="card-header d-flex justify-content-between align-items-center">
         <div class="d-flex align-items-center gap-3">
-            <span><i class="bi bi-diagram-3"></i> DNS Records</span>
-            <span class="badge bg-secondary" id="record-count">0 records</span>
+            <span>DNS Records</span>
         </div>
         {% if current_user.role not in ['viewer', 'auditor', 'white_team'] and active_project_role != 'white_team' %}
         <div class="d-flex gap-2">
@@ -155,6 +169,17 @@
             </table>
         </div>
     </div>
+</div>
+</div>
+
+<!-- Security Panel -->
+<div class="tab-pane fade" id="security-panel" role="tabpanel">
+<div class="card-custom" style="border-top-left-radius:0;border-top-right-radius:0">
+    <div class="card-body" id="security-body">
+        <div class="text-center text-muted py-4">Select a zone above</div>
+    </div>
+</div>
+</div>
 </div>
 
 <!-- Add Record Modal -->
@@ -371,11 +396,19 @@
             document.getElementById('records-tbody').innerHTML =
                 '<tr><td colspan="8" class="text-center text-muted py-4">Select a zone above</td></tr>';
             updateDomainSelection();
-            document.getElementById('record-count').textContent = '0 records';
+            document.getElementById('record-count').textContent = '0';
+            document.getElementById('security-body').innerHTML =
+                '<div class="text-center text-muted py-4">Select a zone above</div>';
+            _securityLoaded = false;
             return;
         }
         loadZoneDetails();
         loadDNSRecords();
+        if (document.getElementById('security-tab').classList.contains('active')) {
+            loadSecurityTab();
+        } else {
+            _securityLoaded = false;
+        }
     }
 
     function loadZoneDetails() {
@@ -785,6 +818,349 @@
                 deleteNext(0);
             }
         );
+    }
+
+    // =====================================================================
+    // Security Tab
+    // =====================================================================
+
+    let _securityLoaded = false;
+
+    function loadSecurityTab() {
+        if (!currentZoneId) {
+            document.getElementById('security-body').innerHTML =
+                '<div class="text-center text-muted py-4">Select a zone above</div>';
+            return;
+        }
+        _securityLoaded = true;
+        const body = document.getElementById('security-body');
+        body.innerHTML = '<div class="text-center py-4"><div class="spinner-border text-secondary"></div></div>';
+
+        Promise.all([
+            fetch(zoneUrl('/security/level')).then(r => r.json()).catch(() => ({})),
+            fetch(zoneUrl('/security/ip-rules')).then(r => r.json()).catch(() => ({})),
+            fetch(zoneUrl('/security/custom-rules')).then(r => r.json()).catch(() => ({})),
+        ]).then(([levelData, ipData, wafData]) => {
+            const level = levelData.security_level || {};
+            const ipRules = ipData.rules || [];
+            const customRules = wafData.rules || [];
+
+            body.innerHTML = _renderSecurityLevel(level) +
+                             _renderIpAccessRules(ipRules) +
+                             _renderCustomRules(customRules);
+        });
+    }
+
+    // --- Security Level ---
+
+    function _renderSecurityLevel(level) {
+        const val = level.value || 'unknown';
+        const levels = ['off', 'essentially_off', 'low', 'medium', 'high', 'under_attack'];
+        const labels = {'off':'Off', 'essentially_off':'Essentially Off', 'low':'Low', 'medium':'Medium', 'high':'High', 'under_attack':'Under Attack'};
+        const colors = {'off':'secondary', 'essentially_off':'secondary', 'low':'info', 'medium':'warning', 'high':'danger', 'under_attack':'danger'};
+        const options = levels.map(l =>
+            `<option value="${l}"${l === val ? ' selected' : ''}>${labels[l] || l}</option>`
+        ).join('');
+        return `
+        <div class="card mb-3" style="background:var(--ir-surface);border-color:var(--ir-border)">
+            <div class="card-header py-2"><i class="bi bi-shield-fill me-1"></i> <strong>Security Level</strong></div>
+            <div class="card-body py-2">
+                <div class="d-flex align-items-center gap-3">
+                    <span>Current: <span class="badge bg-${colors[val] || 'secondary'}">${labels[val] || val}</span></span>
+                    ${!IS_READONLY ? `
+                    <select class="form-select form-select-sm" style="width:auto" id="sec-level-select">${options}</select>
+                    <button class="btn btn-sm btn-primary" onclick="setSecurityLevel()"><i class="bi bi-check-lg"></i> Apply</button>
+                    ` : ''}
+                </div>
+            </div>
+        </div>`;
+    }
+
+    function setSecurityLevel() {
+        if (!currentZoneId) return;
+        const value = document.getElementById('sec-level-select').value;
+        fetch(zoneUrl('/security/level'), {
+            method: 'PATCH',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({value})
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.error) { showToast(data.error, 'danger'); return; }
+            showToast('Security level updated to ' + value, 'success');
+            loadSecurityTab();
+        })
+        .catch(err => showToast('Error: ' + String(err), 'danger'));
+    }
+
+    // --- IP Access Rules ---
+
+    function _renderIpAccessRules(rules) {
+        const modeColors = {block:'danger', challenge:'warning', whitelist:'success', js_challenge:'info', managed_challenge:'info'};
+        const modeLabels = {block:'Block', challenge:'Challenge', whitelist:'Allow', js_challenge:'JS Challenge', managed_challenge:'Managed Challenge'};
+        const modeOptions = ['block','challenge','managed_challenge','js_challenge','whitelist'];
+        const rows = rules.map(r => `
+            <tr id="ip-row-${escapeAttr(r.id)}">
+                <td><span class="badge bg-${modeColors[r.mode] || 'secondary'}">${escapeHtml(modeLabels[r.mode] || r.mode)}</span></td>
+                <td><code>${escapeHtml(r.value)}</code></td>
+                <td>${escapeHtml(r.target)}</td>
+                <td><small>${escapeHtml(r.notes || '-')}</small></td>
+                <td><small>${r.created_on ? new Date(r.created_on).toLocaleDateString() : '-'}</small></td>
+                <td class="text-nowrap">${!IS_READONLY ? `<button class="btn btn-sm btn-outline-secondary me-1" title="Edit" onclick="editIpRule('${escapeAttr(r.id)}','${escapeAttr(r.mode)}',${escapeAttr(JSON.stringify(r.notes || ''))})"><i class="bi bi-pencil"></i></button><button class="btn btn-sm btn-outline-danger" title="Delete" onclick="deleteIpRule('${escapeAttr(r.id)}')"><i class="bi bi-trash"></i></button>` : ''}</td>
+            </tr>`).join('');
+
+        return `
+        <div class="card mb-3" style="background:var(--ir-surface);border-color:var(--ir-border)">
+            <div class="card-header py-2 d-flex justify-content-between align-items-center">
+                <span><i class="bi bi-geo-alt me-1"></i> <strong>IP Access Rules</strong> <span class="badge bg-secondary">${rules.length}</span></span>
+                ${!IS_READONLY ? `<button class="btn btn-sm btn-outline-primary" onclick="showAddIpRuleForm()"><i class="bi bi-plus-circle"></i> Add Rule</button>` : ''}
+            </div>
+            <div class="card-body py-2">
+                <div id="ip-rule-form" class="d-none mb-3">
+                    <div class="row g-2 align-items-end">
+                        <div class="col-md-2">
+                            <label class="form-label mb-0 small">Action</label>
+                            <select class="form-select form-select-sm" id="ip-rule-mode">
+                                <option value="block">Block</option>
+                                <option value="challenge">Challenge</option>
+                                <option value="managed_challenge">Managed Challenge</option>
+                                <option value="js_challenge">JS Challenge</option>
+                                <option value="whitelist">Allow</option>
+                            </select>
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label mb-0 small">Type</label>
+                            <select class="form-select form-select-sm" id="ip-rule-target">
+                                <option value="ip">IP Address</option>
+                                <option value="ip_range">IP Range (CIDR)</option>
+                                <option value="country">Country</option>
+                                <option value="asn">ASN</option>
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label mb-0 small">Value</label>
+                            <input type="text" class="form-control form-control-sm" id="ip-rule-value" placeholder="e.g. 1.2.3.4 or US">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label mb-0 small">Notes</label>
+                            <input type="text" class="form-control form-control-sm" id="ip-rule-notes" placeholder="Optional note">
+                        </div>
+                        <div class="col-md-2">
+                            <button class="btn btn-sm btn-primary w-100" onclick="createIpRule()"><i class="bi bi-plus"></i> Create</button>
+                        </div>
+                    </div>
+                </div>
+                ${rows ? `
+                <div class="table-responsive"><table class="table table-sm table-hover mb-0">
+                    <thead><tr><th>Action</th><th>Value</th><th>Type</th><th>Notes</th><th>Created</th><th></th></tr></thead>
+                    <tbody>${rows}</tbody>
+                </table></div>` : '<p class="text-muted mb-0">No IP access rules configured.</p>'}
+            </div>
+        </div>`;
+    }
+
+    function showAddIpRuleForm() {
+        document.getElementById('ip-rule-form').classList.toggle('d-none');
+    }
+
+    function createIpRule() {
+        if (!currentZoneId) return;
+        const payload = {
+            mode: document.getElementById('ip-rule-mode').value,
+            target: document.getElementById('ip-rule-target').value,
+            value: document.getElementById('ip-rule-value').value.trim(),
+            notes: document.getElementById('ip-rule-notes').value.trim(),
+        };
+        if (!payload.value) { showToast('Value is required', 'warning'); return; }
+        fetch(zoneUrl('/security/ip-rules'), {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(payload)
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.error) { showToast(data.error, 'danger'); return; }
+            showToast('IP access rule created', 'success');
+            loadSecurityTab();
+        })
+        .catch(err => showToast('Error: ' + String(err), 'danger'));
+    }
+
+    function deleteIpRule(ruleId) {
+        showConfirm('Delete IP Rule', 'Delete this IP access rule?', 'Delete', function() {
+            fetch(zoneUrl('/security/ip-rules/' + ruleId), {method: 'DELETE'})
+                .then(r => r.json())
+                .then(data => {
+                    if (data.error) { showToast(data.error, 'danger'); return; }
+                    showToast('IP access rule deleted', 'success');
+                    loadSecurityTab();
+                })
+                .catch(err => showToast('Error: ' + String(err), 'danger'));
+        });
+    }
+
+    function editIpRule(ruleId, currentMode, currentNotes) {
+        const modeLabels = {block:'Block', challenge:'Challenge', whitelist:'Allow', js_challenge:'JS Challenge', managed_challenge:'Managed Challenge'};
+        const modes = ['block','challenge','managed_challenge','js_challenge','whitelist'];
+        const opts = modes.map(m => `<option value="${m}"${m === currentMode ? ' selected' : ''}>${modeLabels[m] || m}</option>`).join('');
+        const row = document.getElementById('ip-row-' + ruleId);
+        if (!row) return;
+        const cells = row.querySelectorAll('td');
+        cells[0].innerHTML = `<select class="form-select form-select-sm" id="ip-edit-mode-${ruleId}">${opts}</select>`;
+        cells[3].innerHTML = `<input type="text" class="form-control form-control-sm" id="ip-edit-notes-${ruleId}" value="${escapeAttr(currentNotes)}">`;
+        cells[5].innerHTML = `<button class="btn btn-sm btn-primary me-1" title="Save" onclick="saveIpRule('${escapeAttr(ruleId)}')"><i class="bi bi-check-lg"></i></button><button class="btn btn-sm btn-outline-secondary" title="Cancel" onclick="loadSecurityTab()"><i class="bi bi-x-lg"></i></button>`;
+    }
+
+    function saveIpRule(ruleId) {
+        if (!currentZoneId) return;
+        const payload = {
+            mode: document.getElementById('ip-edit-mode-' + ruleId).value,
+            notes: document.getElementById('ip-edit-notes-' + ruleId).value.trim(),
+        };
+        fetch(zoneUrl('/security/ip-rules/' + ruleId), {
+            method: 'PATCH',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(payload)
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.error) { showToast(data.error, 'danger'); return; }
+            showToast('IP access rule updated', 'success');
+            loadSecurityTab();
+        })
+        .catch(err => showToast('Error: ' + String(err), 'danger'));
+    }
+
+    // --- WAF Custom Rules ---
+
+    function _renderCustomRules(rules) {
+        const actionColors = {block:'danger', challenge:'warning', js_challenge:'info', managed_challenge:'info', skip:'secondary', log:'primary'};
+        const rows = rules.map(r => `
+            <tr id="waf-row-${escapeAttr(r.id)}">
+                <td><span class="badge bg-${actionColors[r.action] || 'secondary'}">${escapeHtml(r.action)}</span></td>
+                <td>${escapeHtml(r.description || '-')}</td>
+                <td><code class="small">${escapeHtml(r.expression)}</code></td>
+                <td>${r.enabled ? '<span class="badge bg-success">On</span>' : '<span class="badge bg-secondary">Off</span>'}</td>
+                <td class="text-nowrap">${!IS_READONLY ? `<button class="btn btn-sm btn-outline-secondary me-1" title="Edit" onclick="editCustomRule('${escapeAttr(r.id)}','${escapeAttr(r.action)}',${escapeAttr(JSON.stringify(r.description || ''))},${escapeAttr(JSON.stringify(r.expression))},${r.enabled})"><i class="bi bi-pencil"></i></button><button class="btn btn-sm btn-outline-danger" title="Delete" onclick="deleteCustomRule('${escapeAttr(r.id)}')"><i class="bi bi-trash"></i></button>` : ''}</td>
+            </tr>`).join('');
+
+        return `
+        <div class="card mb-3" style="background:var(--ir-surface);border-color:var(--ir-border)">
+            <div class="card-header py-2 d-flex justify-content-between align-items-center">
+                <span><i class="bi bi-funnel me-1"></i> <strong>WAF Custom Rules</strong> <span class="badge bg-secondary">${rules.length}</span></span>
+                ${!IS_READONLY ? `<button class="btn btn-sm btn-outline-primary" onclick="showAddCustomRuleForm()"><i class="bi bi-plus-circle"></i> Add Rule</button>` : ''}
+            </div>
+            <div class="card-body py-2">
+                <div id="waf-rule-form" class="d-none mb-3">
+                    <div class="row g-2 align-items-end">
+                        <div class="col-md-2">
+                            <label class="form-label mb-0 small">Action</label>
+                            <select class="form-select form-select-sm" id="waf-rule-action">
+                                <option value="block">Block</option>
+                                <option value="managed_challenge">Managed Challenge</option>
+                                <option value="challenge">Challenge</option>
+                                <option value="js_challenge">JS Challenge</option>
+                                <option value="log">Log</option>
+                                <option value="skip">Skip</option>
+                            </select>
+                        </div>
+                        <div class="col-md-5">
+                            <label class="form-label mb-0 small">Expression <a href="https://developers.cloudflare.com/ruleset-engine/rules-language/expressions/" target="_blank" class="text-muted small" title="Expression syntax reference"><i class="bi bi-question-circle"></i></a></label>
+                            <input type="text" class="form-control form-control-sm font-monospace" id="waf-rule-expression"
+                                   placeholder='e.g. (ip.geoip.country eq "CN") or (http.request.uri.path contains "/admin")'>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label mb-0 small">Description</label>
+                            <input type="text" class="form-control form-control-sm" id="waf-rule-description" placeholder="Optional description">
+                        </div>
+                        <div class="col-md-2">
+                            <button class="btn btn-sm btn-primary w-100" onclick="createCustomRule()"><i class="bi bi-plus"></i> Create</button>
+                        </div>
+                    </div>
+                </div>
+                ${rows ? `
+                <div class="table-responsive"><table class="table table-sm table-hover mb-0">
+                    <thead><tr><th>Action</th><th>Description</th><th>Expression</th><th>Status</th><th></th></tr></thead>
+                    <tbody>${rows}</tbody>
+                </table></div>` : '<p class="text-muted mb-0">No WAF custom rules configured.</p>'}
+            </div>
+        </div>`;
+    }
+
+    function showAddCustomRuleForm() {
+        document.getElementById('waf-rule-form').classList.toggle('d-none');
+    }
+
+    function createCustomRule() {
+        if (!currentZoneId) return;
+        const payload = {
+            action: document.getElementById('waf-rule-action').value,
+            expression: document.getElementById('waf-rule-expression').value.trim(),
+            description: document.getElementById('waf-rule-description').value.trim(),
+            enabled: true,
+        };
+        if (!payload.expression) { showToast('Expression is required', 'warning'); return; }
+        fetch(zoneUrl('/security/custom-rules'), {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(payload)
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.error) { showToast(data.error, 'danger'); return; }
+            showToast('Custom rule created', 'success');
+            loadSecurityTab();
+        })
+        .catch(err => showToast('Error: ' + String(err), 'danger'));
+    }
+
+    function deleteCustomRule(ruleId) {
+        showConfirm('Delete Custom Rule', 'Delete this WAF custom rule?', 'Delete', function() {
+            fetch(zoneUrl('/security/custom-rules/' + ruleId), {method: 'DELETE'})
+                .then(r => r.json())
+                .then(data => {
+                    if (data.error) { showToast(data.error, 'danger'); return; }
+                    showToast('Custom rule deleted', 'success');
+                    loadSecurityTab();
+                })
+                .catch(err => showToast('Error: ' + String(err), 'danger'));
+        });
+    }
+
+    function editCustomRule(ruleId, currentAction, currentDesc, currentExpr, currentEnabled) {
+        const actions = ['block','managed_challenge','challenge','js_challenge','log','skip'];
+        const opts = actions.map(a => `<option value="${a}"${a === currentAction ? ' selected' : ''}>${a}</option>`).join('');
+        const row = document.getElementById('waf-row-' + ruleId);
+        if (!row) return;
+        const cells = row.querySelectorAll('td');
+        cells[0].innerHTML = `<select class="form-select form-select-sm" id="waf-edit-action-${ruleId}">${opts}</select>`;
+        cells[1].innerHTML = `<input type="text" class="form-control form-control-sm" id="waf-edit-desc-${ruleId}" value="${escapeAttr(currentDesc)}">`;
+        cells[2].innerHTML = `<input type="text" class="form-control form-control-sm font-monospace" id="waf-edit-expr-${ruleId}" value="${escapeAttr(currentExpr)}">`;
+        cells[3].innerHTML = `<div class="form-check form-switch"><input class="form-check-input" type="checkbox" id="waf-edit-enabled-${ruleId}"${currentEnabled ? ' checked' : ''}></div>`;
+        cells[4].innerHTML = `<button class="btn btn-sm btn-primary me-1" title="Save" onclick="saveCustomRule('${escapeAttr(ruleId)}')"><i class="bi bi-check-lg"></i></button><button class="btn btn-sm btn-outline-secondary" title="Cancel" onclick="loadSecurityTab()"><i class="bi bi-x-lg"></i></button>`;
+    }
+
+    function saveCustomRule(ruleId) {
+        if (!currentZoneId) return;
+        const payload = {
+            action: document.getElementById('waf-edit-action-' + ruleId).value,
+            expression: document.getElementById('waf-edit-expr-' + ruleId).value.trim(),
+            description: document.getElementById('waf-edit-desc-' + ruleId).value.trim(),
+            enabled: document.getElementById('waf-edit-enabled-' + ruleId).checked,
+        };
+        if (!payload.expression) { showToast('Expression is required', 'warning'); return; }
+        fetch(zoneUrl('/security/custom-rules/' + ruleId), {
+            method: 'PATCH',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(payload)
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.error) { showToast(data.error, 'danger'); return; }
+            showToast('Custom rule updated', 'success');
+            loadSecurityTab();
+        })
+        .catch(err => showToast('Error: ' + String(err), 'danger'));
     }
 </script>
 {% endblock %}
