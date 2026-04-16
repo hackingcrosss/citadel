@@ -4,6 +4,7 @@ from flask_login import login_required, current_user
 from app.api import api_bp
 from app.services import dns_service
 from app.services import audit_service
+from app.services import cloudflare_security_service
 from app.services.credential_service import get_account_labels
 from app.services.plan_service import get_current_plan
 from app.services.project_service import (
@@ -823,3 +824,169 @@ def domain_health_check(domain_id):
     domain = Domain.query.get_or_404(domain_id)
     from app.services.readiness_service import check_domain_readiness
     return jsonify(check_domain_readiness(domain))
+
+
+# ---------------------------------------------------------------------------
+# Cloudflare Security — Security Level, IP Access Rules, WAF Custom Rules
+# ---------------------------------------------------------------------------
+
+@api_bp.route('/domains/zones/<zone_id>/security/level', methods=['GET'])
+@login_required
+def get_zone_security_level(zone_id):
+    _assert_zone_accessible(zone_id)
+    try:
+        result = cloudflare_security_service.get_security_level(zone_id, label=_zone_label(zone_id))
+        return jsonify({'security_level': result})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 400
+
+
+@api_bp.route('/domains/zones/<zone_id>/security/level', methods=['PATCH'])
+@login_required
+def set_zone_security_level(zone_id):
+    _assert_zone_accessible(zone_id, write=True)
+    data = request.get_json(silent=True) or {}
+    value = data.get('value', '')
+    if not value:
+        return jsonify({'error': 'Security level value is required'}), 400
+    try:
+        result = cloudflare_security_service.set_security_level(zone_id, value, label=_zone_label(zone_id))
+        return jsonify({'security_level': result})
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
+    except Exception as e:
+        return jsonify({'error': str(e)}), 400
+
+
+@api_bp.route('/domains/zones/<zone_id>/security/ip-rules', methods=['GET'])
+@login_required
+def list_zone_ip_access_rules(zone_id):
+    _assert_zone_accessible(zone_id)
+    try:
+        rules = cloudflare_security_service.list_ip_access_rules(zone_id, label=_zone_label(zone_id))
+        return jsonify({'rules': rules})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 400
+
+
+@api_bp.route('/domains/zones/<zone_id>/security/ip-rules', methods=['POST'])
+@login_required
+def create_zone_ip_access_rule(zone_id):
+    _assert_zone_accessible(zone_id, write=True)
+    data = request.get_json(silent=True) or {}
+    mode = data.get('mode', '')
+    target = data.get('target', '')
+    value = data.get('value', '')
+    if not mode or not target or not value:
+        return jsonify({'error': 'mode, target, and value are required'}), 400
+    try:
+        rule = cloudflare_security_service.create_ip_access_rule(
+            zone_id, mode, target, value,
+            notes=data.get('notes', ''),
+            label=_zone_label(zone_id),
+        )
+        return jsonify({'rule': rule}), 201
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
+    except Exception as e:
+        return jsonify({'error': str(e)}), 400
+
+
+@api_bp.route('/domains/zones/<zone_id>/security/ip-rules/<rule_id>', methods=['PATCH'])
+@login_required
+def update_zone_ip_access_rule(zone_id, rule_id):
+    _assert_zone_accessible(zone_id, write=True)
+    data = request.get_json(silent=True) or {}
+    mode = data.get('mode', '')
+    if not mode:
+        return jsonify({'error': 'mode is required'}), 400
+    try:
+        rule = cloudflare_security_service.update_ip_access_rule(
+            zone_id, rule_id, mode,
+            notes=data.get('notes'),
+            label=_zone_label(zone_id),
+        )
+        return jsonify({'rule': rule})
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
+    except Exception as e:
+        return jsonify({'error': str(e)}), 400
+
+
+@api_bp.route('/domains/zones/<zone_id>/security/ip-rules/<rule_id>', methods=['DELETE'])
+@login_required
+def delete_zone_ip_access_rule(zone_id, rule_id):
+    _assert_zone_accessible(zone_id, write=True)
+    try:
+        cloudflare_security_service.delete_ip_access_rule(zone_id, rule_id, label=_zone_label(zone_id))
+        return jsonify({'deleted': True})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 400
+
+
+@api_bp.route('/domains/zones/<zone_id>/security/custom-rules', methods=['GET'])
+@login_required
+def list_zone_custom_rules(zone_id):
+    _assert_zone_accessible(zone_id)
+    try:
+        rules = cloudflare_security_service.list_custom_rules(zone_id, label=_zone_label(zone_id))
+        return jsonify({'rules': rules})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 400
+
+
+@api_bp.route('/domains/zones/<zone_id>/security/custom-rules', methods=['POST'])
+@login_required
+def create_zone_custom_rule(zone_id):
+    _assert_zone_accessible(zone_id, write=True)
+    data = request.get_json(silent=True) or {}
+    action = data.get('action', '')
+    expression = data.get('expression', '')
+    if not action or not expression:
+        return jsonify({'error': 'action and expression are required'}), 400
+    try:
+        rule = cloudflare_security_service.create_custom_rule(
+            zone_id, action, expression,
+            description=data.get('description', ''),
+            enabled=data.get('enabled', True),
+            label=_zone_label(zone_id),
+        )
+        return jsonify({'rule': rule}), 201
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
+    except Exception as e:
+        return jsonify({'error': str(e)}), 400
+
+
+@api_bp.route('/domains/zones/<zone_id>/security/custom-rules/<rule_id>', methods=['PATCH'])
+@login_required
+def update_zone_custom_rule(zone_id, rule_id):
+    _assert_zone_accessible(zone_id, write=True)
+    data = request.get_json(silent=True) or {}
+    action = data.get('action', '')
+    expression = data.get('expression', '')
+    if not action or not expression:
+        return jsonify({'error': 'action and expression are required'}), 400
+    try:
+        rule = cloudflare_security_service.update_custom_rule(
+            zone_id, rule_id, action, expression,
+            description=data.get('description', ''),
+            enabled=data.get('enabled', True),
+            label=_zone_label(zone_id),
+        )
+        return jsonify({'rule': rule})
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
+    except Exception as e:
+        return jsonify({'error': str(e)}), 400
+
+
+@api_bp.route('/domains/zones/<zone_id>/security/custom-rules/<rule_id>', methods=['DELETE'])
+@login_required
+def delete_zone_custom_rule(zone_id, rule_id):
+    _assert_zone_accessible(zone_id, write=True)
+    try:
+        cloudflare_security_service.delete_custom_rule(zone_id, rule_id, label=_zone_label(zone_id))
+        return jsonify({'deleted': True})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 400
