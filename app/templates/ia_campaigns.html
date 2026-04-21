@@ -492,7 +492,7 @@
             // Fetch both sources in parallel
             const [flResp, gpResp] = await Promise.all([
                 fetch(`/api/ia/campaigns${qs}`),
-                fetch('/api/gophish/campaigns').catch(() => null),
+                fetch('/api/gophish/campaigns?exclude_completed=1').catch(() => null),
             ]);
 
             if (!flResp.ok) throw new Error(await flResp.text());
@@ -509,9 +509,11 @@
             }
 
             // Normalize GoPhish-only campaigns into unified format
+            // Supports both summary format (stats object) and full format (results/timeline arrays)
             const gpNormalized = gpOnlyCampaigns.map(c => {
                 const gpStatus = (c.status || '').toLowerCase();
                 const statusMap = {'completed': 'completed', 'queued': 'active', 'in progress': 'active'};
+                const stats = c.stats || {};
                 return {
                     _source: 'gophish',
                     _gp_id: c.id,
@@ -519,11 +521,11 @@
                     name: c.name || `GoPhish #${c.id}`,
                     status: statusMap[gpStatus] || gpStatus || 'active',
                     _gp_status: c.status,
-                    targets_count: (c.results || []).length,
-                    emails_sent: (c.timeline || []).filter(e => e.message === 'Email Sent').length,
-                    opens_count: (c.timeline || []).filter(e => e.message === 'Email Opened').length,
-                    clicks_count: (c.timeline || []).filter(e => e.message === 'Clicked Link').length,
-                    creds_captured: (c.timeline || []).filter(e => e.message === 'Submitted Data').length,
+                    targets_count: stats.total || (c.results || []).length,
+                    emails_sent: stats.sent || (c.timeline || []).filter(e => e.message === 'Email Sent').length,
+                    opens_count: stats.opened || (c.timeline || []).filter(e => e.message === 'Email Opened').length,
+                    clicks_count: stats.clicked || (c.timeline || []).filter(e => e.message === 'Clicked Link').length,
+                    creds_captured: stats.submitted_data || (c.timeline || []).filter(e => e.message === 'Submitted Data').length,
                     gp_template_name: c.template?.name || null,
                     created_date: c.created_date,
                 };
@@ -557,6 +559,9 @@
                 let actions = '';
                 if (isGpOnly) {
                     actions = `<button class="btn btn-sm btn-outline-primary" onclick="viewGpCampaign(${c._gp_id})" title="View"><i class="bi bi-eye"></i></button>`;
+                    if (!IS_READONLY && c.status === 'active') {
+                        actions += ` <button class="btn btn-sm btn-outline-warning" onclick="openGpReschedule(${c._gp_id}, '${escapeAttr(c.name)}')" title="Reschedule"><i class="bi bi-calendar-event"></i></button>`;
+                    }
                 } else {
                     const viewFn = c.gophish_campaign_id
                         ? `viewBothCampaign(${c.id}, ${c.gophish_campaign_id})`
@@ -838,15 +843,25 @@
     }
 
     // ── Reschedule active campaign ────────────────────────────────────
+    let _rescheduleMode = 'frontline'; // 'frontline' or 'gophish'
+
     function openReschedule(id) {
         const c = _campaigns.find(x => x.id === id);
         if (!c) return;
+        _rescheduleMode = 'frontline';
         document.getElementById('reschedule-campaign-id').value = id;
         document.getElementById('reschedule-name').textContent = c.name;
-        const startInput = document.getElementById('reschedule-start');
-        const endInput = document.getElementById('reschedule-end');
-        startInput.value = c.scheduled_start ? c.scheduled_start.slice(0, 16) : '';
-        endInput.value = c.scheduled_end ? c.scheduled_end.slice(0, 16) : '';
+        document.getElementById('reschedule-start').value = c.scheduled_start ? c.scheduled_start.slice(0, 16) : '';
+        document.getElementById('reschedule-end').value = c.scheduled_end ? c.scheduled_end.slice(0, 16) : '';
+        new bootstrap.Modal(document.getElementById('rescheduleModal')).show();
+    }
+
+    function openGpReschedule(gpId, name) {
+        _rescheduleMode = 'gophish';
+        document.getElementById('reschedule-campaign-id').value = gpId;
+        document.getElementById('reschedule-name').textContent = name;
+        document.getElementById('reschedule-start').value = '';
+        document.getElementById('reschedule-end').value = '';
         new bootstrap.Modal(document.getElementById('rescheduleModal')).show();
     }
 
@@ -856,15 +871,25 @@
         const end = document.getElementById('reschedule-end').value;
         if (!start) { showToast('Launch date is required', 'warning'); return; }
 
-        const payload = {scheduled_start: new Date(start).toISOString()};
-        if (end) payload.scheduled_end = new Date(end).toISOString();
-
         try {
-            const resp = await fetch(`/api/ia/campaigns/${id}/reschedule`, {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify(payload),
-            });
+            let resp;
+            if (_rescheduleMode === 'gophish') {
+                const payload = {launch_date: new Date(start).toISOString()};
+                if (end) payload.send_by_date = new Date(end).toISOString();
+                resp = await fetch(`/api/gophish/campaigns/${id}/reschedule`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(payload),
+                });
+            } else {
+                const payload = {scheduled_start: new Date(start).toISOString()};
+                if (end) payload.scheduled_end = new Date(end).toISOString();
+                resp = await fetch(`/api/ia/campaigns/${id}/reschedule`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(payload),
+                });
+            }
             const data = await resp.json();
             if (!resp.ok) throw new Error(data.error || 'Reschedule failed');
 

@@ -216,7 +216,7 @@
         try {
             const [flResp, gpResp] = await Promise.all([
                 fetch('/api/ia/campaigns'),
-                fetch('/api/gophish/campaigns').catch(() => null),
+                fetch('/api/gophish/campaigns?exclude_completed=1').catch(() => null),
             ]);
             const flData = await flResp.json();
             if (flData.upgrade_required) { showToast('Feature requires plan upgrade', 'warning'); return; }
@@ -232,12 +232,13 @@
                     .map(c => {
                         const st = (c.status || '').toLowerCase();
                         const statusMap = {'completed': 'completed', 'queued': 'active', 'in progress': 'active'};
+                        const stats = c.stats || {};
                         return {
                             _source: 'gophish', name: c.name || `GoPhish #${c.id}`,
                             status: statusMap[st] || st || 'active', vector: 'phishing',
-                            emails_sent: (c.timeline || []).filter(e => e.message === 'Email Sent').length,
-                            clicks_count: (c.timeline || []).filter(e => e.message === 'Clicked Link').length,
-                            creds_captured: (c.timeline || []).filter(e => e.message === 'Submitted Data').length,
+                            emails_sent: stats.sent || (c.timeline || []).filter(e => e.message === 'Email Sent').length,
+                            clicks_count: stats.clicked || (c.timeline || []).filter(e => e.message === 'Clicked Link').length,
+                            creds_captured: stats.submitted_data || (c.timeline || []).filter(e => e.message === 'Submitted Data').length,
                         };
                     });
             }

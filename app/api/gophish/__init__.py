@@ -252,8 +252,13 @@ def delete_gophish_group(group_id):
 @feature_required('gophish')
 def list_gophish_campaigns():
     try:
+        exclude_completed = request.args.get('exclude_completed', '').lower() in ('1', 'true')
         campaigns = gophish_service.list_campaigns()
-        return jsonify({'campaigns': campaigns if isinstance(campaigns, list) else []})
+        if not isinstance(campaigns, list):
+            campaigns = []
+        if exclude_completed:
+            campaigns = [c for c in campaigns if (c.get('status') or '').lower() != 'completed']
+        return jsonify({'campaigns': campaigns})
     except Exception as e:
         return jsonify({'error': str(e)}), 400
 
@@ -265,6 +270,68 @@ def get_gophish_campaign(campaign_id):
     try:
         campaign = gophish_service.get_campaign(campaign_id)
         return jsonify({'campaign': campaign})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 400
+
+
+@api_bp.route('/gophish/campaigns/<int:campaign_id>/reschedule', methods=['POST'])
+@login_required
+@feature_required('gophish')
+def reschedule_gophish_campaign(campaign_id):
+    if current_user.is_viewer or current_user.is_white_team:
+        return jsonify({'error': 'Write access required'}), 403
+
+    data = request.get_json(silent=True) or {}
+    launch_date = data.get('launch_date')
+    if not launch_date:
+        return jsonify({'error': 'launch_date is required'}), 400
+
+    try:
+        old = gophish_service.get_campaign(campaign_id)
+
+        # Extract targets from results before deleting
+        targets = []
+        for r in old.get('results', []):
+            targets.append({
+                'first_name': r.get('first_name', ''),
+                'last_name': r.get('last_name', ''),
+                'email': r.get('email', ''),
+                'position': r.get('position', ''),
+            })
+
+        try:
+            gophish_service.complete_campaign(campaign_id)
+        except Exception:
+            pass
+        gophish_service.delete_campaign(campaign_id)
+
+        # Recreate target group (deleted with the campaign)
+        import time
+        group_name = f'Reschedule_{campaign_id}_{int(time.time())}'
+        gp_group = gophish_service.create_group({
+            'name': group_name,
+            'targets': targets,
+        })
+
+        smtp = old.get('smtp', {})
+        template = old.get('template', {})
+        page = old.get('page', {})
+
+        payload = {
+            'name': old['name'],
+            'smtp': {'name': smtp['name']} if smtp.get('name') else smtp,
+            'groups': [{'name': gp_group['name']}],
+            'template': {'name': template['name']} if template.get('name') else template,
+            'page': {'name': page.get('name', 'Blank')},
+            'url': old.get('url', ''),
+            'launch_date': launch_date,
+        }
+        send_by = data.get('send_by_date')
+        if send_by:
+            payload['send_by_date'] = send_by
+
+        new_campaign = gophish_service.create_campaign(payload)
+        return jsonify({'campaign': new_campaign})
     except Exception as e:
         return jsonify({'error': str(e)}), 400
 
