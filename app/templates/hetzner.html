@@ -1,0 +1,811 @@
+{% extends "base.html" %}
+
+{% block title %}Hetzner Servers - Citadel{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h1 class="h3 mb-0">Hetzner Cloud</h1>
+        <small class="text-muted">Admin-only compute provider</small>
+    </div>
+    <div class="d-flex gap-2 align-items-center">
+        <button class="btn btn-sm btn-outline-secondary" onclick="loadActiveTab()">
+            <i class="bi bi-arrow-clockwise"></i> Refresh
+        </button>
+    </div>
+</div>
+
+<!-- Tabs -->
+<ul class="nav nav-tabs mb-3" id="hetzner-tabs" role="tablist">
+    <li class="nav-item" role="presentation">
+        <button class="nav-link active" id="tab-servers-btn" data-bs-toggle="tab" data-bs-target="#tab-servers" type="button" role="tab">
+            <i class="bi bi-hdd-network"></i> Servers
+        </button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link" id="tab-sshkeys-btn" data-bs-toggle="tab" data-bs-target="#tab-sshkeys" type="button" role="tab">
+            <i class="bi bi-key"></i> SSH Keys
+        </button>
+    </li>
+</ul>
+
+<div class="tab-content">
+
+<!-- ============================= SERVERS TAB ============================= -->
+<div class="tab-pane fade show active" id="tab-servers" role="tabpanel">
+
+    <!-- Stats -->
+    <div class="row mb-3">
+        <div class="col-md-3"><div class="stat-card"><div class="label">Total</div><h3 id="statTotal">-</h3></div></div>
+        <div class="col-md-3"><div class="stat-card"><div class="label">Running</div><h3 id="statRunning" class="text-success">-</h3></div></div>
+        <div class="col-md-3"><div class="stat-card"><div class="label">Off</div><h3 id="statOff" class="text-danger">-</h3></div></div>
+        <div class="col-md-3"><div class="stat-card"><div class="label">Other</div><h3 id="statOther" class="text-warning">-</h3></div></div>
+    </div>
+
+    <!-- Filters -->
+    <div class="card-custom mb-3">
+        <div class="card-body py-2">
+            <div class="row g-2 align-items-center">
+                <div class="col-auto"><label class="form-label mb-0 small fw-bold">Filter:</label></div>
+                <div class="col-md-2">
+                    <select class="form-select form-select-sm" id="filter-account" onchange="applyFilters()">
+                        <option value="">All accounts</option>
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <select class="form-select form-select-sm" id="filter-status" onchange="applyFilters()">
+                        <option value="">All statuses</option>
+                        <option value="running">Running</option>
+                        <option value="off">Off</option>
+                        <option value="starting">Starting</option>
+                        <option value="stopping">Stopping</option>
+                        <option value="initializing">Initializing</option>
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <input type="text" class="form-control form-control-sm" id="filter-name" placeholder="Search name / IP..." oninput="applyFilters()">
+                </div>
+                <div class="col-auto"><small class="text-muted" id="filter-count"></small></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Servers table -->
+    <div class="card-custom mb-4">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <span><i class="bi bi-hdd-network"></i> Servers</span>
+            <div class="d-flex gap-2">
+                {% if current_user.is_admin %}
+                <button class="btn btn-sm btn-success" onclick="openCreateModal()">
+                    <i class="bi bi-plus-lg"></i> Create Server
+                </button>
+                {% endif %}
+                <button class="btn btn-sm btn-outline-success" onclick="bulkAction('poweron')" id="btnBulkStart" disabled>
+                    <i class="bi bi-play-fill"></i> Start
+                </button>
+                <button class="btn btn-sm btn-outline-warning" onclick="bulkAction('poweroff')" id="btnBulkStop" disabled>
+                    <i class="bi bi-stop-fill"></i> Shutdown
+                </button>
+                <button class="btn btn-sm btn-outline-info" onclick="bulkAction('reboot')" id="btnBulkReboot" disabled>
+                    <i class="bi bi-arrow-repeat"></i> Reboot
+                </button>
+            </div>
+        </div>
+        <div class="card-body p-0">
+            <div id="srvLoading" class="text-center py-4">
+                <div class="spinner-border text-secondary" role="status"></div>
+                <div class="text-muted mt-2">Loading servers...</div>
+            </div>
+            <div id="srvEmpty" class="text-center py-4 d-none">
+                <i class="bi bi-hdd-network text-muted" style="font-size: 2rem;"></i>
+                <div class="text-muted mt-2">No servers found</div>
+            </div>
+            <div class="table-responsive">
+            <table class="table table-hover mb-0 d-none" id="srvTable">
+                <thead class="table-light">
+                    <tr>
+                        <th style="width: 30px;"><input type="checkbox" id="selectAll" onchange="toggleSelectAll()" aria-label="Select all servers"></th>
+                        <th>Account</th>
+                        <th>Name</th>
+                        <th>Type</th>
+                        <th>Location</th>
+                        <th>State</th>
+                        <th>Public IP</th>
+                        <th>Private IP</th>
+                        <th>Tags</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="srvBody"></tbody>
+            </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ============================= SSH KEYS TAB ============================= -->
+<div class="tab-pane fade" id="tab-sshkeys" role="tabpanel">
+    <div class="card-custom mb-4">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <span><i class="bi bi-key"></i> Hetzner Project SSH Keys</span>
+            <div class="d-flex gap-2 align-items-center">
+                <label class="small text-muted mb-0">Account:</label>
+                <select class="form-select form-select-sm" style="width: 180px" id="sshkeys-account" onchange="loadSshKeys()">
+                </select>
+                {% if current_user.is_admin %}
+                <button class="btn btn-sm btn-success" onclick="openSshKeyModal()">
+                    <i class="bi bi-plus-lg"></i> Add Key
+                </button>
+                {% endif %}
+            </div>
+        </div>
+        <div class="card-body p-0">
+            <div id="keysLoading" class="text-center py-4 d-none">
+                <div class="spinner-border text-secondary" role="status"></div>
+            </div>
+            <div id="keysEmpty" class="text-center py-4 d-none">
+                <i class="bi bi-key text-muted" style="font-size: 2rem;"></i>
+                <div class="text-muted mt-2">No SSH keys in this project</div>
+            </div>
+            <div class="table-responsive">
+            <table class="table table-hover mb-0 d-none" id="keysTable">
+                <thead class="table-light">
+                    <tr>
+                        <th>ID</th>
+                        <th>Name</th>
+                        <th>Fingerprint</th>
+                        <th>Created</th>
+                        <th style="width:100px"></th>
+                    </tr>
+                </thead>
+                <tbody id="keysBody"></tbody>
+            </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+</div> <!-- /.tab-content -->
+
+
+<!-- ============================= MODALS ============================= -->
+
+<!-- Server detail modal -->
+<div class="modal fade" id="detailModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Server Details</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body" id="detailBody">
+                <div class="text-center py-3"><div class="spinner-border text-secondary" role="status"></div></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Local SSH config modal -->
+<div class="modal fade" id="sshConfigModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-key"></i> Local SSH Configuration</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="ssh-server-id">
+                <div class="mb-2"><strong id="ssh-server-name"></strong></div>
+                <div class="mb-3">
+                    <label class="form-label">SSH Username</label>
+                    <input type="text" class="form-control" id="ssh-username" value="root">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Private Key (PEM)</label>
+                    <textarea class="form-control font-monospace" id="ssh-private-key" rows="8" placeholder="-----BEGIN OPENSSH PRIVATE KEY-----&#10;..."></textarea>
+                    <small class="text-muted">Leave blank when editing to keep the existing key. Stored encrypted.</small>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Key Label</label>
+                    <input type="text" class="form-control" id="ssh-key-label" placeholder="e.g. ops-shared">
+                </div>
+                <div class="form-check mb-3">
+                    <input type="checkbox" class="form-check-input" id="ssh-use-public-ip" checked>
+                    <label class="form-check-label" for="ssh-use-public-ip">Connect via public IP</label>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-danger me-auto" onclick="deleteSshConfig()" id="ssh-delete-btn" style="display:none">
+                    <i class="bi bi-trash"></i> Remove
+                </button>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" onclick="saveSshConfig()">Save</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Create Server modal -->
+<div class="modal fade" id="createModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-plus-lg"></i> Create Hetzner Server</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label class="form-label">Account <span class="text-danger">*</span></label>
+                        <select class="form-select" id="cr-account" onchange="onCreateAccountChange()"></select>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Server Name <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" id="cr-name" placeholder="e.g. c2-relay-01">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Location <span class="text-danger">*</span></label>
+                        <select class="form-select" id="cr-location"></select>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Server Type <span class="text-danger">*</span></label>
+                        <select class="form-select" id="cr-server-type"></select>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Image <span class="text-danger">*</span></label>
+                        <select class="form-select" id="cr-image"></select>
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label">SSH Keys</label>
+                        <select class="form-select" id="cr-ssh-keys" multiple size="4"></select>
+                        <small class="text-muted">Hold Ctrl/Cmd to select multiple. If none selected, Hetzner will email a root password.</small>
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label">Cloud-init <code>user_data</code> (optional)</label>
+                        <textarea class="form-control font-monospace" id="cr-user-data" rows="5" placeholder="#cloud-config&#10;package_update: true"></textarea>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" onclick="submitCreateServer()" id="cr-submit-btn">
+                    <i class="bi bi-rocket-takeoff"></i> Create Server
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Create SSH key modal -->
+<div class="modal fade" id="sshKeyModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-key"></i> Add SSH Key to Hetzner Project</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label">Account</label>
+                    <select class="form-select" id="newkey-account"></select>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Key Name</label>
+                    <input type="text" class="form-control" id="newkey-name" placeholder="e.g. operator-01">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Public Key</label>
+                    <textarea class="form-control font-monospace" id="newkey-public" rows="4" placeholder="ssh-ed25519 AAAA... user@host"></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" onclick="submitSshKey()">Add Key</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+
+{% block extra_js %}
+<script>
+'use strict';
+
+// ---- State ----
+let allServers = [];
+let allAccounts = [];
+let allSshKeysForAccount = [];
+
+// ---- Utilities ----
+function esc(s) { return window.escapeHtml(s == null ? '' : String(s)); }
+
+function stateBadge(state) {
+    const s = (state || '').toLowerCase();
+    if (s === 'running') return `<span class="badge bg-success">${esc(s)}</span>`;
+    if (s === 'off' || s === 'stopped') return `<span class="badge bg-danger">${esc(s)}</span>`;
+    if (s === 'starting' || s === 'initializing' || s === 'stopping') return `<span class="badge bg-warning text-dark">${esc(s)}</span>`;
+    return `<span class="badge bg-secondary">${esc(s || 'unknown')}</span>`;
+}
+
+// ---- Load accounts (from credential labels) ----
+function loadAccounts() {
+    return fetch('/api/credentials/hetzner/labels')
+        .then(r => r.json())
+        .then(data => {
+            allAccounts = data.labels || [];
+            // Filter dropdown on servers tab
+            const filterSel = document.getElementById('filter-account');
+            filterSel.innerHTML = '<option value="">All accounts</option>' +
+                allAccounts.map(l => `<option value="${esc(l)}">${esc(l)}</option>`).join('');
+            // Accounts selector in SSH keys tab
+            const keyAcctSel = document.getElementById('sshkeys-account');
+            keyAcctSel.innerHTML = allAccounts.map(l => `<option value="${esc(l)}">${esc(l)}</option>`).join('');
+            // Accounts in create modal and add-key modal
+            ['cr-account', 'newkey-account'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.innerHTML = allAccounts.map(l => `<option value="${esc(l)}">${esc(l)}</option>`).join('');
+            });
+        })
+        .catch(err => console.error('Failed to load accounts', err));
+}
+
+// ---- Servers ----
+function loadServers() {
+    document.getElementById('srvLoading').classList.remove('d-none');
+    document.getElementById('srvEmpty').classList.add('d-none');
+    document.getElementById('srvTable').classList.add('d-none');
+
+    fetch('/api/hetzner/servers')
+        .then(r => r.json())
+        .then(data => {
+            if (data.error) {
+                showToast('Error: ' + data.error, 'danger');
+                allServers = [];
+            } else {
+                allServers = data.servers || [];
+            }
+            document.getElementById('srvLoading').classList.add('d-none');
+            updateStats();
+            applyFilters();
+        })
+        .catch(err => {
+            document.getElementById('srvLoading').classList.add('d-none');
+            showToast('Failed to load servers: ' + String(err), 'danger');
+        });
+}
+
+function updateStats() {
+    document.getElementById('statTotal').textContent = allServers.length;
+    const running = allServers.filter(s => s.state === 'running').length;
+    const off = allServers.filter(s => s.state === 'off' || s.state === 'stopped').length;
+    document.getElementById('statRunning').textContent = running;
+    document.getElementById('statOff').textContent = off;
+    document.getElementById('statOther').textContent = allServers.length - running - off;
+}
+
+function applyFilters() {
+    const account = document.getElementById('filter-account').value;
+    const status = document.getElementById('filter-status').value;
+    const name = (document.getElementById('filter-name').value || '').toLowerCase().trim();
+
+    const filtered = allServers.filter(s => {
+        if (account && s.account_label !== account) return false;
+        if (status && s.state !== status) return false;
+        if (name) {
+            const hay = (s.name + ' ' + s.public_ip + ' ' + s.private_ip + ' ' + s.id).toLowerCase();
+            if (!hay.includes(name)) return false;
+        }
+        return true;
+    });
+
+    document.getElementById('filter-count').textContent = filtered.length + ' of ' + allServers.length;
+    renderServers(filtered);
+}
+
+function renderServers(servers) {
+    const tbody = document.getElementById('srvBody');
+    const table = document.getElementById('srvTable');
+    const empty = document.getElementById('srvEmpty');
+
+    if (servers.length === 0) {
+        table.classList.add('d-none');
+        empty.classList.remove('d-none');
+        return;
+    }
+    empty.classList.add('d-none');
+    table.classList.remove('d-none');
+
+    const isAdmin = !!window.IS_ADMIN;
+    tbody.innerHTML = servers.map(s => {
+        const tags = (s.local_tags || []).map(t => `<span class="badge bg-secondary me-1">${esc(t)}</span>`).join('');
+        const sshIcon = isAdmin
+            ? (s.ssh_configured
+                ? `<button class="btn btn-sm btn-outline-success" title="SSH key configured" onclick="openSshConfig('${esc(s.id)}', '${esc(s.name)}')"><i class="bi bi-key-fill"></i></button>`
+                : `<button class="btn btn-sm btn-outline-secondary" title="Configure SSH" onclick="openSshConfig('${esc(s.id)}', '${esc(s.name)}')"><i class="bi bi-key"></i></button>`)
+            : '';
+        const deleteBtn = isAdmin
+            ? `<button class="btn btn-outline-danger" onclick="deleteServer('${esc(s.id)}','${esc(s.name)}')" title="Delete"><i class="bi bi-trash"></i></button>`
+            : '';
+        return `
+            <tr>
+                <td><input type="checkbox" class="row-check" data-id="${esc(s.id)}" onchange="updateBulkButtons()" aria-label="Select server ${esc(s.name)}"></td>
+                <td><span class="badge bg-dark">${esc(s.account_label || 'default')}</span></td>
+                <td><a href="#" onclick="openDetail('${esc(s.id)}');return false;">${esc(s.name)}</a></td>
+                <td><code>${esc(s.type)}</code></td>
+                <td>${esc(s.location)}</td>
+                <td>${stateBadge(s.state)}</td>
+                <td><code>${esc(s.public_ip || '—')}</code></td>
+                <td><code>${esc(s.private_ip || '—')}</code></td>
+                <td>${tags}</td>
+                <td>
+                    <div class="btn-group btn-group-sm" role="group">
+                        <button class="btn btn-outline-info" onclick="openDetail('${esc(s.id)}')" title="Details"><i class="bi bi-info-circle"></i></button>
+                        ${sshIcon}
+                        <button class="btn btn-outline-success" onclick="serverAction('${esc(s.id)}','poweron')" title="Start"><i class="bi bi-play-fill"></i></button>
+                        <button class="btn btn-outline-warning" onclick="serverAction('${esc(s.id)}','poweroff')" title="Shutdown"><i class="bi bi-stop-fill"></i></button>
+                        <button class="btn btn-outline-info" onclick="serverAction('${esc(s.id)}','reboot')" title="Reboot"><i class="bi bi-arrow-repeat"></i></button>
+                        ${deleteBtn}
+                    </div>
+                </td>
+            </tr>`;
+    }).join('');
+    updateBulkButtons();
+}
+
+function toggleSelectAll() {
+    const checked = document.getElementById('selectAll').checked;
+    document.querySelectorAll('.row-check').forEach(cb => cb.checked = checked);
+    updateBulkButtons();
+}
+
+function selectedIds() {
+    return Array.from(document.querySelectorAll('.row-check:checked')).map(cb => cb.dataset.id);
+}
+
+function updateBulkButtons() {
+    const n = selectedIds().length;
+    ['btnBulkStart', 'btnBulkStop', 'btnBulkReboot'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.disabled = (n === 0);
+    });
+}
+
+function serverAction(id, action) {
+    if (!confirm(`Confirm ${action} on server ${id}?`)) return;
+    fetch(`/api/hetzner/servers/${encodeURIComponent(id)}/${action}`, {method: 'POST'})
+        .then(r => r.json())
+        .then(data => {
+            if (data.error) showToast(data.error, 'danger');
+            else { showToast(`${action} queued for ${id}`); setTimeout(loadServers, 1500); }
+        })
+        .catch(err => showToast('Error: ' + String(err), 'danger'));
+}
+
+function bulkAction(action) {
+    const ids = selectedIds();
+    if (ids.length === 0) return;
+    if (!confirm(`${action} ${ids.length} server(s)?`)) return;
+    Promise.all(ids.map(id =>
+        fetch(`/api/hetzner/servers/${encodeURIComponent(id)}/${action}`, {method: 'POST'}).then(r => r.json())
+    )).then(results => {
+        const errors = results.filter(r => r.error);
+        if (errors.length) showToast(`${errors.length} action(s) failed`, 'warning');
+        else showToast(`${ids.length} action(s) queued`);
+        setTimeout(loadServers, 1500);
+    });
+}
+
+function deleteServer(id, name) {
+    if (!confirm(`PERMANENTLY DELETE server "${name}" (${id})? This cannot be undone.`)) return;
+    fetch(`/api/hetzner/servers/${encodeURIComponent(id)}`, {method: 'DELETE'})
+        .then(r => r.json())
+        .then(data => {
+            if (data.error) showToast(data.error, 'danger');
+            else { showToast(`Deleted ${name}`); loadServers(); }
+        })
+        .catch(err => showToast('Error: ' + String(err), 'danger'));
+}
+
+// ---- Server detail ----
+function openDetail(id) {
+    const modal = new bootstrap.Modal(document.getElementById('detailModal'));
+    document.getElementById('detailBody').innerHTML = '<div class="text-center py-3"><div class="spinner-border"></div></div>';
+    modal.show();
+    fetch(`/api/hetzner/servers/${encodeURIComponent(id)}`)
+        .then(r => r.json())
+        .then(data => {
+            if (data.error) {
+                document.getElementById('detailBody').innerHTML = `<div class="alert alert-danger">${esc(data.error)}</div>`;
+                return;
+            }
+            const s = data.server;
+            document.getElementById('detailBody').innerHTML = `
+                <dl class="row mb-0">
+                    <dt class="col-sm-4">ID</dt><dd class="col-sm-8"><code>${esc(s.id)}</code></dd>
+                    <dt class="col-sm-4">Name</dt><dd class="col-sm-8">${esc(s.name)}</dd>
+                    <dt class="col-sm-4">State</dt><dd class="col-sm-8">${stateBadge(s.state)}</dd>
+                    <dt class="col-sm-4">Type</dt><dd class="col-sm-8"><code>${esc(s.type)}</code> (${esc(s.cores || '?')} cores / ${esc(s.memory_gb || '?')} GB / ${esc(s.disk_gb || '?')} GB)</dd>
+                    <dt class="col-sm-4">Location</dt><dd class="col-sm-8">${esc(s.location)} / ${esc(s.datacenter)}</dd>
+                    <dt class="col-sm-4">Image</dt><dd class="col-sm-8">${esc(s.image)}</dd>
+                    <dt class="col-sm-4">Public IPv4</dt><dd class="col-sm-8"><code>${esc(s.public_ip || '—')}</code></dd>
+                    <dt class="col-sm-4">Public IPv6</dt><dd class="col-sm-8"><code>${esc(s.ipv6 || '—')}</code></dd>
+                    <dt class="col-sm-4">Private IP</dt><dd class="col-sm-8"><code>${esc(s.private_ip || '—')}</code></dd>
+                    <dt class="col-sm-4">Created</dt><dd class="col-sm-8">${esc(s.launch_time)}</dd>
+                    <dt class="col-sm-4">Rescue</dt><dd class="col-sm-8">${s.rescue_enabled ? 'Enabled' : 'Disabled'}</dd>
+                    <dt class="col-sm-4">Locked</dt><dd class="col-sm-8">${s.locked ? 'Yes' : 'No'}</dd>
+                </dl>`;
+        })
+        .catch(err => {
+            document.getElementById('detailBody').innerHTML = `<div class="alert alert-danger">${esc(String(err))}</div>`;
+        });
+}
+
+// ---- Local SSH Config ----
+function openSshConfig(id, name) {
+    document.getElementById('ssh-server-id').value = id;
+    document.getElementById('ssh-server-name').textContent = name + ' (' + id + ')';
+    document.getElementById('ssh-username').value = 'root';
+    document.getElementById('ssh-private-key').value = '';
+    document.getElementById('ssh-key-label').value = '';
+    document.getElementById('ssh-use-public-ip').checked = true;
+    document.getElementById('ssh-delete-btn').style.display = 'none';
+
+    fetch(`/api/hetzner/servers/${encodeURIComponent(id)}/ssh`)
+        .then(r => r.json())
+        .then(data => {
+            if (data.ssh_config) {
+                document.getElementById('ssh-username').value = data.ssh_config.ssh_username || 'root';
+                document.getElementById('ssh-key-label').value = data.ssh_config.key_label || '';
+                document.getElementById('ssh-use-public-ip').checked = !!data.ssh_config.use_public_ip;
+                document.getElementById('ssh-delete-btn').style.display = '';
+            }
+        });
+    new bootstrap.Modal(document.getElementById('sshConfigModal')).show();
+}
+
+function saveSshConfig() {
+    const id = document.getElementById('ssh-server-id').value;
+    const body = {
+        ssh_username: document.getElementById('ssh-username').value.trim() || 'root',
+        private_key: document.getElementById('ssh-private-key').value,
+        key_label: document.getElementById('ssh-key-label').value.trim(),
+        use_public_ip: document.getElementById('ssh-use-public-ip').checked,
+    };
+    fetch(`/api/hetzner/servers/${encodeURIComponent(id)}/ssh`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(body),
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.error) showToast(data.error, 'danger');
+        else {
+            showToast('SSH config saved');
+            bootstrap.Modal.getInstance(document.getElementById('sshConfigModal')).hide();
+            loadServers();
+        }
+    })
+    .catch(err => showToast('Error: ' + String(err), 'danger'));
+}
+
+function deleteSshConfig() {
+    const id = document.getElementById('ssh-server-id').value;
+    if (!confirm('Remove SSH config for this server?')) return;
+    fetch(`/api/hetzner/servers/${encodeURIComponent(id)}/ssh`, {method: 'DELETE'})
+        .then(r => r.json())
+        .then(data => {
+            if (data.deleted) {
+                showToast('SSH config removed');
+                bootstrap.Modal.getInstance(document.getElementById('sshConfigModal')).hide();
+                loadServers();
+            } else {
+                showToast(data.error || 'Failed', 'danger');
+            }
+        });
+}
+
+// ---- Create Server Modal ----
+function openCreateModal() {
+    if (!allAccounts.length) {
+        showToast('Configure at least one Hetzner account in Settings first.', 'warning');
+        return;
+    }
+    document.getElementById('cr-name').value = '';
+    document.getElementById('cr-user-data').value = '';
+    document.getElementById('cr-account').value = allAccounts[0];
+    onCreateAccountChange();
+    new bootstrap.Modal(document.getElementById('createModal')).show();
+}
+
+function onCreateAccountChange() {
+    const label = document.getElementById('cr-account').value;
+    const q = 'label=' + encodeURIComponent(label);
+    // Reset selects with loading placeholders
+    document.getElementById('cr-location').innerHTML = '<option value="">Loading...</option>';
+    document.getElementById('cr-server-type').innerHTML = '<option value="">Loading...</option>';
+    document.getElementById('cr-image').innerHTML = '<option value="">Loading...</option>';
+    document.getElementById('cr-ssh-keys').innerHTML = '';
+
+    Promise.all([
+        fetch('/api/hetzner/locations?' + q).then(r => r.json()),
+        fetch('/api/hetzner/server-types?' + q).then(r => r.json()),
+        fetch('/api/hetzner/images?' + q + '&type=system').then(r => r.json()),
+        fetch('/api/hetzner/ssh-keys?' + q).then(r => r.json()),
+    ]).then(([loc, st, img, keys]) => {
+        document.getElementById('cr-location').innerHTML = (loc.locations || [])
+            .map(l => `<option value="${esc(l.name)}">${esc(l.name)} — ${esc(l.city || l.description)}</option>`).join('');
+        document.getElementById('cr-server-type').innerHTML = (st.server_types || [])
+            .map(t => `<option value="${esc(t.name)}">${esc(t.name)} — ${esc(t.cores)}c / ${esc(t.memory_gb)}GB / ${esc(t.disk_gb)}GB</option>`).join('');
+        document.getElementById('cr-image').innerHTML = (img.images || [])
+            .map(i => `<option value="${esc(i.name || i.id)}">${esc(i.name || i.id)} — ${esc(i.description)}</option>`).join('');
+        document.getElementById('cr-ssh-keys').innerHTML = (keys.ssh_keys || [])
+            .map(k => `<option value="${esc(k.id)}">${esc(k.name)} (${esc(k.fingerprint)})</option>`).join('');
+    }).catch(err => showToast('Failed to load create options: ' + String(err), 'danger'));
+}
+
+function submitCreateServer() {
+    const btn = document.getElementById('cr-submit-btn');
+    const label = document.getElementById('cr-account').value;
+    const name = document.getElementById('cr-name').value.trim();
+    const location = document.getElementById('cr-location').value;
+    const server_type = document.getElementById('cr-server-type').value;
+    const image = document.getElementById('cr-image').value;
+    const user_data = document.getElementById('cr-user-data').value;
+    const ssh_keys = Array.from(document.getElementById('cr-ssh-keys').selectedOptions).map(o => o.value);
+
+    if (!name || !location || !server_type || !image) {
+        showToast('Name, location, server type, and image are required.', 'warning');
+        return;
+    }
+
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Creating...';
+
+    fetch('/api/hetzner/servers', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({label, name, server_type, image, location, ssh_keys, user_data})
+    })
+    .then(r => r.json())
+    .then(data => {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="bi bi-rocket-takeoff"></i> Create Server';
+        if (data.error) {
+            showToast(data.error, 'danger');
+            return;
+        }
+        const msg = data.server?.root_password
+            ? `Server ${esc(data.server.name)} created. Root password: ${esc(data.server.root_password)} (shown once)`
+            : `Server ${esc(data.server?.name || '')} created.`;
+        showToast(msg, 'success');
+        bootstrap.Modal.getInstance(document.getElementById('createModal')).hide();
+        loadServers();
+    })
+    .catch(err => {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="bi bi-rocket-takeoff"></i> Create Server';
+        showToast('Error: ' + String(err), 'danger');
+    });
+}
+
+// ---- SSH Keys Tab ----
+function loadSshKeys() {
+    const label = document.getElementById('sshkeys-account').value;
+    if (!label) return;
+    document.getElementById('keysLoading').classList.remove('d-none');
+    document.getElementById('keysEmpty').classList.add('d-none');
+    document.getElementById('keysTable').classList.add('d-none');
+
+    fetch('/api/hetzner/ssh-keys?label=' + encodeURIComponent(label))
+        .then(r => r.json())
+        .then(data => {
+            document.getElementById('keysLoading').classList.add('d-none');
+            if (data.error) { showToast(data.error, 'danger'); return; }
+            allSshKeysForAccount = data.ssh_keys || [];
+            renderSshKeys();
+        })
+        .catch(err => {
+            document.getElementById('keysLoading').classList.add('d-none');
+            showToast('Error: ' + String(err), 'danger');
+        });
+}
+
+function renderSshKeys() {
+    const tbody = document.getElementById('keysBody');
+    const table = document.getElementById('keysTable');
+    const empty = document.getElementById('keysEmpty');
+
+    if (!allSshKeysForAccount.length) {
+        table.classList.add('d-none');
+        empty.classList.remove('d-none');
+        return;
+    }
+    empty.classList.add('d-none');
+    table.classList.remove('d-none');
+
+    const label = document.getElementById('sshkeys-account').value;
+    const isAdmin = !!window.IS_ADMIN;
+    tbody.innerHTML = allSshKeysForAccount.map(k => `
+        <tr>
+            <td><code>${esc(k.id)}</code></td>
+            <td>${esc(k.name)}</td>
+            <td><small class="font-monospace">${esc(k.fingerprint)}</small></td>
+            <td><small class="text-muted">${esc(k.created)}</small></td>
+            <td>
+                ${isAdmin ? `<button class="btn btn-sm btn-outline-danger" onclick="deleteSshKey(${Number(k.id)}, '${esc(k.name)}', '${esc(label)}')" title="Delete">
+                    <i class="bi bi-trash"></i>
+                </button>` : ''}
+            </td>
+        </tr>`).join('');
+}
+
+function openSshKeyModal() {
+    if (!allAccounts.length) {
+        showToast('Configure at least one Hetzner account in Settings first.', 'warning');
+        return;
+    }
+    document.getElementById('newkey-name').value = '';
+    document.getElementById('newkey-public').value = '';
+    document.getElementById('newkey-account').value = document.getElementById('sshkeys-account').value || allAccounts[0];
+    new bootstrap.Modal(document.getElementById('sshKeyModal')).show();
+}
+
+function submitSshKey() {
+    const label = document.getElementById('newkey-account').value;
+    const name = document.getElementById('newkey-name').value.trim();
+    const public_key = document.getElementById('newkey-public').value.trim();
+
+    if (!name || !public_key) {
+        showToast('Name and public key are required.', 'warning');
+        return;
+    }
+    fetch('/api/hetzner/ssh-keys', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({label, name, public_key})
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.error) { showToast(data.error, 'danger'); return; }
+        showToast('SSH key added');
+        bootstrap.Modal.getInstance(document.getElementById('sshKeyModal')).hide();
+        document.getElementById('sshkeys-account').value = label;
+        loadSshKeys();
+    })
+    .catch(err => showToast('Error: ' + String(err), 'danger'));
+}
+
+function deleteSshKey(keyId, name, label) {
+    if (!confirm(`Delete SSH key "${name}" from Hetzner project? This does not revoke keys already deployed to servers.`)) return;
+    fetch(`/api/hetzner/ssh-keys/${keyId}?label=` + encodeURIComponent(label), {method: 'DELETE'})
+        .then(r => r.json())
+        .then(data => {
+            if (data.error) { showToast(data.error, 'danger'); return; }
+            showToast('SSH key deleted');
+            loadSshKeys();
+        })
+        .catch(err => showToast('Error: ' + String(err), 'danger'));
+}
+
+// ---- Tab handling ----
+function loadActiveTab() {
+    const active = document.querySelector('#hetzner-tabs button.active');
+    if (active && active.id === 'tab-sshkeys-btn') loadSshKeys();
+    else loadServers();
+}
+
+document.getElementById('tab-sshkeys-btn').addEventListener('shown.bs.tab', () => {
+    if (!document.getElementById('sshkeys-account').value && allAccounts.length) {
+        document.getElementById('sshkeys-account').value = allAccounts[0];
+    }
+    loadSshKeys();
+});
+
+// ---- Init ----
+document.addEventListener('DOMContentLoaded', function() {
+    loadAccounts().then(() => loadServers());
+});
+</script>
+{% endblock %}

@@ -810,7 +810,7 @@
 
         {% else %}
         {# ── Arsenal sidebar ─────────────────────────────────────────────── #}
-        {% set compute_pages  = ['containers','aws','azure'] %}
+        {% set compute_pages  = ['containers','aws','azure','hetzner'] %}
         {% set dns_pages      = ['domains','azure_dns'] %}
         {% set net_pages      = ['npm','cdn'] %}
         {% set phishing_pages = ['email','gophish'] %}
@@ -840,6 +840,11 @@
                 <a class="nav-link {% if request.endpoint == 'azure' %}active{% endif %}" href="{{ url_for('azure') }}">
                     <i class="bi bi-microsoft"></i> Azure VMs
                 </a>
+                {% if hetzner_enabled %}
+                <a class="nav-link {% if request.endpoint == 'hetzner' %}active{% endif %}" href="{{ url_for('hetzner') }}">
+                    <i class="bi bi-hdd-network"></i> Hetzner Servers
+                </a>
+                {% endif %}
             </div>
 
             <!-- DNS section -->
@@ -1399,6 +1404,8 @@
 
     // ── Current user info ───────────────────────────────────────────────────────
     window._INFRARED_USER_ROLE = {{ (current_user.role if current_user.is_authenticated else "")|tojson }};
+    window.IS_ADMIN = {{ 'true' if (current_user.is_authenticated and current_user.is_admin) else 'false' }};
+    window.HETZNER_ENABLED = {{ 'true' if hetzner_enabled else 'false' }};
 
     // ── Global escape helpers ───────────────────────────────────────────────────
     window.escapeHtml = function(s) {

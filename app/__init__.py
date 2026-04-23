@@ -73,6 +73,26 @@ def create_app(config_class=Config):
             return {'user_projects': [], 'active_project': None, 'active_project_role': None}
 
     @app.context_processor
+    def inject_hetzner_enabled():
+        """Inject hetzner_enabled: True when at least one Hetzner credential is configured.
+
+        Drives sidebar visibility, page route gating, and frontend picker inclusion.
+        Cached on g for the request so the DB hit happens at most once per render.
+        """
+        try:
+            if hasattr(g, '_hetzner_enabled'):
+                return {'hetzner_enabled': g._hetzner_enabled}
+            from flask_login import current_user
+            if not current_user.is_authenticated:
+                return {'hetzner_enabled': False}
+            from app.services.credential_service import get_account_labels
+            enabled = bool(get_account_labels('hetzner'))
+            g._hetzner_enabled = enabled
+            return {'hetzner_enabled': enabled}
+        except Exception:
+            return {'hetzner_enabled': False}
+
+    @app.context_processor
     def inject_phase():
         """Inject phase flags for the phase switcher in the sidebar."""
         from flask import request as _req

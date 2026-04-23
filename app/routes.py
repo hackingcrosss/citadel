@@ -217,6 +217,15 @@ def register_routes(app):
     def azure():
         return render_template('azure.html')
 
+    @app.route('/hetzner')
+    @login_required
+    def hetzner():
+        from app.services.credential_service import get_account_labels
+        if not get_account_labels('hetzner'):
+            flash('Hetzner integration is not configured.', 'warning')
+            return redirect(url_for('dashboard'))
+        return render_template('hetzner.html')
+
     @app.route('/azure-dns')
     @login_required
     def azure_dns():
