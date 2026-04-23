@@ -126,9 +126,8 @@ def delete_cobaltstrike_account(label):
 @login_required
 @admin_required
 def delete_hetzner_account(label):
-    labels = credential_service.get_account_labels('hetzner')
-    if len(labels) <= 1:
-        return jsonify({'error': 'Cannot delete the last Hetzner account'}), 400
+    # Deleting the last account is allowed — it fully disables the integration
+    # (sidebar disappears, /hetzner redirects, API returns 404).
     deleted = credential_service.delete_account('hetzner', label)
     if deleted:
         return jsonify({'deleted': True, 'label': label})
