@@ -660,34 +660,52 @@
         loadEgProfiles();
     }
 
-    // --- Load EC2 Instances ---
+    // --- Load Compute Instances (EC2 + Hetzner) ---
 
     function loadInstances() {
-        fetch('/api/aws/instances')
-            .then(function(r) { return r.json(); })
-            .then(function(data) {
-                if (data.error) {
-                    if (data.upgrade_required) showToast(data.error, 'warning');
-                    document.getElementById('dns-instance').innerHTML =
-                        '<option value="">AWS not configured</option>';
-                    return;
-                }
-                allInstances = (data.instances || []).filter(function(i) {
-                    return i.public_ip;
-                });
-                var select = document.getElementById('dns-instance');
-                select.innerHTML = '<option value="">Select an instance...</option>';
-                allInstances.forEach(function(inst) {
+        var select = document.getElementById('dns-instance');
+        select.innerHTML = '<option value="">Select an instance…</option>';
+
+        var sources = [
+            fetch('/api/aws/instances').then(function(r) { return r.json(); }).then(function(d) {
+                if (d.error && d.upgrade_required) showToast(d.error, 'warning');
+                return {
+                    provider: 'EC2',
+                    items: (d.instances || []).filter(function(i) { return i.public_ip; }).map(function(i) {
+                        return {name: i.name || i.id, ip: i.public_ip, raw: i};
+                    })
+                };
+            }).catch(function() { return {provider: 'EC2', items: []}; }),
+        ];
+        if (window.HETZNER_ENABLED) {
+            sources.push(
+                fetch('/api/hetzner/servers').then(function(r) { return r.json(); }).then(function(d) {
+                    return {
+                        provider: 'Hetzner',
+                        items: (d.servers || []).filter(function(s) { return s.public_ip; }).map(function(s) {
+                            return {name: s.name || s.id, ip: s.public_ip, raw: s};
+                        })
+                    };
+                }).catch(function() { return {provider: 'Hetzner', items: []}; })
+            );
+        }
+
+        Promise.all(sources).then(function(results) {
+            allInstances = [];
+            results.forEach(function(group) { group.items.forEach(function(it) { allInstances.push(it.raw); }); });
+            results.forEach(function(group) {
+                if (!group.items.length) return;
+                var og = document.createElement('optgroup');
+                og.label = group.provider;
+                group.items.forEach(function(it) {
                     var opt = document.createElement('option');
-                    opt.value = inst.public_ip;
-                    opt.textContent = (inst.name || inst.id) + ' (' + inst.public_ip + ')';
-                    select.appendChild(opt);
+                    opt.value = it.ip;
+                    opt.textContent = it.name + ' (' + it.ip + ')';
+                    og.appendChild(opt);
                 });
-            })
-            .catch(function() {
-                document.getElementById('dns-instance').innerHTML =
-                    '<option value="">Failed to load instances</option>';
+                select.appendChild(og);
             });
+        });
     }
 
     // ===========================

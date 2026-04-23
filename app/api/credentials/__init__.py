@@ -8,13 +8,21 @@ from app.utils.decorators import admin_required
 _log = logging.getLogger(__name__)
 
 
-_MULTI_ACCOUNT_PROVIDERS = {'cloudflare', 'aws', 'azure', 'cobaltstrike'}
+_MULTI_ACCOUNT_PROVIDERS = {'cloudflare', 'aws', 'azure', 'cobaltstrike', 'hetzner'}
+
+# Providers whose /labels and /test endpoints are hidden from non-admins.
+# Hetzner is NOT in this set: operators need to see account labels to select
+# Hetzner servers in compute pickers. Writing/reading full credentials is
+# already admin-only via the @admin_required decorator on GET/POST.
+_ADMIN_ONLY_PROVIDERS = set()
 
 
 @api_bp.route('/credentials/<provider>/labels', methods=['GET'])
 @login_required
 def get_credential_labels(provider):
     """Return account labels for a multi-account provider (no credential values)."""
+    if provider in _ADMIN_ONLY_PROVIDERS and not current_user.is_admin:
+        return jsonify({'error': 'Administrator access required'}), 403
     labels = credential_service.get_account_labels(provider)
     return jsonify({'labels': labels})
 
@@ -114,15 +122,32 @@ def delete_cobaltstrike_account(label):
     return jsonify({'error': 'C2 server not found'}), 404
 
 
+@api_bp.route('/credentials/hetzner/account/<label>', methods=['DELETE'])
+@login_required
+@admin_required
+def delete_hetzner_account(label):
+    labels = credential_service.get_account_labels('hetzner')
+    if len(labels) <= 1:
+        return jsonify({'error': 'Cannot delete the last Hetzner account'}), 400
+    deleted = credential_service.delete_account('hetzner', label)
+    if deleted:
+        return jsonify({'deleted': True, 'label': label})
+    return jsonify({'error': 'Account not found'}), 404
+
+
 @api_bp.route('/credentials/<provider>/test', methods=['POST'])
 @login_required
 def test_credentials(provider):
+    if provider in _ADMIN_ONLY_PROVIDERS and not current_user.is_admin:
+        return jsonify({'error': 'Administrator access required'}), 403
+
     testers = {
         'cloudflare': _test_cloudflare,
         'mailgun': _test_mailgun,
         'npm': _test_npm,
         'aws': _test_aws,
         'azure': _test_azure,
+        'hetzner': _test_hetzner,
         'docker': _test_docker,
         'gophish': _test_gophish,
         'cobaltstrike': _test_cobaltstrike,
@@ -227,6 +252,12 @@ def _test_openai():
         **completion_kwargs(max_tokens=5, temperature=0.1),
     )
     return {'status': 'ok', 'model': deployment, 'reply': response.choices[0].message.content.strip()}
+
+
+def _test_hetzner(label='default'):
+    from app.services import hetzner_service
+    result = hetzner_service.verify_credentials(label=label)
+    return result
 
 
 def _test_azure(label='default'):
