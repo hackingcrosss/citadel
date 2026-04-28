@@ -1,0 +1,566 @@
+{% extends "base.html" %}
+
+{% block title %}Evilginx - Citadel{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1 class="h3 mb-0">
+        <i class="bi bi-bezier"></i> Evilginx Phishlets
+    </h1>
+    <div class="d-flex align-items-center gap-2">
+        <button class="btn btn-sm btn-outline-secondary" onclick="loadPhishlets()">
+            <i class="bi bi-arrow-clockwise"></i> Refresh
+        </button>
+        {% if current_user.role not in ['viewer', 'auditor', 'white_team'] and active_project_role != 'white_team' %}
+        <button class="btn btn-sm btn-infrared" onclick="openNewPhishletPanel()">
+            <i class="bi bi-plus-circle"></i> New Phishlet
+        </button>
+        {% endif %}
+    </div>
+</div>
+
+{% if not active_project %}
+<div class="text-center py-5">
+    <i class="bi bi-folder2-open text-warning" style="font-size: 2rem;"></i>
+    <p class="mt-2">Select a project from the top bar to manage phishlets.</p>
+</div>
+{% else %}
+
+<!-- Stats -->
+<div class="row g-3 mb-4">
+    <div class="col"><div class="stat-card"><div class="label">Total</div><h3 id="stat-total">0</h3></div></div>
+    <div class="col"><div class="stat-card"><div class="label">Live</div><h3 id="stat-live">0</h3></div></div>
+    <div class="col"><div class="stat-card"><div class="label">Parsed</div><h3 id="stat-parsed">0</h3></div></div>
+    <div class="col"><div class="stat-card"><div class="label">Error</div><h3 id="stat-error">0</h3></div></div>
+    <div class="col"><div class="stat-card"><div class="label">Torn Down</div><h3 id="stat-torn">0</h3></div></div>
+</div>
+
+<!-- New Phishlet Panel (collapsed by default) -->
+<div class="card-custom mb-4 d-none" id="new-phishlet-panel">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <span><i class="bi bi-file-earmark-code"></i> New Phishlet</span>
+        <button type="button" class="btn-close btn-close-white" aria-label="Close" onclick="closeNewPhishletPanel()"></button>
+    </div>
+    <div class="card-body">
+        <div class="row g-3">
+            <div class="col-md-6">
+                <label class="form-label">Name <span class="text-danger">*</span></label>
+                <input type="text" class="form-control" id="ph-name" placeholder="O365 — Acme">
+                <div class="form-text">Human-readable label for this deployment.</div>
+            </div>
+            <div class="col-md-6">
+                <label class="form-label">Domain <span class="text-danger">*</span></label>
+                <select class="form-select" id="ph-domain">
+                    <option value="">Loading...</option>
+                </select>
+                <div class="form-text">Cloudflare-managed domain checked out to this project.</div>
+            </div>
+            <div class="col-md-6">
+                <label class="form-label">Target IP (Evilginx host) <span class="text-danger">*</span></label>
+                <div class="input-group">
+                    <input type="text" class="form-control" id="ph-ip" placeholder="1.2.3.4">
+                    <button class="btn btn-outline-secondary" type="button" onclick="openEc2Picker()" title="Pick EC2 IP">
+                        <i class="bi bi-aws"></i>
+                    </button>
+                </div>
+                <div class="form-text">A records will point at this IP (Cloudflare proxied).</div>
+            </div>
+            <div class="col-md-6 d-flex align-items-end">
+                <div class="form-check form-switch">
+                    <input class="form-check-input" type="checkbox" id="ph-bot-protection" checked>
+                    <label class="form-check-label" for="ph-bot-protection">
+                        Enable Cloudflare bot protection (managed challenge on phishlet hostnames)
+                    </label>
+                </div>
+            </div>
+            <div class="col-12">
+                <label class="form-label d-flex justify-content-between align-items-center">
+                    <span>Phishlet YAML <span class="text-danger">*</span></span>
+                    <span>
+                        <input type="file" id="ph-yaml-upload" accept=".yaml,.yml,.txt" class="d-none" onchange="loadYamlFile(this)">
+                        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="document.getElementById('ph-yaml-upload').click()">
+                            <i class="bi bi-upload"></i> Upload
+                        </button>
+                        <button type="button" class="btn btn-sm btn-outline-info" onclick="parsePreview()">
+                            <i class="bi bi-eye"></i> Parse preview
+                        </button>
+                    </span>
+                </label>
+                <textarea class="form-control font-monospace" id="ph-yaml" rows="12"
+                    placeholder="name: 'o365'
+author: '@example'
+proxy_hosts:
+  - phish_sub: 'login'
+    orig_sub: 'login'
+    domain: 'microsoftonline.com'
+    session: true
+    is_landing: true
+  - phish_sub: 'www'
+    orig_sub: 'www'
+    domain: 'office.com'
+    session: false
+    is_landing: false
+..."></textarea>
+            </div>
+
+            <!-- Preview output -->
+            <div class="col-12 d-none" id="ph-preview-card">
+                <div class="card-custom">
+                    <div class="card-header"><i class="bi bi-eye"></i> Preview</div>
+                    <div class="card-body" id="ph-preview-body"></div>
+                </div>
+            </div>
+        </div>
+        <div class="text-end mt-3">
+            <button class="btn btn-outline-secondary me-2" onclick="closeNewPhishletPanel()">Cancel</button>
+            <button class="btn btn-infrared" id="ph-save-btn" onclick="savePhishlet()">
+                <i class="bi bi-save"></i> Save phishlet
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Phishlets table -->
+<div class="card-custom">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <span><i class="bi bi-bezier"></i> Phishlets</span>
+        <span class="badge bg-secondary" id="phishlet-count">0</span>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+        <table class="table table-hover mb-0">
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>Phishlet</th>
+                    <th>Domain</th>
+                    <th>Target IP</th>
+                    <th>Records</th>
+                    <th>Bot</th>
+                    <th>Status</th>
+                    <th>Created</th>
+                    <th class="text-end">Actions</th>
+                </tr>
+            </thead>
+            <tbody id="phishlets-tbody">
+                <tr><td colspan="9" class="text-center text-muted py-3">Loading...</td></tr>
+            </tbody>
+        </table>
+        </div>
+    </div>
+</div>
+
+{% endif %}
+
+<!-- Deploy / teardown results modal -->
+<div class="modal fade" id="resultsModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="resultsTitle">Result</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body" id="resultsBody"></div>
+        </div>
+    </div>
+</div>
+
+<!-- EC2 IP picker modal -->
+<div class="modal fade" id="ec2PickerModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Pick EC2 instance</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <select class="form-select" id="ec2-picker-select"><option>Loading...</option></select>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button class="btn btn-infrared" onclick="applyEc2Pick()">Use IP</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    const IS_AUDITOR = {{ 'true' if current_user.role == 'auditor' else 'false' }};
+    const IS_WHITE_TEAM = {{ 'true' if current_user.role == 'white_team' else 'false' }};
+    const IS_VIEWER = {{ 'true' if current_user.role == 'viewer' else 'false' }};
+    const IS_READONLY = IS_AUDITOR || IS_WHITE_TEAM || IS_VIEWER;
+    const ACTIVE_PROJECT_ID = {{ active_project.id if active_project else 'null' }};
+
+    let _phishlets = [];
+
+    document.addEventListener('DOMContentLoaded', function() {
+        if (!ACTIVE_PROJECT_ID) return;
+        loadPhishlets();
+        loadDomains();
+    });
+
+    // ── Load list ──────────────────────────────────────────────────────
+    async function loadPhishlets() {
+        const tbody = document.getElementById('phishlets-tbody');
+        if (!tbody) return;
+        tbody.innerHTML = '<tr><td colspan="9" class="text-center text-muted py-3">Loading...</td></tr>';
+        try {
+            const r = await fetch('/api/evilginx/phishlets');
+            const data = await r.json();
+            if (!r.ok) throw new Error(data.error || 'Failed to load');
+            _phishlets = data.phishlets || [];
+            renderTable();
+            renderStats();
+        } catch (e) {
+            tbody.innerHTML = '<tr><td colspan="9" class="text-center text-danger py-3">' + escapeHtml(e.message) + '</td></tr>';
+        }
+    }
+
+    function renderStats() {
+        document.getElementById('stat-total').textContent = _phishlets.length;
+        document.getElementById('stat-live').textContent = _phishlets.filter(p => p.status === 'live').length;
+        document.getElementById('stat-parsed').textContent = _phishlets.filter(p => p.status === 'parsed').length;
+        document.getElementById('stat-error').textContent = _phishlets.filter(p => p.status === 'error').length;
+        document.getElementById('stat-torn').textContent = _phishlets.filter(p => p.status === 'torn_down').length;
+        document.getElementById('phishlet-count').textContent = _phishlets.length;
+    }
+
+    function _statusBadge(s) {
+        const map = {
+            parsed: 'bg-secondary', deploying: 'bg-primary',
+            live: 'bg-success', error: 'bg-danger', torn_down: 'bg-dark',
+        };
+        return '<span class="badge ' + (map[s] || 'bg-secondary') + '">' + escapeHtml(s) + '</span>';
+    }
+
+    function renderTable() {
+        const tbody = document.getElementById('phishlets-tbody');
+        if (!_phishlets.length) {
+            tbody.innerHTML = '<tr><td colspan="9" class="text-center text-muted py-4">No phishlets yet.</td></tr>';
+            return;
+        }
+
+        tbody.innerHTML = _phishlets.map(p => {
+            const recCount = (p.records || []).length;
+            const recOk = (p.records || []).filter(r => r.status === 'created' || r.status === 'exists').length;
+            const recCell = recCount
+                ? recOk + ' / ' + recCount
+                : '<span class="text-muted">-</span>';
+            const bot = p.bot_protection_enabled
+                ? (p.bot_rule_id ? '<i class="bi bi-shield-check text-success" title="Active"></i>' : '<i class="bi bi-shield text-warning" title="Configured"></i>')
+                : '<span class="text-muted">-</span>';
+
+            let actions = '<button class="btn btn-sm btn-outline-info" onclick="viewPhishlet(' + p.id + ')" title="Inspect"><i class="bi bi-eye"></i></button> ';
+            if (!IS_READONLY) {
+                if (p.status === 'parsed' || p.status === 'error' || p.status === 'torn_down') {
+                    actions += '<button class="btn btn-sm btn-outline-success" onclick="deployPhishlet(' + p.id + ')" title="Deploy to Cloudflare"><i class="bi bi-rocket-takeoff"></i></button> ';
+                }
+                if (p.status === 'live') {
+                    actions += '<button class="btn btn-sm btn-outline-warning" onclick="teardownPhishlet(' + p.id + ')" title="Tear down"><i class="bi bi-power"></i></button> ';
+                }
+                if (p.status !== 'live') {
+                    actions += '<button class="btn btn-sm btn-outline-danger" onclick="deletePhishlet(' + p.id + ')" title="Delete"><i class="bi bi-trash"></i></button>';
+                }
+            }
+
+            return '<tr>' +
+                '<td>' + escapeHtml(p.name) + '</td>' +
+                '<td><small class="text-muted">' + escapeHtml(p.phishlet_name || '-') + '</small></td>' +
+                '<td><small>' + escapeHtml(p.domain_name || '-') + '</small></td>' +
+                '<td><code>' + escapeHtml(p.target_ip || '') + '</code></td>' +
+                '<td>' + recCell + '</td>' +
+                '<td class="text-center">' + bot + '</td>' +
+                '<td>' + _statusBadge(p.status) + '</td>' +
+                '<td><small>' + escapeHtml(p.created_at ? new Date(p.created_at).toLocaleString() : '-') + '</small></td>' +
+                '<td class="text-end text-nowrap">' + actions + '</td>' +
+                '</tr>';
+        }).join('');
+    }
+
+    // ── Domains loader ─────────────────────────────────────────────────
+    async function loadDomains() {
+        try {
+            const r = await fetch('/api/domains?project_id=' + ACTIVE_PROJECT_ID);
+            const data = await r.json();
+            const sel = document.getElementById('ph-domain');
+            if (!sel) return;
+            const domains = data.domains || [];
+            if (!domains.length) {
+                sel.innerHTML = '<option value="">-- No domain checked out --</option>';
+                return;
+            }
+            sel.innerHTML = '<option value="">-- Select domain --</option>' +
+                domains.filter(d => d.cloudflare_zone_id).map(d =>
+                    '<option value="' + d.id + '">' + escapeHtml(d.name) + '</option>'
+                ).join('');
+        } catch (e) {
+            const sel = document.getElementById('ph-domain');
+            if (sel) sel.innerHTML = '<option value="">Failed to load domains</option>';
+        }
+    }
+
+    // ── New panel ──────────────────────────────────────────────────────
+    function openNewPhishletPanel() {
+        const panel = document.getElementById('new-phishlet-panel');
+        if (panel) panel.classList.remove('d-none');
+    }
+    function closeNewPhishletPanel() {
+        const panel = document.getElementById('new-phishlet-panel');
+        if (panel) panel.classList.add('d-none');
+        document.getElementById('ph-preview-card').classList.add('d-none');
+        document.getElementById('ph-name').value = '';
+        document.getElementById('ph-ip').value = '';
+        document.getElementById('ph-yaml').value = '';
+        document.getElementById('ph-bot-protection').checked = true;
+        const sel = document.getElementById('ph-domain');
+        if (sel) sel.value = '';
+    }
+
+    function loadYamlFile(input) {
+        if (!input.files || !input.files.length) return;
+        const file = input.files[0];
+        if (file.size > 256 * 1024) {
+            showToast('File too large (max 256 KB)', 'warning');
+            input.value = '';
+            return;
+        }
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            document.getElementById('ph-yaml').value = e.target.result;
+            parsePreview();
+        };
+        reader.readAsText(file);
+        input.value = '';
+    }
+
+    // ── Parse preview ──────────────────────────────────────────────────
+    async function parsePreview() {
+        const yaml = document.getElementById('ph-yaml').value;
+        const card = document.getElementById('ph-preview-card');
+        const body = document.getElementById('ph-preview-body');
+        if (!yaml.trim()) {
+            showToast('Paste or upload a phishlet YAML first', 'warning');
+            return;
+        }
+        try {
+            const r = await fetch('/api/evilginx/parse', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({yaml: yaml}),
+            });
+            const data = await r.json();
+            if (!r.ok) throw new Error(data.error || 'Parse failed');
+            const ph = data.phishlet || {};
+            const subs = ph.phish_subs || [];
+            const sel = document.getElementById('ph-domain');
+            const selectedDomain = sel.options[sel.selectedIndex]?.text || '<domain>';
+
+            let html = '<div class="row g-2 small mb-2">' +
+                '<div class="col-md-4"><strong>Name:</strong> ' + escapeHtml(ph.name || '-') + '</div>' +
+                '<div class="col-md-4"><strong>Author:</strong> ' + escapeHtml(ph.author || '-') + '</div>' +
+                '<div class="col-md-4"><strong>min_ver:</strong> ' + escapeHtml(ph.min_ver || '-') + '</div>' +
+                '</div>';
+            html += '<div class="mb-1"><strong>' + subs.length + '</strong> A record(s) will be created on <code>' + escapeHtml(selectedDomain) + '</code>:</div>';
+            html += '<ul class="mb-0 small">';
+            subs.forEach(s => {
+                const fqdn = s === '@' ? selectedDomain : escapeHtml(s) + '.<wbr>' + escapeHtml(selectedDomain);
+                html += '<li><code>' + fqdn + '</code></li>';
+            });
+            html += '</ul>';
+
+            body.innerHTML = html;
+            card.classList.remove('d-none');
+        } catch (e) {
+            body.innerHTML = '<div class="text-danger">' + escapeHtml(e.message) + '</div>';
+            card.classList.remove('d-none');
+        }
+    }
+
+    // ── Save (create) ──────────────────────────────────────────────────
+    async function savePhishlet() {
+        if (IS_READONLY) return;
+        const payload = {
+            name: document.getElementById('ph-name').value.trim(),
+            yaml: document.getElementById('ph-yaml').value,
+            domain_id: parseInt(document.getElementById('ph-domain').value, 10) || null,
+            target_ip: document.getElementById('ph-ip').value.trim(),
+            bot_protection: document.getElementById('ph-bot-protection').checked,
+        };
+
+        if (!payload.name) { showToast('Name is required', 'warning'); return; }
+        if (!payload.domain_id) { showToast('Domain is required', 'warning'); return; }
+        if (!payload.target_ip) { showToast('Target IP is required', 'warning'); return; }
+        if (!payload.yaml.trim()) { showToast('Phishlet YAML is required', 'warning'); return; }
+
+        const btn = document.getElementById('ph-save-btn');
+        btn.disabled = true;
+        try {
+            const r = await fetch('/api/evilginx/phishlets', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(payload),
+            });
+            const data = await r.json();
+            if (!r.ok) throw new Error(data.error || 'Save failed');
+            showToast('Phishlet saved', 'success');
+            closeNewPhishletPanel();
+            await loadPhishlets();
+        } catch (e) {
+            showToast(e.message, 'danger');
+        } finally {
+            btn.disabled = false;
+        }
+    }
+
+    // ── Deploy / teardown / delete ─────────────────────────────────────
+    async function deployPhishlet(id) {
+        if (IS_READONLY) return;
+        const p = _phishlets.find(x => x.id === id);
+        if (!p) return;
+        if (!confirm('Deploy "' + p.name + '"? This will create Cloudflare DNS records and a WAF rule.')) return;
+
+        showToast('Deploying...', 'info');
+        try {
+            const r = await fetch('/api/evilginx/phishlets/' + id + '/deploy', {method: 'POST'});
+            const data = await r.json();
+            if (!r.ok) throw new Error(data.error || 'Deploy failed');
+            showResults('Deploy result', data.steps || []);
+            await loadPhishlets();
+        } catch (e) {
+            showToast(e.message, 'danger');
+        }
+    }
+
+    async function teardownPhishlet(id) {
+        if (IS_READONLY) return;
+        const p = _phishlets.find(x => x.id === id);
+        if (!p) return;
+        if (!confirm('Tear down "' + p.name + '"? This will remove Cloudflare DNS records and the WAF rule.')) return;
+
+        try {
+            const r = await fetch('/api/evilginx/phishlets/' + id + '/teardown', {method: 'POST'});
+            const data = await r.json();
+            if (!r.ok) throw new Error(data.error || 'Teardown failed');
+            showResults('Teardown result', data.steps || []);
+            await loadPhishlets();
+        } catch (e) {
+            showToast(e.message, 'danger');
+        }
+    }
+
+    async function deletePhishlet(id) {
+        if (IS_READONLY) return;
+        const p = _phishlets.find(x => x.id === id);
+        if (!p) return;
+        if (!confirm('Delete "' + p.name + '"? This removes the phishlet record (Cloudflare resources are not touched if already torn down).')) return;
+        try {
+            const r = await fetch('/api/evilginx/phishlets/' + id, {method: 'DELETE'});
+            const data = await r.json();
+            if (!r.ok) throw new Error(data.error || 'Delete failed');
+            showToast('Phishlet deleted', 'success');
+            await loadPhishlets();
+        } catch (e) {
+            showToast(e.message, 'danger');
+        }
+    }
+
+    // ── Inspect ────────────────────────────────────────────────────────
+    async function viewPhishlet(id) {
+        try {
+            const r = await fetch('/api/evilginx/phishlets/' + id + '?include_yaml=true');
+            const data = await r.json();
+            if (!r.ok) throw new Error(data.error || 'Failed to load');
+            const p = data.phishlet || {};
+            let html = '<div class="row g-2 small mb-3">' +
+                '<div class="col-md-6"><strong>Name:</strong> ' + escapeHtml(p.name) + '</div>' +
+                '<div class="col-md-6"><strong>Phishlet:</strong> ' + escapeHtml(p.phishlet_name || '-') + '</div>' +
+                '<div class="col-md-6"><strong>Domain:</strong> ' + escapeHtml(p.domain_name || '-') + '</div>' +
+                '<div class="col-md-6"><strong>Target IP:</strong> <code>' + escapeHtml(p.target_ip) + '</code></div>' +
+                '<div class="col-md-6"><strong>Status:</strong> ' + _statusBadge(p.status) + '</div>' +
+                '<div class="col-md-6"><strong>Bot rule:</strong> ' + escapeHtml(p.bot_rule_id || '-') + '</div>' +
+                '</div>';
+
+            if (p.last_error) {
+                html += '<div class="alert alert-warning small mb-3"><strong>Last error:</strong> ' + escapeHtml(p.last_error) + '</div>';
+            }
+
+            const recs = p.records || [];
+            html += '<h6 class="mt-3">DNS records (' + recs.length + ')</h6>';
+            if (recs.length) {
+                html += '<table class="table table-sm"><thead><tr><th>FQDN</th><th>CF ID</th><th>Status</th></tr></thead><tbody>';
+                recs.forEach(r => {
+                    html += '<tr><td><code>' + escapeHtml(r.fqdn) + '</code></td>' +
+                        '<td><small class="text-muted">' + escapeHtml(r.cloudflare_record_id || '-') + '</small></td>' +
+                        '<td>' + _statusBadge(r.status) + '</td></tr>';
+                    if (r.error_message) {
+                        html += '<tr><td colspan="3" class="text-danger small">' + escapeHtml(r.error_message) + '</td></tr>';
+                    }
+                });
+                html += '</tbody></table>';
+            } else {
+                html += '<div class="text-muted small">No records.</div>';
+            }
+
+            if (p.yaml_content) {
+                html += '<h6 class="mt-3">Phishlet YAML</h6>';
+                html += '<pre class="bg-dark text-light p-2 small" style="max-height:300px;overflow:auto;">' + escapeHtml(p.yaml_content) + '</pre>';
+            }
+
+            document.getElementById('resultsTitle').textContent = 'Phishlet: ' + p.name;
+            document.getElementById('resultsBody').innerHTML = html;
+            new bootstrap.Modal(document.getElementById('resultsModal')).show();
+        } catch (e) {
+            showToast(e.message, 'danger');
+        }
+    }
+
+    function showResults(title, steps) {
+        document.getElementById('resultsTitle').textContent = title;
+        const body = document.getElementById('resultsBody');
+        if (!steps.length) {
+            body.innerHTML = '<div class="text-muted">No steps reported.</div>';
+        } else {
+            body.innerHTML = '<ul class="list-group">' + steps.map(s => {
+                const cls = s.status === 'ok' ? 'list-group-item-success' : 'list-group-item-danger';
+                let line = '<strong>' + escapeHtml(s.step) + '</strong>';
+                if (s.fqdn) line += ' — <code>' + escapeHtml(s.fqdn) + '</code>';
+                if (s.note) line += ' <span class="text-muted small">(' + escapeHtml(s.note) + ')</span>';
+                if (s.error) line += '<div class="small text-danger">' + escapeHtml(s.error) + '</div>';
+                if (s.rule_id) line += ' <span class="text-muted small">rule_id=' + escapeHtml(s.rule_id) + '</span>';
+                return '<li class="list-group-item ' + cls + '">' + line + '</li>';
+            }).join('') + '</ul>';
+        }
+        new bootstrap.Modal(document.getElementById('resultsModal')).show();
+    }
+
+    // ── EC2 picker ─────────────────────────────────────────────────────
+    async function openEc2Picker() {
+        const sel = document.getElementById('ec2-picker-select');
+        sel.innerHTML = '<option>Loading...</option>';
+        const modal = new bootstrap.Modal(document.getElementById('ec2PickerModal'));
+        modal.show();
+        try {
+            const r = await fetch('/api/aws/instances');
+            const data = await r.json();
+            const items = (data.instances || []).filter(i => i.public_ip);
+            if (!items.length) {
+                sel.innerHTML = '<option value="">No EC2 instances with a public IP</option>';
+                return;
+            }
+            sel.innerHTML = items.map(i =>
+                '<option value="' + escapeAttr(i.public_ip) + '">' +
+                escapeHtml((i.name || i.id) + ' (' + i.public_ip + ')') + '</option>'
+            ).join('');
+        } catch (e) {
+            sel.innerHTML = '<option value="">Failed to load: ' + escapeHtml(e.message) + '</option>';
+        }
+    }
+
+    function applyEc2Pick() {
+        const sel = document.getElementById('ec2-picker-select');
+        const ip = sel.value;
+        if (ip) document.getElementById('ph-ip').value = ip;
+        bootstrap.Modal.getInstance(document.getElementById('ec2PickerModal')).hide();
+    }
+</script>
+{% endblock %}
