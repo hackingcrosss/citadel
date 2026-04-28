@@ -2,6 +2,9 @@ import docker
 from docker.errors import NotFound, APIError
 from app.services.credential_service import get_credential
 
+# Cap socket waits so an unreachable daemon fails fast instead of hanging the worker.
+_DOCKER_TIMEOUT = 5
+
 
 def _get_client():
     """Get Docker client. Uses remote host from Settings if configured,
@@ -25,8 +28,8 @@ def _get_client():
                     client_cert=(cert_path, key_path),
                     verify=True
                 )
-        return docker.DockerClient(base_url=docker_host, tls=tls_config)
-    return docker.from_env()
+        return docker.DockerClient(base_url=docker_host, tls=tls_config, timeout=_DOCKER_TIMEOUT)
+    return docker.from_env(timeout=_DOCKER_TIMEOUT)
 
 
 def _write_temp(content, name):
