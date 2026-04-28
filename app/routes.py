@@ -263,6 +263,12 @@ def register_routes(app):
     def cobaltstrike():
         return render_template('cobaltstrike.html')
 
+    @app.route('/evilginx')
+    @login_required
+    @feature_required('evilginx')
+    def evilginx():
+        return render_template('evilginx.html')
+
     @app.route('/orchestration')
     @login_required
     def orchestration_mgmt():

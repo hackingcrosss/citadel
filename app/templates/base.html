@@ -812,7 +812,7 @@
         {% set compute_pages  = ['containers','aws','azure','hetzner'] %}
         {% set dns_pages      = ['domains','azure_dns'] %}
         {% set net_pages      = ['npm','cdn'] %}
-        {% set phishing_pages = ['email','gophish'] %}
+        {% set phishing_pages = ['email','gophish','evilginx'] %}
         {% set ops_pages      = ['operations','orchestration_mgmt','infra_map','cobaltstrike'] %}
         <nav class="nav flex-column">
             <a class="nav-link {% if request.endpoint == 'dashboard' %}active{% endif %}" href="{{ url_for('dashboard') }}">
@@ -893,6 +893,11 @@
                 {% if current_plan.is_enabled('gophish') %}
                 <a class="nav-link {% if request.endpoint == 'gophish' %}active{% endif %}" href="{{ url_for('gophish') }}">
                     <i class="bi bi-send"></i> GoPhish
+                </a>
+                {% endif %}
+                {% if current_plan.is_enabled('evilginx') %}
+                <a class="nav-link {% if request.endpoint == 'evilginx' %}active{% endif %}" href="{{ url_for('evilginx') }}">
+                    <i class="bi bi-bezier"></i> Evilginx
                 </a>
                 {% endif %}
             </div>
