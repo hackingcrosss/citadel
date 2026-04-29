@@ -29,6 +29,7 @@ ALL_FEATURES = frozenset({
     'engagements',        # Phase 2
     'companies',
     'initial_access',
+    'evilginx',
 })
 
 TIERS = {
@@ -44,14 +45,14 @@ TIERS = {
         'description': 'Full phishing toolkit for small red teams.',
         'max_users': 5,
         'max_domains': 20,
-        'features': frozenset({'gophish', 'website_generator', 'initial_access', 'projects', 'companies'}),
+        'features': frozenset({'gophish', 'website_generator', 'initial_access', 'projects', 'companies', 'evilginx'}),
     },
     'team': {
         'display_name': 'Team',
         'description': 'Complete red team platform with C2 and mapping.',
         'max_users': 20,
         'max_domains': -1,   # -1 = unlimited
-        'features': frozenset({'gophish', 'website_generator', 'cobaltstrike', 'infra_map', 'projects', 'cdn', 'companies', 'initial_access'}),
+        'features': frozenset({'gophish', 'website_generator', 'cobaltstrike', 'infra_map', 'projects', 'cdn', 'companies', 'initial_access', 'evilginx'}),
     },
     'enterprise': {
         'display_name': 'Enterprise',
