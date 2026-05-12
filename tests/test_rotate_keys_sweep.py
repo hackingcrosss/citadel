@@ -40,8 +40,9 @@ def main():
         os.environ['DATABASE_URL'] = f'sqlite:///{db_path}'
         os.environ['MASTER_ENCRYPTION_KEY'] = old_key.decode()
         os.environ.pop('MASTER_ENCRYPTION_KEY_LEGACY', None)
-        # Defensively neutralise anything the app might require at import time.
-        os.environ.setdefault('SECRET_KEY', 'test-secret-key-not-used-anywhere')
+        # Force-override SECRET_KEY: the container's inherited value may be the
+        # banned shipped key, which Config's refuse-to-start guard rejects.
+        os.environ['SECRET_KEY'] = 'test-secret-key-not-used-anywhere'
         os.environ.setdefault('FLASK_ENV', 'development')
 
         from app import create_app, db
