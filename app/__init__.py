@@ -25,6 +25,10 @@ def create_app(config_class=Config):
     from app.routes import register_routes
     register_routes(app)
 
+    # Register CLI commands
+    from app.cli import register_cli
+    register_cli(app)
+
     # Inject current_plan into every template context (cached per request on g)
     from app.services.plan_service import get_current_plan
 

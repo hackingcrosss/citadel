@@ -1,16 +1,38 @@
-from cryptography.fernet import Fernet, InvalidToken
+from cryptography.fernet import Fernet, MultiFernet, InvalidToken
 from flask import current_app
 from app import db
 from app.models.credential import Credential
 
 
-def _get_fernet():
-    key = current_app.config['MASTER_ENCRYPTION_KEY']
+def _split_keys(raw):
+    """Parse a comma-separated key list into bytes, dropping empties."""
+    if raw is None:
+        return []
+    if isinstance(raw, bytes):
+        raw = raw.decode()
+    return [k.strip().encode() for k in raw.split(',') if k.strip()]
+
+
+def _get_primary_key():
+    """Return the primary MASTER_ENCRYPTION_KEY as bytes. Raises if unset."""
+    key = current_app.config.get('MASTER_ENCRYPTION_KEY')
     if not key:
         raise ValueError("MASTER_ENCRYPTION_KEY not configured")
-    if isinstance(key, str):
-        key = key.encode()
-    return Fernet(key)
+    return key.encode() if isinstance(key, str) else key
+
+
+def _get_fernet():
+    # MultiFernet encrypts with the first key (the primary) and decrypts by
+    # trying each key in order — lets us migrate ciphertexts from a previous
+    # master key (MASTER_ENCRYPTION_KEY_LEGACY) without downtime.
+    primary = _get_primary_key()
+    legacy = _split_keys(current_app.config.get('MASTER_ENCRYPTION_KEY_LEGACY'))
+    return MultiFernet([Fernet(primary), *[Fernet(k) for k in legacy]])
+
+
+def _get_primary_fernet():
+    # Single-key Fernet for the sweep's "already on primary?" check.
+    return Fernet(_get_primary_key())
 
 
 def set_credential(provider, key_name, plaintext_value, label='default'):
