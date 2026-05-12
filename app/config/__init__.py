@@ -14,6 +14,10 @@ class Config:
     SQLALCHEMY_DATABASE_URI = os.getenv('DATABASE_URL')
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     MASTER_ENCRYPTION_KEY = os.getenv('MASTER_ENCRYPTION_KEY')
+    # Comma-separated previous keys, used only during a rotation window so legacy
+    # ciphertexts remain readable until `flask rotate-keys-sweep` migrates them.
+    # Drop back to empty once the sweep reports zero un-rotated rows.
+    MASTER_ENCRYPTION_KEY_LEGACY = os.getenv('MASTER_ENCRYPTION_KEY_LEGACY', '')
 
     # Session cookie hardening
     SESSION_COOKIE_HTTPONLY = True
