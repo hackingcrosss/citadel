@@ -52,7 +52,12 @@ services:
     command: gunicorn -b 0.0.0.0:5000 "app:create_app()" --reload
     volumes:
       - ./app:/app/app
-      - /var/run/docker.sock:/var/run/docker.sock
+      # NOTE: /var/run/docker.sock is intentionally NOT mounted here.
+      # Production uses a remote Docker host configured via Settings →
+      # Docker → Host URL, so the local socket is unused. Mounting it
+      # is a container-escape primitive (any in-container RCE → host root).
+      # Local development that needs the socket should copy
+      # docker-compose.override.yml.example to docker-compose.override.yml.
     ports:
       - "5000:5000"
     extra_hosts:
