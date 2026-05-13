@@ -3,12 +3,44 @@ import os
 import re
 from flask import render_template, redirect, url_for, request, flash, session
 from flask_login import login_required, current_user, login_user, logout_user
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urljoin, unquote
 from app import db
 from app.models.user import User
 from app.utils.decorators import admin_required, feature_required
 from app.services import audit_service
 from datetime import datetime
+
+
+def _is_safe_next(target):
+    r"""Tight allow-list for the login ?next parameter.
+
+    Python's urlparse leaves several browser-equivalent off-origin payloads
+    looking innocuous (backslashes, %5c, /\, ////host, mixed slash/backslash).
+    Reject anything that, after URL-decoding, doesn't look like a strict
+    same-origin path. Anything with a scheme, host, control char, backslash,
+    or double-leading-slash variant gets blocked.
+    """
+    if not target:
+        return False
+    decoded = unquote(target)
+    # Reject control / null / whitespace and backslash variants.
+    if any(c in decoded for c in ('\\', '\r', '\n', '\t', '\0')):
+        return False
+    # Reject anything starting with a non-path prefix.
+    if decoded.startswith('//') or decoded.startswith('/\\'):
+        return False
+    # Reject anything that's not anchored to the root path.
+    if not decoded.startswith('/'):
+        return False
+    # Sanity: the joined-and-parsed URL must stay on the same origin.
+    ref = urlparse(request.host_url)
+    test = urlparse(urljoin(request.host_url, target))
+    return (
+        test.scheme in ('http', 'https')
+        and ref.netloc == test.netloc
+        and test.path.startswith('/')
+        and not test.path.startswith('//')
+    )
 
 _log = logging.getLogger(__name__)
 
@@ -122,11 +154,11 @@ def register_routes(app):
                 audit_service.log('auth.login', 'user', user.id, user.email)
                 flash('Login successful!', 'success')
                 next_page = request.args.get('next')
-                # Only allow relative redirects — reject any URL with a scheme or host
-                if next_page:
-                    parsed = urlparse(next_page)
-                    if parsed.scheme or parsed.netloc:
-                        next_page = None
+                # A-02: urlparse-only validation misses several browser-equivalent
+                # off-origin payloads (backslashes, %5c, ////host, /\, etc.).
+                # Use the strict allow-list helper instead.
+                if not _is_safe_next(next_page):
+                    next_page = None
                 return redirect(next_page or url_for('dashboard'))
             else:
                 _record_failure(client_ip)
