@@ -182,6 +182,11 @@ def delete_cs_listener(listener_name):
 @feature_required('cobaltstrike')
 def list_c2_servers():
     """Return configured C2 server labels with their type and IPs."""
+    # G-04: listener_ip / redirector_ip are C2 infra IPs. Operators legitimately
+    # use this for deploying infrastructure; auditors / white_team / project_admin
+    # have no operational need and shouldn't see C2 callback IPs.
+    if not current_user.can_write_infra:
+        return jsonify({'error': 'Operator access required'}), 403
     from app.services.credential_service import get_all_for_provider, get_credential
     data = get_all_for_provider('cobaltstrike')
     servers = []

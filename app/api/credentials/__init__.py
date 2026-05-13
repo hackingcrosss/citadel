@@ -171,8 +171,11 @@ def test_credentials(provider):
 
 _PUBLIC_CREDENTIAL_KEYS = {
     ('npm', 'public_ip'),
-    ('cobaltstrike', 'listener_ip'),
-    ('cobaltstrike', 'redirector_ip'),
+    # G-04: 'cobaltstrike/listener_ip' and 'cobaltstrike/redirector_ip' used to
+    # live here, leaking C2 infrastructure IPs to any authenticated user
+    # (auditor, white_team, plain user, project_admin). Removed — now require
+    # admin. The /api/cobaltstrike/servers endpoint is the legitimate
+    # operator-visible surface for these values.
 }
 
 
