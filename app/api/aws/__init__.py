@@ -373,6 +373,12 @@ def aws_delete_ssh_config(instance_id):
 @api_bp.route('/aws/instances/<instance_id>/services', methods=['GET'])
 @login_required
 def aws_list_services(instance_id):
+    # B-09: these handlers shell out via SSH to systemd. Auditors / white_team
+    # have no operational need; gate to operator/admin so SSH execution is at
+    # least bounded to the same role bucket that the action-POST handler
+    # requires admin for.
+    if not current_user.can_write_infra:
+        return jsonify({'error': 'Operator access required'}), 403
     region = request.args.get('region')
     try:
         services = ssh_service.list_services(instance_id, region)
@@ -384,6 +390,8 @@ def aws_list_services(instance_id):
 @api_bp.route('/aws/instances/<instance_id>/services/<service_name>', methods=['GET'])
 @login_required
 def aws_get_service_status(instance_id, service_name):
+    if not current_user.can_write_infra:
+        return jsonify({'error': 'Operator access required'}), 403
     region = request.args.get('region')
     try:
         status = ssh_service.get_service_status(instance_id, service_name, region)
