@@ -7,6 +7,7 @@ from app.services.project_service import (
     assert_resource_writable,
     assert_resource_readable,
     get_user_project_ids,
+    is_platform_core_container,
 )
 
 
@@ -32,11 +33,17 @@ def list_containers():
             c['project_code'] = tag['project_code'] if tag else None
             c['project_resource_id'] = tag['project_resource_id'] if tag else None
 
-        # Non-admins see only containers tagged to projects they belong to.
-        # Untagged containers (infrared-* platform core) stay admin-only.
+        # Non-admins: hide platform-core containers (infrared-web etc.) and
+        # any container tagged to a project they're not a member of. Untagged
+        # containers are visible — until K-03 (auto-tag at deploy) lands,
+        # requiring a tag would hide every operator-deployed container.
         if not current_user.is_admin:
             allowed = get_user_project_ids(current_user)
-            containers = [c for c in containers if c.get('project_id') in allowed]
+            containers = [
+                c for c in containers
+                if not is_platform_core_container(c.get('name'))
+                and (c.get('project_id') is None or c.get('project_id') in allowed)
+            ]
 
         return jsonify({'containers': containers})
     except Exception as e:
