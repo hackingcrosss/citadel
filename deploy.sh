@@ -35,6 +35,7 @@ RSYNC_EXCLUDES=(
   --exclude='.pytest_cache/'
   --exclude='*.egg-info/'
   --exclude='.DS_Store'
+  --exclude='docker-compose.override.yml'
 )
 # ──────────────────────────────────────────────────────────────────────────────
 
