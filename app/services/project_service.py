@@ -243,3 +243,27 @@ def assert_resource_writable(resource_type, external_id, user):
     ).first()
     if resource is not None and resource.project_id not in get_user_project_ids(user):
         abort(403)
+
+
+def assert_resource_readable(resource_type, external_id, user):
+    """Abort 403 if the user cannot read this external resource.
+
+    Stricter than assert_resource_writable:
+    - Admins: always allowed.
+    - Non-operators (project_admin, auditor, white_team, plain users): blocked —
+      they have no operational need to see live infrastructure state.
+    - Operators: allowed only if the resource is tagged to one of their projects.
+      Untagged resources are platform-internal (infrared-web, infrared-postgres,
+      etc.) and admin-only — positive tagging, opposite of the K-02 'untagged →
+      allowed' write-side default. Closes the K-01 cross-tenant + platform-core
+      disclosure surface for /api/containers/<id>{,/logs,/stats}.
+    """
+    if user.is_admin:
+        return
+    if not user.is_operator:
+        abort(403)
+    resource = ProjectResource.query.filter_by(
+        resource_type=resource_type, external_id=str(external_id)
+    ).first()
+    if resource is None or resource.project_id not in get_user_project_ids(user):
+        abort(403)
