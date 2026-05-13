@@ -2,6 +2,7 @@ from flask import Flask, g
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager
 from flask_migrate import Migrate
+from werkzeug.middleware.proxy_fix import ProxyFix
 from app.config import Config
 
 db = SQLAlchemy()
@@ -11,6 +12,15 @@ migrate = Migrate()
 def create_app(config_class=Config):
     app = Flask(__name__)
     app.config.from_object(config_class)
+
+    # Behind nginx — trust X-Forwarded-* headers from exactly one proxy hop
+    # so request.remote_addr reflects the real client IP, not the docker
+    # bridge gateway. Fixes A-01 (single attacker IP locking out all users
+    # via the login rate-limiter) and makes the audit log record useful
+    # client IPs. If a deployment adds an upstream proxy (ALB, CDN), bump
+    # x_for to match the number of trusted hops — but never set it higher
+    # than the real chain length or clients can spoof X-Forwarded-For.
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_port=1)
 
     db.init_app(app)
     login_manager.init_app(app)
