@@ -1,27 +1,28 @@
 #!/bin/bash
 # InfraRed Setup Script
-# Generates a per-deployment .env from .env.example with freshly-generated
-# SECRET_KEY and MASTER_ENCRYPTION_KEY values. Idempotent — preserves an
-# existing .env so re-runs never overwrite live keys.
+#
+# Generates a per-deployment configuration on first install:
+#   .env             — non-secret config (templated from .env.example)
+#   $INFRARED_SECRETS_FILE
+#                    — SECRET_KEY + MASTER_ENCRYPTION_KEY, stored OUTSIDE the
+#                      repo so secrets never land in source control.
+#                      Defaults to $HOME/.config/infrared/secrets.env (user-owned,
+#                      XDG-style, no sudo). Override by exporting
+#                      INFRARED_SECRETS_FILE before running.
+#
+# Idempotent: never overwrites an existing .env or secrets file. Re-run safely.
 
 set -euo pipefail
 
 cd "$(dirname "$0")"
 
+SECRETS_FILE="${INFRARED_SECRETS_FILE:-$HOME/.config/infrared/secrets.env}"
+
 echo "=== InfraRed Infrastructure Setup ==="
+echo "Secrets file path: $SECRETS_FILE"
+echo ""
 
-if [ -f .env ]; then
-    echo "[!] .env already exists; leaving it untouched."
-    echo "    To regenerate from scratch, move it aside first: mv .env .env.old"
-    exit 0
-fi
-
-if [ ! -f .env.example ]; then
-    echo "[!] .env.example missing; cannot template a fresh .env." >&2
-    exit 1
-fi
-
-# Pick whichever Python is available; both have the secrets / cryptography stdlib.
+# Pick whichever Python is available.
 if command -v python3 >/dev/null 2>&1; then PY=python3
 elif command -v python  >/dev/null 2>&1; then PY=python
 else
@@ -29,30 +30,54 @@ else
     exit 1
 fi
 
-echo "[+] Generating SECRET_KEY"
-SECRET_KEY=$("$PY" -c 'import secrets; print(secrets.token_hex(32))')
+# ----- Secrets file -----
+if [ -f "$SECRETS_FILE" ]; then
+    echo "[!] $SECRETS_FILE already exists; leaving it untouched."
+else
+    echo "[+] Generating SECRET_KEY and MASTER_ENCRYPTION_KEY"
+    SECRET_KEY=$("$PY" -c 'import secrets; print(secrets.token_hex(32))')
+    MASTER_ENCRYPTION_KEY=$("$PY" -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())')
 
-echo "[+] Generating MASTER_ENCRYPTION_KEY"
-MASTER_ENCRYPTION_KEY=$("$PY" -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())')
+    SECRETS_DIR=$(dirname "$SECRETS_FILE")
 
-# Write .env from .env.example, substituting the two placeholders.
-sed -e "s|^SECRET_KEY=.*|SECRET_KEY=$SECRET_KEY|" \
-    -e "s|^MASTER_ENCRYPTION_KEY=.*|MASTER_ENCRYPTION_KEY=$MASTER_ENCRYPTION_KEY|" \
-    .env.example > .env
-chmod 600 .env
+    # Try to create without sudo first; if that fails, escalate.
+    if mkdir -p "$SECRETS_DIR" 2>/dev/null && touch "$SECRETS_FILE" 2>/dev/null; then
+        SUDO=""
+    else
+        echo "[+] $SECRETS_DIR requires elevated permissions; using sudo"
+        SUDO="sudo"
+        $SUDO mkdir -p "$SECRETS_DIR"
+        $SUDO touch "$SECRETS_FILE"
+    fi
 
-# Refuse to leave behind a half-templated file.
-if grep -q 'CHANGE_ME' .env; then
-    echo "[!] .env still contains CHANGE_ME placeholders after templating:" >&2
-    grep -n CHANGE_ME .env >&2
-    echo "    Edit those values manually before starting the stack." >&2
-    exit 1
+    {
+        echo "SECRET_KEY=$SECRET_KEY"
+        echo "MASTER_ENCRYPTION_KEY=$MASTER_ENCRYPTION_KEY"
+    } | $SUDO tee "$SECRETS_FILE" > /dev/null
+    $SUDO chmod 0600 "$SECRETS_FILE"
+    $SUDO chown "$(id -u):$(id -g)" "$SECRETS_FILE"
+    echo "[+] Wrote $SECRETS_FILE (mode 0600, owner $(id -un))"
+fi
+
+# ----- Non-secret .env -----
+if [ -f .env ]; then
+    echo "[!] .env already exists; leaving it untouched."
+else
+    if [ ! -f .env.example ]; then
+        echo "[!] .env.example missing; cannot template a fresh .env." >&2
+        exit 1
+    fi
+    cp .env.example .env
+    # Defensive sweep: never leave SECRET_KEY/MASTER_ENCRYPTION_KEY placeholders
+    # inside .env — they belong only in the secrets file.
+    sed -i '/^SECRET_KEY=/d; /^MASTER_ENCRYPTION_KEY=/d; /^MASTER_ENCRYPTION_KEY_LEGACY=/d' .env
+    chmod 600 .env
+    echo "[+] Wrote .env from .env.example (secrets stripped, mode 0600)"
 fi
 
 echo ""
 echo "=== Setup Complete ==="
 echo ""
-echo "Fresh secrets written to .env (mode 0600)."
 echo "Next steps:"
 echo "  1. docker compose up -d"
 echo "  2. docker compose exec web flask db upgrade"
