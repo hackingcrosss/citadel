@@ -7,7 +7,13 @@ services:
     environment:
       POSTGRES_DB: infrared
       POSTGRES_USER: infrared
-      POSTGRES_PASSWORD: infrared_password
+      # POSTGRES_PASSWORD comes from the secrets file env_file below. The
+      # value is only consulted by postgres on first init (creates the
+      # superuser); subsequent boots use whatever is in pg_authid, which
+      # `flask` migrations and the migrate-postgres-password.sh helper
+      # keep in sync.
+    env_file:
+      - ${INFRARED_SECRETS_FILE:-${HOME}/.config/infrared/secrets.env}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     # No host port mapping — DB is reachable only from inside the docker
