@@ -244,6 +244,14 @@ def delete_email_grooming(config_id):
 @api_bp.route('/email-grooming/domain/<int:domain_id>', methods=['DELETE'])
 @login_required
 def delete_email_grooming_by_domain(domain_id):
+    domain = Domain.query.get(domain_id)
+    if not domain:
+        return jsonify({'error': 'Domain not found'}), 404
+    # Reuse the same project-scoped write check the per-config endpoints use,
+    # otherwise any auth user could mass-delete other tenants' grooming history.
+    denied = _check_domain_write(domain)
+    if denied:
+        return denied
     try:
         config_ids = [c.id for c in EmailGroomingConfig.query.filter_by(domain_id=domain_id).all()]
         if config_ids:
