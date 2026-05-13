@@ -38,6 +38,7 @@ services:
       - "host.docker.internal:host-gateway"
     env_file:
       - .env
+      - ${INFRARED_SECRETS_FILE:-${HOME}/.config/infrared/secrets.env}
     depends_on:
       - postgres
       - redis
@@ -53,6 +54,7 @@ services:
       - ./app:/app/app
     env_file:
       - .env
+      - ${INFRARED_SECRETS_FILE:-${HOME}/.config/infrared/secrets.env}
     depends_on:
       - postgres
       - redis
