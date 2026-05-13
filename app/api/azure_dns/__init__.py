@@ -3,6 +3,7 @@ from flask_login import login_required
 from app.api import api_bp
 from app.services import azure_dns_service
 from app.services.credential_service import get_account_labels
+from app.utils.decorators import admin_required
 
 
 def _zone_label(zone_name):
@@ -38,6 +39,7 @@ def azure_dns_list_records(rg, zone_name):
 
 @api_bp.route('/azure-dns/zones/<rg>/<zone_name>/records', methods=['POST'])
 @login_required
+@admin_required
 def azure_dns_create_record(rg, zone_name):
     data = request.get_json()
     if not data:
@@ -58,6 +60,7 @@ def azure_dns_create_record(rg, zone_name):
 
 @api_bp.route('/azure-dns/zones/<rg>/<zone_name>/records/<record_type>/<name>', methods=['DELETE'])
 @login_required
+@admin_required
 def azure_dns_delete_record(rg, zone_name, record_type, name):
     label = _zone_label(zone_name)
     try:
