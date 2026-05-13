@@ -7,6 +7,7 @@ from app.models.instance_tag import InstanceTag
 from app.models.instance_ssh_config import InstanceSSHConfig
 from app.services.credential_service import _get_fernet, get_account_labels
 from app.services.project_service import build_project_tag_map, assert_resource_writable
+from app.utils.decorators import admin_required
 
 
 def _vm_label(vm_id):
@@ -147,6 +148,7 @@ def azure_get_ssh_config(rg, vm_name):
 
 @api_bp.route('/azure/vms/<rg>/<vm_name>/ssh', methods=['POST'])
 @login_required
+@admin_required
 def azure_save_ssh_config(rg, vm_name):
     data = request.get_json()
     if not data:
@@ -189,6 +191,7 @@ def azure_save_ssh_config(rg, vm_name):
 
 @api_bp.route('/azure/vms/<rg>/<vm_name>/ssh', methods=['DELETE'])
 @login_required
+@admin_required
 def azure_delete_ssh_config(rg, vm_name):
     vm_id = azure_service.vm_instance_id(rg, vm_name)
     try:
