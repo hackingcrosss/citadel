@@ -3,6 +3,7 @@ from flask_login import login_required, current_user
 from app.api import api_bp
 from app.services import email_service
 from app.services.project_service import build_project_tag_map, get_active_project, get_project_domain_names
+from app.utils.decorators import admin_required
 
 
 # --- Domains ---
@@ -45,6 +46,7 @@ def list_mailgun_domains():
 
 @api_bp.route('/email/domains', methods=['POST'])
 @login_required
+@admin_required
 def add_mailgun_domain():
     data = request.get_json()
     if not data or not data.get('name'):
@@ -71,6 +73,7 @@ def get_mailgun_domain(name):
 
 @api_bp.route('/email/domains/<path:name>', methods=['DELETE'])
 @login_required
+@admin_required
 def delete_mailgun_domain(name):
     region = request.args.get('region', 'us')
     try:
@@ -82,6 +85,7 @@ def delete_mailgun_domain(name):
 
 @api_bp.route('/email/domains/<path:name>/verify', methods=['POST'])
 @login_required
+@admin_required
 def verify_mailgun_domain(name):
     data = request.get_json(silent=True) or {}
     region = data.get('region', request.args.get('region', 'us'))
@@ -107,6 +111,7 @@ def list_smtp_credentials(name):
 
 @api_bp.route('/email/domains/<path:name>/credentials', methods=['POST'])
 @login_required
+@admin_required
 def create_smtp_credential(name):
     data = request.get_json()
     if not data or not data.get('login') or not data.get('password'):
@@ -122,6 +127,7 @@ def create_smtp_credential(name):
 
 @api_bp.route('/email/domains/<path:name>/credentials/<login>', methods=['DELETE'])
 @login_required
+@admin_required
 def delete_smtp_credential(name, login):
     region = request.args.get('region', 'us')
     try:
