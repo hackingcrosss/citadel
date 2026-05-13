@@ -244,6 +244,7 @@ def azure_add_vm_tag(rg, vm_name):
         return jsonify({'error': 'tag is required'}), 400
 
     vm_id = azure_service.vm_instance_id(rg, vm_name)
+    assert_resource_writable('azure', vm_id, current_user)
     existing = InstanceTag.query.filter_by(provider='azure', instance_id=vm_id, tag=tag).first()
     if existing:
         return jsonify({'tag': existing.to_dict()}), 200
@@ -258,6 +259,7 @@ def azure_add_vm_tag(rg, vm_name):
 @login_required
 def azure_remove_vm_tag(rg, vm_name, tag):
     vm_id = azure_service.vm_instance_id(rg, vm_name)
+    assert_resource_writable('azure', vm_id, current_user)
     existing = InstanceTag.query.filter_by(provider='azure', instance_id=vm_id, tag=tag).first()
     if not existing:
         return jsonify({'error': 'Tag not found'}), 404
