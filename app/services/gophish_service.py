@@ -21,7 +21,7 @@ def _headers():
 
 def _request(method, path, **kwargs):
     url = _base_url() + path
-    resp = requests.request(method, url, headers=_headers(), verify=False, timeout=15, **kwargs)
+    resp = requests.request(method, url, headers=_headers(), verify=True, timeout=15, **kwargs)
     if resp.status_code >= 400:
         error = resp.text
         try:
@@ -181,7 +181,7 @@ def send_test_email(smtp_profile, to_email, subject, html_body, text_body='',
         'smtp': smtp,
     }
     url = _base_url() + '/api/util/send_test_email'
-    resp = requests.post(url, headers=_headers(), json=payload, verify=False, timeout=30)
+    resp = requests.post(url, headers=_headers(), json=payload, verify=True, timeout=30)
     if resp.status_code >= 400:
         error = resp.text
         try:
