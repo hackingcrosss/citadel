@@ -4,6 +4,7 @@ from app.api import api_bp
 from app.services import npm_service
 from app.services.project_service import build_project_tag_map, assert_resource_writable, get_active_project, get_project_domain_names
 from app.services import audit_service
+from app.utils.decorators import admin_required
 
 
 # --- Proxy Hosts ---
@@ -209,6 +210,7 @@ def list_redirections():
 
 @api_bp.route('/npm/token', methods=['POST'])
 @login_required
+@admin_required
 def get_npm_token():
     """Authenticate with NPM using email/password and store the resulting token."""
     data = request.get_json()
