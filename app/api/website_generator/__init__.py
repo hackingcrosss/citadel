@@ -1,9 +1,18 @@
 import re
-from flask import request, jsonify
+from flask import request, jsonify, abort
 from flask_login import login_required, current_user
 from app.api import api_bp
 from app.utils.decorators import feature_required
 from app.services.project_service import get_active_project, get_project_domain_names
+
+
+def _require_can_write_infra():
+    """Abort 403 if the current user can't write infrastructure. Operators
+    and admins legitimately deploy websites; auditors, white_team, and
+    project_admin do not. There's no dedicated decorator for this, so the
+    handlers call this helper inline."""
+    if not current_user.can_write_infra:
+        abort(403)
 
 # Cloudflare zone IDs are 32-char hex strings
 _ZONE_ID_RE = re.compile(r'^[a-f0-9]{32}$')
@@ -19,6 +28,7 @@ _FOLDER_RE = re.compile(r'^[a-z0-9][a-z0-9_\-]{0,63}$')
 @login_required
 @feature_required('website_generator')
 def website_generator_generate():
+    _require_can_write_infra()
     data = request.get_json() or {}
     category = data.get('category', '').strip()
     if not category:
@@ -67,6 +77,7 @@ def website_generator_status(task_id):
 @login_required
 @feature_required('website_generator')
 def website_generator_deploy():
+    _require_can_write_infra()
     data = request.get_json() or {}
     html = data.get('html', '').strip()
     category = data.get('category', '').strip()
@@ -87,6 +98,7 @@ def website_generator_deploy():
 @login_required
 @feature_required('website_generator')
 def website_generator_relaunch():
+    _require_can_write_infra()
     try:
         from app.services import website_generator_service
         result = website_generator_service.relaunch_containers()
@@ -99,6 +111,7 @@ def website_generator_relaunch():
 @login_required
 @feature_required('website_generator')
 def website_generator_publish():
+    _require_can_write_infra()
     data = request.get_json() or {}
     html = data.get('html', '').strip()
     category = data.get('category', '').strip()
@@ -176,6 +189,7 @@ def _fqdn_matches_domains(fqdn, domain_set):
 @feature_required('website_generator')
 def delete_deployed_site(folder_name):
     """Stop the container and remove its service from docker-compose.yaml."""
+    _require_can_write_infra()
     if not _FOLDER_RE.match(folder_name):
         return jsonify({'error': 'Invalid folder name'}), 400
     try:
