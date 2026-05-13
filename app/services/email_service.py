@@ -105,6 +105,11 @@ def create_smtp_credential(domain, login, password, region='us'):
         'login': login,
         'password': password
     })
+    # G-01: Mailgun's create-credential API echoes the submitted password
+    # in the response. Strip it so the plaintext credential never re-exits
+    # the service layer (and never lands in logs / proxies / API responses).
+    if isinstance(data, dict):
+        data.pop('password', None)
     return data
 
 

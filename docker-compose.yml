@@ -49,7 +49,12 @@ services:
   web:
     build: .
     container_name: infrared-web
-    command: gunicorn -b 0.0.0.0:5000 "app:create_app()" --reload
+    # NOTE: --reload is intentionally NOT here. In production it tails the
+    # mounted source tree and reloads on file change, which combined with the
+    # ./app:/app/app bind-mount turns any in-container file write into a
+    # restart-loop / RCE primitive. Local development that wants live reload
+    # should copy docker-compose.override.yml.example to docker-compose.override.yml.
+    command: gunicorn -b 0.0.0.0:5000 "app:create_app()"
     volumes:
       - ./app:/app/app
       # NOTE: /var/run/docker.sock is intentionally NOT mounted here.
