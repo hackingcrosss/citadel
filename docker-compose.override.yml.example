@@ -1,0 +1,18 @@
+# docker-compose.override.yml — LOCAL DEVELOPMENT ONLY
+#
+# Copy this file to docker-compose.override.yml to enable local Docker socket
+# access for the web container. docker compose auto-merges the override on
+# every up/restart.
+#
+#     cp docker-compose.override.yml.example docker-compose.override.yml
+#
+# DO NOT commit docker-compose.override.yml — it's gitignored. DO NOT use this
+# in production: a bind-mounted /var/run/docker.sock turns any in-container
+# RCE into host root. Production deployments must point at a remote Docker
+# host via Settings → Docker → Host URL (configured per-deployment) so the
+# local socket stays absent.
+
+services:
+  web:
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
