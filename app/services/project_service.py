@@ -1,4 +1,5 @@
 import logging
+import re
 from flask import abort, session
 from app.models.project import Project, ProjectMember
 from app.models.project_resource import ProjectResource
@@ -245,25 +246,38 @@ def assert_resource_writable(resource_type, external_id, user):
         abort(403)
 
 
+_CONTAINER_PLATFORM_CORE_RE = re.compile(
+    r'^/?infrared-(web|celery|postgres|redis|nginx)$'
+)
+
+
+def is_platform_core_container(name_or_id):
+    """True if the given docker container name matches the platform-core deny-list."""
+    return bool(_CONTAINER_PLATFORM_CORE_RE.match(str(name_or_id or '')))
+
+
 def assert_resource_readable(resource_type, external_id, user):
     """Abort 403 if the user cannot read this external resource.
 
-    Stricter than assert_resource_writable:
+    Stricter than assert_resource_writable on roles, looser on tagging:
     - Admins: always allowed.
     - Non-operators (project_admin, auditor, white_team, plain users): blocked —
       they have no operational need to see live infrastructure state.
-    - Operators: allowed only if the resource is tagged to one of their projects.
-      Untagged resources are platform-internal (infrared-web, infrared-postgres,
-      etc.) and admin-only — positive tagging, opposite of the K-02 'untagged →
-      allowed' write-side default. Closes the K-01 cross-tenant + platform-core
-      disclosure surface for /api/containers/<id>{,/logs,/stats}.
+    - Operators: blocked from platform-core containers (infrared-web,
+      infrared-postgres, etc.) and from resources tagged to other projects.
+      Untagged resources are allowed — deploy flows don't auto-tag containers
+      yet (tracked as K-03), so requiring a tag would break the operator
+      workflow. The Config.Env strip in docker_service is the load-bearing
+      defense for the K-01 master-key chain; this is the layered authz.
     """
     if user.is_admin:
         return
     if not user.is_operator:
         abort(403)
+    if resource_type == 'container' and is_platform_core_container(external_id):
+        abort(403)
     resource = ProjectResource.query.filter_by(
         resource_type=resource_type, external_id=str(external_id)
     ).first()
-    if resource is None or resource.project_id not in get_user_project_ids(user):
+    if resource is not None and resource.project_id not in get_user_project_ids(user):
         abort(403)
