@@ -39,7 +39,7 @@ def _authenticate(label='default'):
     resp = requests.post(url, json={
         'username': username,
         'password': password
-    }, verify=False, timeout=15)
+    }, verify=True, timeout=15)
     if resp.status_code >= 400:
         raise Exception(f'Cobalt Strike auth failed ({resp.status_code}): {resp.text}')
     data = resp.json()
@@ -83,7 +83,7 @@ def _request(method, path, label='default', **kwargs):
     resp = requests.request(
         method, url,
         headers=_headers(label, token),
-        verify=False,
+        verify=True,
         timeout=15,
         **kwargs
     )
@@ -95,7 +95,7 @@ def _request(method, path, label='default', **kwargs):
         resp = requests.request(
             method, url,
             headers=_headers(label, new_token),
-            verify=False,
+            verify=True,
             timeout=15,
             **kwargs
         )
