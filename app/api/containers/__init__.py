@@ -1,8 +1,13 @@
-from flask import request, jsonify
+from flask import request, jsonify, abort
 from flask_login import login_required, current_user
 from app.api import api_bp
 from app.services import docker_service
-from app.services.project_service import build_project_tag_map, assert_resource_writable
+from app.services.project_service import (
+    build_project_tag_map,
+    assert_resource_writable,
+    assert_resource_readable,
+    get_user_project_ids,
+)
 
 
 # --- List Containers ---
@@ -10,6 +15,10 @@ from app.services.project_service import build_project_tag_map, assert_resource_
 @api_bp.route('/containers', methods=['GET'])
 @login_required
 def list_containers():
+    # K-01: only admin + operators see container listings. Other roles
+    # (project_admin, auditor, white_team) have no operational need.
+    if not current_user.is_admin and not current_user.is_operator:
+        abort(403)
     try:
         show_all = request.args.get('all', 'true').lower() == 'true'
         containers = docker_service.list_containers(all=show_all)
@@ -23,6 +32,12 @@ def list_containers():
             c['project_code'] = tag['project_code'] if tag else None
             c['project_resource_id'] = tag['project_resource_id'] if tag else None
 
+        # Non-admins see only containers tagged to projects they belong to.
+        # Untagged containers (infrared-* platform core) stay admin-only.
+        if not current_user.is_admin:
+            allowed = get_user_project_ids(current_user)
+            containers = [c for c in containers if c.get('project_id') in allowed]
+
         return jsonify({'containers': containers})
     except Exception as e:
         return jsonify({'error': str(e)}), 400
@@ -33,6 +48,7 @@ def list_containers():
 @api_bp.route('/containers/<container_id>', methods=['GET'])
 @login_required
 def get_container(container_id):
+    assert_resource_readable('container', container_id, current_user)
     try:
         container = docker_service.get_container(container_id)
         return jsonify({'container': container})
@@ -92,6 +108,7 @@ def remove_container(container_id):
 @api_bp.route('/containers/<container_id>/logs', methods=['GET'])
 @login_required
 def get_container_logs(container_id):
+    assert_resource_readable('container', container_id, current_user)
     tail = request.args.get('tail', 100, type=int)
     try:
         result = docker_service.get_container_logs(container_id, tail=tail)
@@ -105,6 +122,7 @@ def get_container_logs(container_id):
 @api_bp.route('/containers/<container_id>/stats', methods=['GET'])
 @login_required
 def get_container_stats(container_id):
+    assert_resource_readable('container', container_id, current_user)
     try:
         result = docker_service.get_container_stats(container_id)
         return jsonify(result)

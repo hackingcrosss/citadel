@@ -154,7 +154,11 @@ def _format_container(container, detailed=False):
         host_config = container.attrs.get('HostConfig', {})
         result['command'] = config.get('Cmd', [])
         result['entrypoint'] = config.get('Entrypoint', [])
-        result['environment'] = config.get('Env', [])
+        # K-01: NEVER expose Config.Env — it carries MASTER_ENCRYPTION_KEY,
+        # SECRET_KEY, POSTGRES_PASSWORD, REDIS_PASSWORD, DATABASE_URL etc. for
+        # platform containers and per-deployment secrets for phishlet/website
+        # containers. Defense-in-depth: this stays stripped regardless of which
+        # role calls the endpoint, so an authz bug elsewhere can't leak the keys.
         result['labels'] = config.get('Labels', {})
         result['volumes'] = host_config.get('Binds', [])
         result['restart_policy'] = host_config.get('RestartPolicy', {})
