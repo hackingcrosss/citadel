@@ -39,6 +39,25 @@ _master_key = os.getenv('MASTER_ENCRYPTION_KEY')
 _require_secret('MASTER_ENCRYPTION_KEY', _master_key, _BANNED_MASTER_KEYS)
 
 
+def _refuse_docker_socket_in_prod():
+    # M-03 belt-and-suspenders: production uses a remote Docker host
+    # configured per-deployment via Settings → Docker → Host URL. A
+    # bind-mounted /var/run/docker.sock turns any in-container RCE
+    # into host root, so refuse to start in production if the socket
+    # somehow reappeared (rogue compose override, manual volume add).
+    if os.getenv('FLASK_ENV') == 'production' and os.path.exists('/var/run/docker.sock'):
+        raise RuntimeError(
+            '/var/run/docker.sock is bind-mounted into this container but FLASK_ENV=production. '
+            'The Docker socket bind-mount is a container-escape primitive — any in-container RCE '
+            'becomes host root. Remove the volume entry from docker-compose.yml; production should '
+            'point at a remote Docker host via Settings → Docker → Host URL. For local development '
+            'that genuinely needs the mount, run with FLASK_ENV=development.'
+        )
+
+
+_refuse_docker_socket_in_prod()
+
+
 class Config:
     SECRET_KEY = _secret_key
     SQLALCHEMY_DATABASE_URI = os.getenv('DATABASE_URL')
