@@ -21,6 +21,16 @@ services:
   redis:
     image: redis:7-alpine
     container_name: infrared-redis
+    # Shell wrapper so $REDIS_PASSWORD (from env_file) is dereferenced by the
+    # container's shell at start. redis-server itself doesn't expand env vars
+    # in CLI args, so the indirection is required. `exec` makes redis-server
+    # PID 1 so signals propagate correctly.
+    command:
+      - sh
+      - -c
+      - exec redis-server --requirepass "$$REDIS_PASSWORD" --protected-mode yes
+    env_file:
+      - ${INFRARED_SECRETS_FILE:-${HOME}/.config/infrared/secrets.env}
     # No host port mapping — Redis / the Celery broker are reachable only from
     # inside the docker bridge network. Host-side ops use `docker compose exec
     # redis redis-cli`.
