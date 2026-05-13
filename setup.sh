@@ -34,9 +34,10 @@ fi
 if [ -f "$SECRETS_FILE" ]; then
     echo "[!] $SECRETS_FILE already exists; leaving it untouched."
 else
-    echo "[+] Generating SECRET_KEY and MASTER_ENCRYPTION_KEY"
+    echo "[+] Generating SECRET_KEY, MASTER_ENCRYPTION_KEY, REDIS_PASSWORD"
     SECRET_KEY=$("$PY" -c 'import secrets; print(secrets.token_hex(32))')
     MASTER_ENCRYPTION_KEY=$("$PY" -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())')
+    REDIS_PASSWORD=$("$PY" -c 'import secrets; print(secrets.token_urlsafe(32))')
 
     SECRETS_DIR=$(dirname "$SECRETS_FILE")
 
@@ -53,6 +54,10 @@ else
     {
         echo "SECRET_KEY=$SECRET_KEY"
         echo "MASTER_ENCRYPTION_KEY=$MASTER_ENCRYPTION_KEY"
+        echo "REDIS_PASSWORD=$REDIS_PASSWORD"
+        echo "REDIS_URL=redis://:$REDIS_PASSWORD@redis:6379/0"
+        echo "CELERY_BROKER_URL=redis://:$REDIS_PASSWORD@redis:6379/0"
+        echo "CELERY_RESULT_BACKEND=redis://:$REDIS_PASSWORD@redis:6379/0"
     } | $SUDO tee "$SECRETS_FILE" > /dev/null
     $SUDO chmod 0600 "$SECRETS_FILE"
     $SUDO chown "$(id -u):$(id -g)" "$SECRETS_FILE"
@@ -70,7 +75,7 @@ else
     cp .env.example .env
     # Defensive sweep: never leave SECRET_KEY/MASTER_ENCRYPTION_KEY placeholders
     # inside .env — they belong only in the secrets file.
-    sed -i '/^SECRET_KEY=/d; /^MASTER_ENCRYPTION_KEY=/d; /^MASTER_ENCRYPTION_KEY_LEGACY=/d' .env
+    sed -i '/^SECRET_KEY=/d; /^MASTER_ENCRYPTION_KEY=/d; /^MASTER_ENCRYPTION_KEY_LEGACY=/d; /^REDIS_PASSWORD=/d; /^REDIS_URL=/d; /^CELERY_BROKER_URL=/d; /^CELERY_RESULT_BACKEND=/d' .env
     chmod 600 .env
     echo "[+] Wrote .env from .env.example (secrets stripped, mode 0600)"
 fi
