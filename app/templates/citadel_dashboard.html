@@ -17,7 +17,7 @@
         <a href="{{ url_for('citadel_projects') }}" class="text-decoration-none d-block">
             <div class="card-custom h-100">
                 <div class="card-body d-flex align-items-center gap-3">
-                    <i class="bi bi-folder2-open" style="font-size:1.8rem;color:var(--ir-yellow)" aria-hidden="true"></i>
+                    <i class="bi bi-folder2-open" style="font-size:1.8rem;color:var(--cit-yellow)" aria-hidden="true"></i>
                     <div>
                         <div class="fw-semibold text-light">
                             {% if current_user.can_manage_projects %}Projects{% else %}My Projects{% endif %}
@@ -37,7 +37,7 @@
         <a href="{{ url_for('citadel_companies') }}" class="text-decoration-none d-block">
             <div class="card-custom h-100">
                 <div class="card-body d-flex align-items-center gap-3">
-                    <i class="bi bi-building" style="font-size:1.8rem;color:var(--ir-yellow)" aria-hidden="true"></i>
+                    <i class="bi bi-building" style="font-size:1.8rem;color:var(--cit-yellow)" aria-hidden="true"></i>
                     <div>
                         <div class="fw-semibold text-light">Companies</div>
                         <small class="text-muted">

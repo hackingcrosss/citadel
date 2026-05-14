@@ -91,7 +91,7 @@
                 </div>
                 <div class="card-body p-2">
                     <textarea id="profile-text" class="form-control" rows="22"
-                              style="font-family: 'Fira Code', 'Consolas', monospace; font-size: 0.82rem; background: var(--ir-bg, #0d1117); color: var(--ir-text, #e2e8f0); border-color: var(--ir-border-2, #374151);"
+                              style="font-family: 'Fira Code', 'Consolas', monospace; font-size: 0.82rem; background: var(--cit-bg, #0d1117); color: var(--cit-text, #e2e8f0); border-color: var(--cit-border-2, #374151);"
                               placeholder="Paste your Malleable C2 profile here, or upload a .profile file..."></textarea>
                 </div>
                 <div class="card-footer d-flex justify-content-between align-items-center">
@@ -221,7 +221,7 @@
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
-                <pre id="json-content" style="max-height: 500px; overflow-y: auto; background: var(--ir-surface, #1f2937); color: var(--ir-text, #f9fafb); padding: 15px; border-radius: 6px; font-size: 0.85rem;"></pre>
+                <pre id="json-content" style="max-height: 500px; overflow-y: auto; background: var(--cit-surface, #1f2937); color: var(--cit-text, #f9fafb); padding: 15px; border-radius: 6px; font-size: 0.85rem;"></pre>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
@@ -821,7 +821,7 @@
         if (parsed.user_agent) {
             html += '<div class="mb-3">';
             html += '<strong class="text-muted d-block mb-1"><i class="bi bi-globe me-1"></i>User-Agent</strong>';
-            html += '<code class="d-block p-2 rounded" style="background:var(--ir-surface, #1f2937);color:var(--ir-text, #f9fafb);font-size:0.82rem;word-break:break-all;">' + escapeHtml(parsed.user_agent) + '</code>';
+            html += '<code class="d-block p-2 rounded" style="background:var(--cit-surface, #1f2937);color:var(--cit-text, #f9fafb);font-size:0.82rem;word-break:break-all;">' + escapeHtml(parsed.user_agent) + '</code>';
             html += '</div>';
         }
 
@@ -879,7 +879,7 @@
         var html = '<div class="mb-3">';
         html += '<strong class="text-muted d-block mb-1"><i class="bi ' + icon + ' me-1"></i>' + escapeHtml(title) + '</strong>';
         items.forEach(function(u) {
-            html += '<code class="d-inline-block me-2 mb-1 px-2 py-1 rounded" style="background:var(--ir-surface, #1f2937);color:var(--ir-green, #86efac);font-size:0.82rem;">' + escapeHtml(u) + '</code>';
+            html += '<code class="d-inline-block me-2 mb-1 px-2 py-1 rounded" style="background:var(--cit-surface, #1f2937);color:var(--cit-green, #86efac);font-size:0.82rem;">' + escapeHtml(u) + '</code>';
         });
         html += '</div>';
         return html;
@@ -921,7 +921,7 @@
     function renderNginxConfig(config) {
         _lastNginxConfig = config;
         var container = document.getElementById('nginx-output');
-        container.innerHTML = '<pre style="max-height:400px;overflow-y:auto;background:var(--ir-bg, #0d1117);color:var(--ir-text, #e2e8f0);padding:15px;border-radius:6px;font-size:0.8rem;margin:0;white-space:pre-wrap;">' + escapeHtml(config) + '</pre>';
+        container.innerHTML = '<pre style="max-height:400px;overflow-y:auto;background:var(--cit-bg, #0d1117);color:var(--cit-text, #e2e8f0);padding:15px;border-radius:6px;font-size:0.8rem;margin:0;white-space:pre-wrap;">' + escapeHtml(config) + '</pre>';
         document.getElementById('btn-copy-nginx').classList.remove('d-none');
     }
 
