@@ -5,6 +5,7 @@ from app.services import npm_service
 from app.services.project_service import build_project_tag_map, assert_resource_writable, get_active_project, get_project_domain_names
 from app.services import audit_service
 from app.utils.decorators import admin_required
+from app.utils.errors import safe_error
 
 
 # --- Proxy Hosts ---
@@ -44,7 +45,7 @@ def list_proxy_hosts():
 
         return jsonify({'hosts': hosts})
     except Exception as e:
-        return jsonify({'error': str(e)}), 400
+        return safe_error(e, 400)
 
 
 @api_bp.route('/npm/hosts', methods=['POST'])
@@ -86,7 +87,7 @@ def create_proxy_host():
                            'forward': f"{data.get('forward_scheme','http')}://{data['forward_host']}:{data['forward_port']}"})
         return jsonify({'host': host}), 201
     except Exception as e:
-        return jsonify({'error': str(e)}), 400
+        return safe_error(e, 400)
 
 
 @api_bp.route('/npm/hosts/<int:host_id>', methods=['GET'])
@@ -96,7 +97,7 @@ def get_proxy_host(host_id):
         host = npm_service.get_proxy_host(host_id)
         return jsonify({'host': host})
     except Exception as e:
-        return jsonify({'error': str(e)}), 400
+        return safe_error(e, 400)
 
 
 @api_bp.route('/npm/hosts/<int:host_id>', methods=['PUT'])
@@ -119,7 +120,7 @@ def update_proxy_host(host_id):
         host = npm_service.update_proxy_host(host_id, **kwargs)
         return jsonify({'host': host})
     except Exception as e:
-        return jsonify({'error': str(e)}), 400
+        return safe_error(e, 400)
 
 
 @api_bp.route('/npm/hosts/<int:host_id>', methods=['DELETE'])
@@ -131,7 +132,7 @@ def delete_proxy_host(host_id):
         audit_service.log('npm_proxy.delete', 'npm_proxy', host_id, str(host_id))
         return jsonify({'deleted': True})
     except Exception as e:
-        return jsonify({'error': str(e)}), 400
+        return safe_error(e, 400)
 
 
 @api_bp.route('/npm/hosts/<int:host_id>/enable', methods=['POST'])
@@ -142,7 +143,7 @@ def enable_proxy_host(host_id):
         npm_service.enable_proxy_host(host_id)
         return jsonify({'enabled': True})
     except Exception as e:
-        return jsonify({'error': str(e)}), 400
+        return safe_error(e, 400)
 
 
 @api_bp.route('/npm/hosts/<int:host_id>/disable', methods=['POST'])
@@ -153,7 +154,7 @@ def disable_proxy_host(host_id):
         npm_service.disable_proxy_host(host_id)
         return jsonify({'disabled': True})
     except Exception as e:
-        return jsonify({'error': str(e)}), 400
+        return safe_error(e, 400)
 
 
 # --- Access Lists ---
@@ -165,7 +166,7 @@ def list_access_lists():
         lists = npm_service.list_access_lists()
         return jsonify({'access_lists': lists})
     except Exception as e:
-        return jsonify({'error': str(e)}), 400
+        return safe_error(e, 400)
 
 
 # --- Certificates ---
@@ -191,7 +192,7 @@ def list_certificates():
 
         return jsonify({'certificates': certs})
     except Exception as e:
-        return jsonify({'error': str(e)}), 400
+        return safe_error(e, 400)
 
 
 # --- Redirection Hosts ---
@@ -203,7 +204,7 @@ def list_redirections():
         redirections = npm_service.list_redirection_hosts()
         return jsonify({'redirections': redirections})
     except Exception as e:
-        return jsonify({'error': str(e)}), 400
+        return safe_error(e, 400)
 
 
 # --- Auth Token ---
@@ -228,4 +229,4 @@ def get_npm_token():
             return jsonify({'success': True, 'message': 'Token saved'})
         return jsonify({'error': 'No token returned'}), 400
     except Exception as e:
-        return jsonify({'error': str(e)}), 400
+        return safe_error(e, 400)

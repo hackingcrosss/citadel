@@ -7,6 +7,7 @@ from app.api import api_bp
 from app.services import ia_landing_service, audit_service
 from app.services.project_service import get_active_project
 from app.utils.decorators import feature_required
+from app.utils.errors import safe_error
 
 _log = logging.getLogger(__name__)
 
@@ -59,7 +60,7 @@ def ia_create_landing_page():
     try:
         page = ia_landing_service.create_landing_page(project.id, data, current_user.id)
     except ValueError as e:
-        return jsonify({'error': str(e)}), 400
+        return safe_error(e, 400)
 
     audit_service.log('ia.landing_create', 'ia_landing_page', page.id,
                       f'project:{project.code}', {'name': page.name, 'type': page.page_type})
@@ -90,7 +91,7 @@ def ia_update_landing_page(page_id):
     try:
         updated = ia_landing_service.update_landing_page(page, data)
     except ValueError as e:
-        return jsonify({'error': str(e)}), 400
+        return safe_error(e, 400)
 
     return jsonify(updated.to_dict())
 
@@ -108,7 +109,7 @@ def ia_deploy_landing_page(page_id):
     try:
         steps = ia_landing_service.deploy_landing_page(page)
     except ValueError as e:
-        return jsonify({'error': str(e)}), 400
+        return safe_error(e, 400)
     except Exception as e:
         _log.exception('Failed to deploy landing page %s', page_id)
         return jsonify({'error': f'Deploy error: {e}'}), 502

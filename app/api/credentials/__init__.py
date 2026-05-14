@@ -4,6 +4,7 @@ from flask_login import login_required, current_user
 from app.api import api_bp
 from app.services import credential_service
 from app.utils.decorators import admin_required
+from app.utils.errors import safe_error
 
 _log = logging.getLogger(__name__)
 
@@ -165,8 +166,7 @@ def test_credentials(provider):
         result = tester(label=label) if provider in _MULTI_ACCOUNT_PROVIDERS else tester()
         return jsonify({'success': True, 'result': result})
     except Exception as e:
-        _log.warning('Credential test failed for provider %s: %s', provider, e)
-        return jsonify({'success': False, 'error': str(e) or 'Connection test failed'}), 400
+        return safe_error(e, 400, success=False)
 
 
 _PUBLIC_CREDENTIAL_KEYS = {

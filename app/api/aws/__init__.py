@@ -10,6 +10,7 @@ from app.services import ssh_service
 from app.services.project_service import build_project_tag_map, assert_resource_writable
 from app.utils.decorators import admin_required
 from app.services import audit_service
+from app.utils.errors import safe_error
 
 
 def _instance_label(instance_id):
@@ -79,7 +80,7 @@ def aws_list_instances():
 
         return jsonify({'instances': instances})
     except Exception as e:
-        return jsonify({'error': str(e)}), 400
+        return safe_error(e, 400)
 
 
 @api_bp.route('/aws/instances/<instance_id>', methods=['GET'])
@@ -90,7 +91,7 @@ def aws_get_instance(instance_id):
         instance = aws_service.get_instance(instance_id, region, label=_instance_label(instance_id))
         return jsonify({'instance': instance})
     except Exception as e:
-        return jsonify({'error': str(e)}), 400
+        return safe_error(e, 400)
 
 
 @api_bp.route('/aws/instances/start', methods=['POST'])
@@ -110,7 +111,7 @@ def aws_start_instances():
         audit_service.log('ec2.start', 'ec2', '', ', '.join(ids), {'instance_ids': ids, 'region': region})
         return jsonify({'result': results})
     except Exception as e:
-        return jsonify({'error': str(e)}), 400
+        return safe_error(e, 400)
 
 
 @api_bp.route('/aws/instances/stop', methods=['POST'])
@@ -130,7 +131,7 @@ def aws_stop_instances():
         audit_service.log('ec2.stop', 'ec2', '', ', '.join(ids), {'instance_ids': ids, 'region': region})
         return jsonify({'result': results})
     except Exception as e:
-        return jsonify({'error': str(e)}), 400
+        return safe_error(e, 400)
 
 
 @api_bp.route('/aws/instances/reboot', methods=['POST'])
@@ -148,7 +149,7 @@ def aws_reboot_instances():
             aws_service.reboot_instances(grp, region, label=lbl)
         return jsonify({'result': {'rebooted': ids}})
     except Exception as e:
-        return jsonify({'error': str(e)}), 400
+        return safe_error(e, 400)
 
 
 @api_bp.route('/aws/instances/terminate', methods=['POST'])
@@ -168,7 +169,7 @@ def aws_terminate_instances():
         audit_service.log('ec2.terminate', 'ec2', '', ', '.join(ids), {'instance_ids': ids, 'region': region})
         return jsonify({'result': results})
     except Exception as e:
-        return jsonify({'error': str(e)}), 400
+        return safe_error(e, 400)
 
 
 # --- Instance Tags (Local) ---
@@ -186,7 +187,7 @@ def aws_list_tags():
             rows = db.session.query(InstanceTag.tag).distinct().order_by(InstanceTag.tag).all()
             return jsonify({'tags': [r[0] for r in rows]})
     except Exception as e:
-        return jsonify({'error': str(e)}), 400
+        return safe_error(e, 400)
 
 
 @api_bp.route('/aws/tags', methods=['POST'])
@@ -247,7 +248,7 @@ def aws_list_security_groups():
         groups = aws_service.list_security_groups(region, label=label)
         return jsonify({'security_groups': groups})
     except Exception as e:
-        return jsonify({'error': str(e)}), 400
+        return safe_error(e, 400)
 
 
 @api_bp.route('/aws/security-groups/<group_id>', methods=['GET'])
@@ -259,7 +260,7 @@ def aws_get_security_group(group_id):
         group = aws_service.get_security_group(group_id, region, label=label)
         return jsonify({'security_group': group})
     except Exception as e:
-        return jsonify({'error': str(e)}), 400
+        return safe_error(e, 400)
 
 
 # --- Key Pairs ---
@@ -273,7 +274,7 @@ def aws_list_key_pairs():
         pairs = aws_service.list_key_pairs(region, label=label)
         return jsonify({'key_pairs': pairs})
     except Exception as e:
-        return jsonify({'error': str(e)}), 400
+        return safe_error(e, 400)
 
 
 # --- SSH Configs ---
@@ -285,7 +286,7 @@ def aws_list_ssh_configs():
         configs = InstanceSSHConfig.query.all()
         return jsonify({'ssh_configs': [c.to_dict() for c in configs]})
     except Exception as e:
-        return jsonify({'error': str(e)}), 400
+        return safe_error(e, 400)
 
 
 @api_bp.route('/aws/ssh-configs/<instance_id>', methods=['GET'])
@@ -297,7 +298,7 @@ def aws_get_ssh_config(instance_id):
             return jsonify({'ssh_config': None})
         return jsonify({'ssh_config': config.to_dict()})
     except Exception as e:
-        return jsonify({'error': str(e)}), 400
+        return safe_error(e, 400)
 
 
 @api_bp.route('/aws/ssh-configs', methods=['POST'])
@@ -349,7 +350,7 @@ def aws_save_ssh_config():
         return jsonify({'ssh_config': config.to_dict()}), 200
     except Exception as e:
         db.session.rollback()
-        return jsonify({'error': str(e)}), 400
+        return safe_error(e, 400)
 
 
 @api_bp.route('/aws/ssh-configs/<instance_id>', methods=['DELETE'])
@@ -365,7 +366,7 @@ def aws_delete_ssh_config(instance_id):
         return jsonify({'deleted': True})
     except Exception as e:
         db.session.rollback()
-        return jsonify({'error': str(e)}), 400
+        return safe_error(e, 400)
 
 
 # --- Instance Services (via SSH) ---
@@ -384,7 +385,7 @@ def aws_list_services(instance_id):
         services = ssh_service.list_services(instance_id, region)
         return jsonify({'services': services})
     except Exception as e:
-        return jsonify({'error': str(e)}), 400
+        return safe_error(e, 400)
 
 
 @api_bp.route('/aws/instances/<instance_id>/services/<service_name>', methods=['GET'])
@@ -397,7 +398,7 @@ def aws_get_service_status(instance_id, service_name):
         status = ssh_service.get_service_status(instance_id, service_name, region)
         return jsonify({'service': status})
     except Exception as e:
-        return jsonify({'error': str(e)}), 400
+        return safe_error(e, 400)
 
 
 @api_bp.route('/aws/instances/<instance_id>/services/<service_name>/<action>', methods=['POST'])
@@ -411,7 +412,7 @@ def aws_service_action(instance_id, service_name, action):
         result = ssh_service.service_action(instance_id, service_name, action, region)
         return jsonify({'result': result})
     except Exception as e:
-        return jsonify({'error': str(e)}), 400
+        return safe_error(e, 400)
 
 
 # --- Status Checks ---
@@ -425,7 +426,7 @@ def aws_get_instance_status_checks(instance_id):
         result = aws_service.get_instance_status_checks(instance_id, region, label=label)
         return jsonify({'status_checks': result})
     except Exception as e:
-        return jsonify({'error': str(e)}), 400
+        return safe_error(e, 400)
 
 
 # --- Regions ---
@@ -438,4 +439,4 @@ def aws_list_regions():
         regions = aws_service.list_regions(label=label)
         return jsonify({'regions': regions})
     except Exception as e:
-        return jsonify({'error': str(e)}), 400
+        return safe_error(e, 400)

@@ -11,6 +11,7 @@ from app.models.ia_target import IATarget
 from app.services import audit_service
 from app.services.project_service import get_active_project
 from app.utils.decorators import feature_required
+from app.utils.errors import safe_error
 
 _log = logging.getLogger(__name__)
 
@@ -217,7 +218,7 @@ def ia_push_template_to_gophish(template_id):
         result = push_template_to_gophish(template_id, user_id=current_user.id)
     except Exception as e:
         _log.exception('Failed to push template %s to GoPhish', template_id)
-        return jsonify({'error': str(e)}), 502
+        return safe_error(e, 502)
 
     campaign_data = result.get('campaign')
     audit_service.log('ia.email_push_gophish', 'ia_email_template', tpl.id,

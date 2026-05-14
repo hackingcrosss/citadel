@@ -9,6 +9,7 @@ from app.services.project_service import (
     get_user_project_ids,
     is_platform_core_container,
 )
+from app.utils.errors import safe_error
 
 
 # --- List Containers ---
@@ -47,7 +48,7 @@ def list_containers():
 
         return jsonify({'containers': containers})
     except Exception as e:
-        return jsonify({'error': str(e)}), 400
+        return safe_error(e, 400)
 
 
 # --- Single Container ---
@@ -60,7 +61,7 @@ def get_container(container_id):
         container = docker_service.get_container(container_id)
         return jsonify({'container': container})
     except Exception as e:
-        return jsonify({'error': str(e)}), 400
+        return safe_error(e, 400)
 
 
 # --- Container Actions ---
@@ -73,7 +74,7 @@ def start_container(container_id):
         result = docker_service.start_container(container_id)
         return jsonify({'result': result})
     except Exception as e:
-        return jsonify({'error': str(e)}), 400
+        return safe_error(e, 400)
 
 
 @api_bp.route('/containers/<container_id>/stop', methods=['POST'])
@@ -84,7 +85,7 @@ def stop_container(container_id):
         result = docker_service.stop_container(container_id)
         return jsonify({'result': result})
     except Exception as e:
-        return jsonify({'error': str(e)}), 400
+        return safe_error(e, 400)
 
 
 @api_bp.route('/containers/<container_id>/restart', methods=['POST'])
@@ -95,7 +96,7 @@ def restart_container(container_id):
         result = docker_service.restart_container(container_id)
         return jsonify({'result': result})
     except Exception as e:
-        return jsonify({'error': str(e)}), 400
+        return safe_error(e, 400)
 
 
 @api_bp.route('/containers/<container_id>', methods=['DELETE'])
@@ -107,7 +108,7 @@ def remove_container(container_id):
         result = docker_service.remove_container(container_id, force=force)
         return jsonify({'result': result})
     except Exception as e:
-        return jsonify({'error': str(e)}), 400
+        return safe_error(e, 400)
 
 
 # --- Logs ---
@@ -121,7 +122,7 @@ def get_container_logs(container_id):
         result = docker_service.get_container_logs(container_id, tail=tail)
         return jsonify(result)
     except Exception as e:
-        return jsonify({'error': str(e)}), 400
+        return safe_error(e, 400)
 
 
 # --- Stats ---
@@ -134,4 +135,4 @@ def get_container_stats(container_id):
         result = docker_service.get_container_stats(container_id)
         return jsonify(result)
     except Exception as e:
-        return jsonify({'error': str(e)}), 400
+        return safe_error(e, 400)

@@ -4,6 +4,7 @@ from app.api import api_bp
 from app.services import azure_dns_service
 from app.services.credential_service import get_account_labels
 from app.utils.decorators import admin_required
+from app.utils.errors import safe_error
 
 
 def _zone_label(zone_name):
@@ -22,7 +23,7 @@ def azure_dns_list_zones():
         zones = azure_dns_service.list_zones_all_accounts()
         return jsonify({'zones': zones})
     except Exception as e:
-        return jsonify({'error': str(e)}), 400
+        return safe_error(e, 400)
 
 
 @api_bp.route('/azure-dns/zones/<rg>/<zone_name>/records', methods=['GET'])
@@ -34,7 +35,7 @@ def azure_dns_list_records(rg, zone_name):
         records = azure_dns_service.list_records(zone_name, rg, record_type=record_type, label=label)
         return jsonify({'records': records})
     except Exception as e:
-        return jsonify({'error': str(e)}), 400
+        return safe_error(e, 400)
 
 
 @api_bp.route('/azure-dns/zones/<rg>/<zone_name>/records', methods=['POST'])
@@ -55,7 +56,7 @@ def azure_dns_create_record(rg, zone_name):
         record = azure_dns_service.create_record(zone_name, rg, record_type, name, content, ttl=ttl, label=label)
         return jsonify({'record': record}), 201
     except Exception as e:
-        return jsonify({'error': str(e)}), 400
+        return safe_error(e, 400)
 
 
 @api_bp.route('/azure-dns/zones/<rg>/<zone_name>/records/<record_type>/<name>', methods=['DELETE'])
@@ -67,4 +68,4 @@ def azure_dns_delete_record(rg, zone_name, record_type, name):
         result = azure_dns_service.delete_record(zone_name, rg, record_type, name, label=label)
         return jsonify(result)
     except Exception as e:
-        return jsonify({'error': str(e)}), 400
+        return safe_error(e, 400)
