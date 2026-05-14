@@ -259,7 +259,7 @@ def add_member(project_id):
 @api_bp.route('/projects/<int:project_id>/members/<int:user_id>', methods=['PUT'])
 @login_required
 def update_member(project_id, user_id):
-    Project.query.get_or_404(project_id)
+    project = Project.query.get_or_404(project_id)
 
     if not _can_manage_members(project_id):
         return jsonify({'error': 'Project Admin or Admin role required to manage members'}), 403
@@ -275,8 +275,29 @@ def update_member(project_id, user_id):
     if project_role not in PROJECT_ROLES:
         return jsonify({'error': f'project_role must be one of: {", ".join(PROJECT_ROLES)}'}), 400
 
+    # Mirror the white_team binding enforced by add_member: a white_team user
+    # can only ever hold project_role=white_team, and project_role=white_team
+    # is reserved for white_team users. Without this, a project_admin could
+    # promote a company-bound white_team user to operator and bypass the
+    # company invariant (C-05).
+    if member.user.is_white_team and project_role != 'white_team':
+        return jsonify({
+            'error': 'Users with white_team role must keep project_role=white_team',
+        }), 400
+    if project_role == 'white_team' and not member.user.is_white_team:
+        return jsonify({
+            'error': 'project_role=white_team is reserved for users with system role=white_team',
+        }), 400
+
+    old_role = member.project_role
     member.project_role = project_role
     db.session.commit()
+
+    _log.info('User %s changed project %s role for %s: %s -> %s',
+              current_user.email, project.code, member.user.email,
+              old_role, project_role)
+    audit_service.log('project.member_update', 'project', project.id, project.code,
+                      {'user': member.user.email, 'old_role': old_role, 'new_role': project_role})
     return jsonify(member.to_dict())
 
 
