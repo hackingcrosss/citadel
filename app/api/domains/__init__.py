@@ -18,6 +18,7 @@ from app import db
 from app.models.domain import Domain, DNSRecord
 from app.models.domain_tag import DomainGroomingTag
 from datetime import datetime, timedelta
+from app.utils.errors import safe_error
 
 # Well-known grooming tags (suggested in the UI, but free-form tags are allowed)
 SUGGESTED_TAGS = [
@@ -291,7 +292,7 @@ def sync_domain(domain_id):
             domain.cloudflare_zone_id, label=domain.credential_label
         )
     except Exception as e:
-        return jsonify({'error': str(e)}), 400
+        return safe_error(e, 400)
 
     existing = {r.cloudflare_record_id: r for r in domain.dns_records}
     seen_ids = set()
@@ -349,7 +350,7 @@ def list_zones():
                 zones = [z for z in zones if name_filter in z.get('name', '').lower()]
             return jsonify({'zones': zones, 'page_info': {'total_count': len(zones)}})
         except Exception as e:
-            return jsonify({'error': str(e)}), 400
+            return safe_error(e, 400)
 
     # Operators / white_team with ?pool=true: return all available (un-checked-out) CF zones
     # so operators can browse what's available to check out for their project.
@@ -358,7 +359,7 @@ def list_zones():
         try:
             all_zones = dns_service.list_zones_all_accounts()
         except Exception as e:
-            return jsonify({'error': str(e)}), 400
+            return safe_error(e, 400)
 
         # Build set of zone_ids already checked out to any project
         taken_zone_ids = {
@@ -408,7 +409,7 @@ def get_zone(zone_id):
         zone = dns_service.get_zone(zone_id, label=_zone_label(zone_id))
         return jsonify({'zone': zone})
     except Exception as e:
-        return jsonify({'error': str(e)}), 400
+        return safe_error(e, 400)
 
 
 # ---------------------------------------------------------------------------
@@ -430,7 +431,7 @@ def list_dns_records(zone_id):
         )
         return jsonify({'records': records})
     except Exception as e:
-        return jsonify({'error': str(e)}), 400
+        return safe_error(e, 400)
 
 
 @api_bp.route('/domains/zones/<zone_id>/records', methods=['POST'])
@@ -481,7 +482,7 @@ def create_dns_record(zone_id):
                            'name': record.get('name'), 'content': record.get('content')})
         return jsonify({'record': record}), 201
     except Exception as e:
-        return jsonify({'error': str(e)}), 400
+        return safe_error(e, 400)
 
 
 @api_bp.route('/domains/zones/<zone_id>/records/<record_id>', methods=['PUT'])
@@ -521,7 +522,7 @@ def update_dns_record(zone_id, record_id):
 
         return jsonify({'record': record})
     except Exception as e:
-        return jsonify({'error': str(e)}), 400
+        return safe_error(e, 400)
 
 
 @api_bp.route('/domains/zones/<zone_id>/records/<record_id>', methods=['DELETE'])
@@ -541,7 +542,7 @@ def delete_dns_record(zone_id, record_id):
                           {'zone_id': zone_id})
         return jsonify({'deleted': True})
     except Exception as e:
-        return jsonify({'error': str(e)}), 400
+        return safe_error(e, 400)
 
 
 # ---------------------------------------------------------------------------
@@ -627,7 +628,7 @@ def get_domain_whois():
         info = dns_service.get_whois_info(domain_name)
         return jsonify({'whois': info})
     except Exception as e:
-        return jsonify({'error': str(e)}), 400
+        return safe_error(e, 400)
 
 
 @api_bp.route('/domains/zones/<zone_id>/ssl', methods=['GET'])
@@ -638,7 +639,7 @@ def get_ssl(zone_id):
         result = dns_service.get_ssl_setting(zone_id, label=_zone_label(zone_id))
         return jsonify({'ssl': result})
     except Exception as e:
-        return jsonify({'error': str(e)}), 400
+        return safe_error(e, 400)
 
 
 @api_bp.route('/domains/zones/<zone_id>/enable-dmarc', methods=['POST'])
@@ -655,7 +656,7 @@ def enable_zone_dmarc(zone_id):
     try:
         result = dns_service.enable_dmarc_management(zone_id, label=label)
     except Exception as e:
-        return jsonify({'error': str(e)}), 400
+        return safe_error(e, 400)
 
     rua = result.get('rua')
     if not rua:
@@ -736,7 +737,7 @@ def set_ssl(zone_id):
         result = dns_service.set_ssl_setting(zone_id, value, label=_zone_label(zone_id))
         return jsonify({'ssl': result})
     except Exception as e:
-        return jsonify({'error': str(e)}), 400
+        return safe_error(e, 400)
 
 
 # ---------------------------------------------------------------------------
@@ -838,7 +839,7 @@ def get_zone_security_level(zone_id):
         result = cloudflare_security_service.get_security_level(zone_id, label=_zone_label(zone_id))
         return jsonify({'security_level': result})
     except Exception as e:
-        return jsonify({'error': str(e)}), 400
+        return safe_error(e, 400)
 
 
 @api_bp.route('/domains/zones/<zone_id>/security/level', methods=['PATCH'])
@@ -853,9 +854,9 @@ def set_zone_security_level(zone_id):
         result = cloudflare_security_service.set_security_level(zone_id, value, label=_zone_label(zone_id))
         return jsonify({'security_level': result})
     except ValueError as e:
-        return jsonify({'error': str(e)}), 400
+        return safe_error(e, 400)
     except Exception as e:
-        return jsonify({'error': str(e)}), 400
+        return safe_error(e, 400)
 
 
 @api_bp.route('/domains/zones/<zone_id>/security/ip-rules', methods=['GET'])
@@ -866,7 +867,7 @@ def list_zone_ip_access_rules(zone_id):
         rules = cloudflare_security_service.list_ip_access_rules(zone_id, label=_zone_label(zone_id))
         return jsonify({'rules': rules})
     except Exception as e:
-        return jsonify({'error': str(e)}), 400
+        return safe_error(e, 400)
 
 
 @api_bp.route('/domains/zones/<zone_id>/security/ip-rules', methods=['POST'])
@@ -887,9 +888,9 @@ def create_zone_ip_access_rule(zone_id):
         )
         return jsonify({'rule': rule}), 201
     except ValueError as e:
-        return jsonify({'error': str(e)}), 400
+        return safe_error(e, 400)
     except Exception as e:
-        return jsonify({'error': str(e)}), 400
+        return safe_error(e, 400)
 
 
 @api_bp.route('/domains/zones/<zone_id>/security/ip-rules/<rule_id>', methods=['PATCH'])
@@ -908,9 +909,9 @@ def update_zone_ip_access_rule(zone_id, rule_id):
         )
         return jsonify({'rule': rule})
     except ValueError as e:
-        return jsonify({'error': str(e)}), 400
+        return safe_error(e, 400)
     except Exception as e:
-        return jsonify({'error': str(e)}), 400
+        return safe_error(e, 400)
 
 
 @api_bp.route('/domains/zones/<zone_id>/security/ip-rules/<rule_id>', methods=['DELETE'])
@@ -921,7 +922,7 @@ def delete_zone_ip_access_rule(zone_id, rule_id):
         cloudflare_security_service.delete_ip_access_rule(zone_id, rule_id, label=_zone_label(zone_id))
         return jsonify({'deleted': True})
     except Exception as e:
-        return jsonify({'error': str(e)}), 400
+        return safe_error(e, 400)
 
 
 @api_bp.route('/domains/zones/<zone_id>/security/custom-rules', methods=['GET'])
@@ -932,7 +933,7 @@ def list_zone_custom_rules(zone_id):
         rules = cloudflare_security_service.list_custom_rules(zone_id, label=_zone_label(zone_id))
         return jsonify({'rules': rules})
     except Exception as e:
-        return jsonify({'error': str(e)}), 400
+        return safe_error(e, 400)
 
 
 @api_bp.route('/domains/zones/<zone_id>/security/custom-rules', methods=['POST'])
@@ -953,9 +954,9 @@ def create_zone_custom_rule(zone_id):
         )
         return jsonify({'rule': rule}), 201
     except ValueError as e:
-        return jsonify({'error': str(e)}), 400
+        return safe_error(e, 400)
     except Exception as e:
-        return jsonify({'error': str(e)}), 400
+        return safe_error(e, 400)
 
 
 @api_bp.route('/domains/zones/<zone_id>/security/custom-rules/<rule_id>', methods=['PATCH'])
@@ -976,9 +977,9 @@ def update_zone_custom_rule(zone_id, rule_id):
         )
         return jsonify({'rule': rule})
     except ValueError as e:
-        return jsonify({'error': str(e)}), 400
+        return safe_error(e, 400)
     except Exception as e:
-        return jsonify({'error': str(e)}), 400
+        return safe_error(e, 400)
 
 
 @api_bp.route('/domains/zones/<zone_id>/security/custom-rules/<rule_id>', methods=['DELETE'])
@@ -989,4 +990,4 @@ def delete_zone_custom_rule(zone_id, rule_id):
         cloudflare_security_service.delete_custom_rule(zone_id, rule_id, label=_zone_label(zone_id))
         return jsonify({'deleted': True})
     except Exception as e:
-        return jsonify({'error': str(e)}), 400
+        return safe_error(e, 400)

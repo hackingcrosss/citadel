@@ -5,6 +5,7 @@ from app.services import cobaltstrike_service
 from app.utils.decorators import feature_required
 from app.services.project_service import build_project_tag_map, assert_resource_writable, get_active_project, filter_by_active_project, tag_resource, get_project_domain_names
 from app.services import audit_service
+from app.utils.errors import safe_error
 
 # Valid listener types — these are the exact URL slugs for POST /api/v1/listeners/{type}
 VALID_TYPES = {'http', 'https', 'dns', 'smb', 'tcp', 'foreignHttp', 'foreignHttps', 'externalC2', 'userDefinedC2'}
@@ -74,7 +75,7 @@ def list_cs_listeners():
 
         return jsonify({'listeners': listeners})
     except Exception as e:
-        return jsonify({'error': str(e)}), 400
+        return safe_error(e, 400)
 
 
 @api_bp.route('/cobaltstrike/listeners/<path:listener_name>', methods=['GET'])
@@ -86,7 +87,7 @@ def get_cs_listener(listener_name):
         listener = cobaltstrike_service.get_listener(listener_name, label=label)
         return jsonify({'listener': listener})
     except Exception as e:
-        return jsonify({'error': str(e)}), 400
+        return safe_error(e, 400)
 
 
 @api_bp.route('/cobaltstrike/listeners', methods=['POST'])
@@ -127,7 +128,7 @@ def create_cs_listener():
                           {'type': listener_type, 'hosts': data.get('host') or data.get('hosts')})
         return jsonify({'listener': result}), 201
     except Exception as e:
-        return jsonify({'error': str(e)}), 400
+        return safe_error(e, 400)
 
 
 @api_bp.route('/cobaltstrike/listeners/<path:listener_name>/hosts', methods=['PATCH'])
@@ -156,7 +157,7 @@ def update_cs_listener_hosts(listener_name):
                           {'hosts': hosts})
         return jsonify({'listener': result})
     except Exception as e:
-        return jsonify({'error': str(e)}), 400
+        return safe_error(e, 400)
 
 
 @api_bp.route('/cobaltstrike/listeners/<path:listener_name>', methods=['DELETE'])
@@ -170,7 +171,7 @@ def delete_cs_listener(listener_name):
         audit_service.log('cs_listener.delete', 'cs_listener', listener_name, listener_name)
         return jsonify({'deleted': True})
     except Exception as e:
-        return jsonify({'error': str(e)}), 400
+        return safe_error(e, 400)
 
 
 # ---------------------------------------------------------------------------
@@ -232,7 +233,7 @@ def parse_malleable_profile():
             'nginx_config': nginx_config,
         })
     except Exception as e:
-        return jsonify({'error': f'Failed to parse profile: {str(e)}'}), 400
+        return safe_error(e, 400)
 
 
 @api_bp.route('/cobaltstrike/nginx-config', methods=['GET'])
@@ -256,4 +257,4 @@ def get_stored_nginx_config():
             'has_profile': True,
         })
     except Exception as e:
-        return jsonify({'error': f'Failed to parse stored profile: {str(e)}', 'nginx_config': ''}), 400
+        return safe_error(e, 400, nginx_config='')

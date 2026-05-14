@@ -7,6 +7,7 @@ from app.api import api_bp
 from app.services import ia_target_service, ia_scan_service, audit_service
 from app.services.project_service import get_active_project
 from app.utils.decorators import feature_required
+from app.utils.errors import safe_error
 
 _log = logging.getLogger(__name__)
 
@@ -54,7 +55,7 @@ def ia_create_target():
         if 'uq_ia_target_project_email' in str(e):
             return jsonify({'error': 'A target with this email already exists in the project'}), 409
         _log.exception('Failed to create target')
-        return jsonify({'error': str(e)}), 500
+        return safe_error(e, 500)
 
     audit_service.log('ia.target_create', 'ia_target', target.id,
                       f'project:{project.code}', {'email': target.email})
@@ -151,7 +152,7 @@ def ia_update_target(target_id):
         if 'uq_ia_target_project_email' in str(e):
             return jsonify({'error': 'A target with this email already exists in the project'}), 409
         _log.exception('Failed to update target')
-        return jsonify({'error': str(e)}), 500
+        return safe_error(e, 500)
 
     return jsonify(updated.to_dict())
 

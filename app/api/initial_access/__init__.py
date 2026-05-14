@@ -6,6 +6,7 @@ from app.api import api_bp
 from app.services import ia_scan_service, audit_service
 from app.services.project_service import get_active_project
 from app.utils.decorators import feature_required
+from app.utils.errors import safe_error
 
 _log = logging.getLogger(__name__)
 
@@ -65,7 +66,7 @@ def ia_trigger_scan():
     try:
         job = ia_scan_service.trigger_scan(project.id, scope_config, current_user.id)
     except ValueError as e:
-        return jsonify({'error': str(e)}), 400
+        return safe_error(e, 400)
     except Exception as e:
         _log.exception('Failed to trigger scan')
         return jsonify({'error': f'Scanner API error: {e}'}), 502
@@ -123,7 +124,7 @@ def ia_poll_scan(job_id):
         updated = ia_scan_service.poll_scan_job(job_id)
         return jsonify(updated.to_dict())
     except ValueError as e:
-        return jsonify({'error': str(e)}), 400
+        return safe_error(e, 400)
     except Exception as e:
         _log.exception('Failed to poll scan job %s', job_id)
         return jsonify({'error': f'Scanner API error: {e}'}), 502

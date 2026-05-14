@@ -4,6 +4,7 @@ from flask_login import login_required, current_user
 from app.api import api_bp
 from app.utils.decorators import feature_required
 from app.services.project_service import get_active_project, get_project_domain_names
+from app.utils.errors import safe_error
 
 
 def _require_can_write_infra():
@@ -91,7 +92,7 @@ def website_generator_deploy():
         result = website_generator_service.deploy_website(html, category)
         return jsonify(result)
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        return safe_error(e, 500)
 
 
 @api_bp.route('/website-generator/relaunch', methods=['POST'])
@@ -104,7 +105,7 @@ def website_generator_relaunch():
         result = website_generator_service.relaunch_containers()
         return jsonify(result)
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        return safe_error(e, 500)
 
 
 @api_bp.route('/website-generator/publish', methods=['POST'])
@@ -143,7 +144,7 @@ def website_generator_publish():
         )
         return jsonify(result)
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        return safe_error(e, 500)
 
 
 @api_bp.route('/website-generator/deployed-sites', methods=['GET'])
@@ -167,7 +168,7 @@ def get_deployed_sites():
 
         return jsonify({'sites': sites})
     except Exception as e:
-        return jsonify({'error': str(e), 'sites': []}), 500
+        return safe_error(e, 500, sites=[])
 
 
 def _fqdn_matches_domains(fqdn, domain_set):
@@ -197,4 +198,4 @@ def delete_deployed_site(folder_name):
         result = website_generator_service.remove_deployed_site(folder_name)
         return jsonify({'ok': True, **result})
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        return safe_error(e, 500)

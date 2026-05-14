@@ -10,6 +10,7 @@ from app.models.domain import Domain
 from app.models.email_grooming import EmailGroomingConfig
 from app.models.email_grooming_log import EmailGroomingLog
 from app.services.project_service import get_active_project, assert_domain_accessible
+from app.utils.errors import safe_error
 
 
 def _check_domain_write(domain):
@@ -234,7 +235,7 @@ def delete_email_grooming(config_id):
         return jsonify({'deleted': True})
     except Exception as e:
         db.session.rollback()
-        return jsonify({'error': str(e)}), 500
+        return safe_error(e, 500)
 
 
 # ---------------------------------------------------------------------------
@@ -261,7 +262,7 @@ def delete_email_grooming_by_domain(domain_id):
         return jsonify({'deleted': count})
     except Exception as e:
         db.session.rollback()
-        return jsonify({'error': str(e)}), 500
+        return safe_error(e, 500)
 
 
 # ---------------------------------------------------------------------------
@@ -279,7 +280,7 @@ def send_email_grooming_now(config_id):
         task = send_grooming_email_now.delay(config.id)
         return jsonify({'task_id': task.id, 'status': 'queued'})
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        return safe_error(e, 500)
 
 
 # ---------------------------------------------------------------------------
@@ -294,7 +295,7 @@ def run_email_grooming_cycle():
         task = run_full_grooming_cycle.delay()
         return jsonify({'task_id': task.id, 'status': 'queued'})
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        return safe_error(e, 500)
 
 
 # ---------------------------------------------------------------------------
