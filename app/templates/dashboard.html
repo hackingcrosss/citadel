@@ -368,7 +368,7 @@
     // --- First-run banner ---
     function checkFirstRun() {
         if (!document.getElementById('first-run-banner')) return;
-        if (sessionStorage.getItem('infrared_banner_dismissed')) return;
+        if (sessionStorage.getItem('citadel_banner_dismissed')) return;
 
         var providers = [
             {key: 'aws',          label: 'AWS'},
@@ -403,7 +403,7 @@
     }
 
     function dismissBanner() {
-        sessionStorage.setItem('infrared_banner_dismissed', '1');
+        sessionStorage.setItem('citadel_banner_dismissed', '1');
         document.getElementById('first-run-banner').classList.add('d-none');
     }
 

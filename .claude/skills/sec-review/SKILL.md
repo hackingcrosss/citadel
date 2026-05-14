@@ -1,6 +1,6 @@
 ---
 name: sec-review
-description: Deep security review of branch changes against develop. Checks OWASP Top 10, auth bypasses, credential leaks, XSS, SQLi, and InfraRed-specific patterns.
+description: Deep security review of branch changes against develop. Checks OWASP Top 10, auth bypasses, credential leaks, XSS, SQLi, and Citadel-specific patterns.
 argument-hint: "[base-branch]"
 context: fork
 allowed-tools: Bash(git *), Read, Grep, Glob
@@ -69,7 +69,7 @@ Analyze every changed file against these categories. Skip categories that don't 
 - [ ] State-changing operations use POST/PUT/DELETE (not GET)
 - [ ] No session fixation vectors
 
-### 8. InfraRed-Specific
+### 8. Citadel-Specific
 - [ ] Multi-account label validated against `get_account_labels(provider)`
 - [ ] Celery tasks don't access `current_user` or `request` context
 - [ ] Plan/feature checks can't be bypassed by direct API calls

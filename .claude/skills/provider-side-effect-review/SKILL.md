@@ -1,6 +1,6 @@
 ---
 name: provider-side-effect-review
-description: Review InfraRed external provider mutations for wrong-account use, unsafe side effects, missing cleanup, weak error handling, non-idempotency, secret leakage, and missing audit logs. Use for AWS, Azure, Hetzner, Cloudflare, Azure DNS, CDN, Docker, NPM, Mailgun, GoPhish, Cobalt Strike, scanner, FOFA, or website deployment changes.
+description: Review Citadel external provider mutations for wrong-account use, unsafe side effects, missing cleanup, weak error handling, non-idempotency, secret leakage, and missing audit logs. Use for AWS, Azure, Hetzner, Cloudflare, Azure DNS, CDN, Docker, NPM, Mailgun, GoPhish, Cobalt Strike, scanner, FOFA, or website deployment changes.
 argument-hint: "[provider files or base-branch]"
 context: fork
 allowed-tools: Read, Grep, Glob, Bash(rg *), Bash(git *)

@@ -1,10 +1,10 @@
 ---
-name: infrared-arch
-description: InfraRed architecture knowledge — file map, models, API patterns, service patterns, design tokens. Auto-loaded to reduce token usage from repeated codebase exploration.
+name: citadel-arch
+description: Citadel architecture knowledge — file map, models, API patterns, service patterns, design tokens. Auto-loaded to reduce token usage from repeated codebase exploration.
 user-invocable: false
 ---
 
-# InfraRed Architecture Quick Reference
+# Citadel Architecture Quick Reference
 
 Use this as your primary reference before reading files. Only read source when you need exact implementation details.
 

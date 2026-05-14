@@ -18,7 +18,7 @@
             <i class="bi bi-arrow-clockwise"></i> Refresh
         </button>
         {% if current_user.role not in ['viewer', 'auditor', 'white_team'] and active_project_role != 'white_team' %}
-        <button class="btn btn-sm btn-infrared" data-bs-toggle="modal" data-bs-target="#createCampaignModal">
+        <button class="btn btn-sm btn-citadel" data-bs-toggle="modal" data-bs-target="#createCampaignModal">
             <i class="bi bi-plus-circle"></i> New Campaign
         </button>
         {% endif %}
@@ -355,7 +355,7 @@
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                <button type="button" class="btn btn-infrared" id="campaignModalSubmitBtn" onclick="saveCampaign()">
+                <button type="button" class="btn btn-citadel" id="campaignModalSubmitBtn" onclick="saveCampaign()">
                     <i class="bi bi-plus-circle"></i> Create
                 </button>
             </div>
@@ -385,7 +385,7 @@
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                <button type="button" class="btn btn-infrared" onclick="addSelectedTargets()">
+                <button type="button" class="btn btn-citadel" onclick="addSelectedTargets()">
                     <i class="bi bi-plus"></i> Add Selected
                 </button>
             </div>
@@ -426,7 +426,7 @@
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                <button type="button" class="btn btn-infrared" onclick="logEvent()">
+                <button type="button" class="btn btn-citadel" onclick="logEvent()">
                     <i class="bi bi-plus-circle"></i> Log
                 </button>
             </div>

@@ -35,7 +35,7 @@ def _get_client():
 def _write_temp(content, name):
     """Write credential content to a temp file and return the path."""
     import tempfile, os
-    path = os.path.join(tempfile.gettempdir(), f'infrared-docker-{name}')
+    path = os.path.join(tempfile.gettempdir(), f'citadel-docker-{name}')
     with open(path, 'w') as f:
         f.write(content)
     os.chmod(path, 0o600)

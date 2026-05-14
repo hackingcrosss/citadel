@@ -1,6 +1,6 @@
 ---
 name: audit-log-enforcer
-description: Add or review InfraRed audit logging for sensitive writes and infrastructure mutations. Use when changes touch credentials, users, roles, projects, companies, domains, provider actions, campaign launches, landing page deploys, checkout/tagging, or admin settings.
+description: Add or review Citadel audit logging for sensitive writes and infrastructure mutations. Use when changes touch credentials, users, roles, projects, companies, domains, provider actions, campaign launches, landing page deploys, checkout/tagging, or admin settings.
 argument-hint: "[files or action]"
 allowed-tools: Read, Write, Edit, Grep, Glob, Bash(rg *), Bash(git *)
 ---

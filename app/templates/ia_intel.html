@@ -11,7 +11,7 @@
             <i class="bi bi-arrow-clockwise"></i> Refresh
         </button>
         {% if current_user.role not in ['viewer', 'auditor', 'white_team'] and active_project_role != 'white_team' %}
-        <button class="btn btn-sm btn-infrared" id="btn-save" onclick="saveIntel()" style="display:none">
+        <button class="btn btn-sm btn-citadel" id="btn-save" onclick="saveIntel()" style="display:none">
             <i class="bi bi-floppy"></i> Save
         </button>
         {% endif %}
@@ -40,7 +40,7 @@
             <textarea class="form-control bg-dark text-light border-secondary" id="raw_input"
                 rows="8" placeholder="Paste your threat intelligence markdown report here..."></textarea>
             <div class="d-flex justify-content-end mt-2">
-                <button class="btn btn-sm btn-infrared" id="btn-extract" onclick="extractIntel()">
+                <button class="btn btn-sm btn-citadel" id="btn-extract" onclick="extractIntel()">
                     <i class="bi bi-magic"></i> Extract
                     <span class="spinner-border spinner-border-sm d-none" id="extract-spinner" role="status"></span>
                 </button>
@@ -224,7 +224,7 @@
     /* ── AI Extract ───────────────────────────────────────────────────── */
 
     let _extractPollTimer = null;
-    const EXTRACT_TASK_KEY = 'infrared:intel_extract_task';
+    const EXTRACT_TASK_KEY = 'citadel:intel_extract_task';
 
     function extractIntel() {
         if (IS_READONLY) return;

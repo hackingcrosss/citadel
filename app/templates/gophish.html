@@ -10,10 +10,10 @@
             <i class="bi bi-arrow-clockwise"></i> Refresh
         </button>
         {% if current_user.role not in ['viewer', 'auditor', 'white_team'] and active_project_role != 'white_team' %}
-        <button class="btn btn-sm btn-infrared d-none" id="btn-new-profile" data-bs-toggle="modal" data-bs-target="#createProfileModal">
+        <button class="btn btn-sm btn-citadel d-none" id="btn-new-profile" data-bs-toggle="modal" data-bs-target="#createProfileModal">
             <i class="bi bi-plus-circle"></i> New Profile
         </button>
-        <button class="btn btn-sm btn-infrared d-none" id="btn-new-template" data-bs-toggle="modal" data-bs-target="#createTemplateModal">
+        <button class="btn btn-sm btn-citadel d-none" id="btn-new-template" data-bs-toggle="modal" data-bs-target="#createTemplateModal">
             <i class="bi bi-plus-circle"></i> New Template
         </button>
         {% endif %}
@@ -199,7 +199,7 @@
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                <button type="button" class="btn btn-infrared" id="btn-create-profile" onclick="createProfile()">
+                <button type="button" class="btn btn-citadel" id="btn-create-profile" onclick="createProfile()">
                     <i class="bi bi-plus-circle"></i> Create Profile
                 </button>
             </div>
@@ -258,7 +258,7 @@
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                <button type="button" class="btn btn-infrared" id="btn-save-template" onclick="saveTemplate()">
+                <button type="button" class="btn btn-citadel" id="btn-save-template" onclick="saveTemplate()">
                     <i class="bi bi-check-circle"></i> Save Template
                 </button>
             </div>

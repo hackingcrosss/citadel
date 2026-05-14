@@ -10,7 +10,7 @@
             <i class="bi bi-arrow-clockwise"></i> Refresh
         </button>
         {% if current_user.role not in ['viewer', 'auditor', 'white_team'] and active_project_role != 'white_team' %}
-        <button class="btn btn-sm btn-infrared" data-bs-toggle="modal" data-bs-target="#triggerScanModal">
+        <button class="btn btn-sm btn-citadel" data-bs-toggle="modal" data-bs-target="#triggerScanModal">
             <i class="bi bi-plus-circle"></i> New Scan
         </button>
         {% endif %}
@@ -123,7 +123,7 @@
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                <button type="button" class="btn btn-infrared" onclick="triggerScan()">
+                <button type="button" class="btn btn-citadel" onclick="triggerScan()">
                     <i class="bi bi-radar"></i> Launch Scan
                 </button>
             </div>

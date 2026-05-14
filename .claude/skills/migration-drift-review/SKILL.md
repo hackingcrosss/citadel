@@ -1,6 +1,6 @@
 ---
 name: migration-drift-review
-description: Review InfraRed database schema drift between SQLAlchemy models, root-level migrate_add_*.py scripts, init_db.py imports, and runtime expectations. Use before release, after model changes, or when migrations/schema are suspected to be inconsistent.
+description: Review Citadel database schema drift between SQLAlchemy models, root-level migrate_add_*.py scripts, init_db.py imports, and runtime expectations. Use before release, after model changes, or when migrations/schema are suspected to be inconsistent.
 argument-hint: "[model or migration]"
 context: fork
 allowed-tools: Read, Grep, Glob, Bash(rg *), Bash(git *)

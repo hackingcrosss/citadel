@@ -30,7 +30,7 @@ def _get_client(label='default'):
     token = get_credential('hetzner', 'api_token', label=label)
     if not token:
         raise ValueError(f"Hetzner credentials not configured for account '{label}'. Set them in Settings.")
-    return Client(token=token, application_name='citadel-infrared')
+    return Client(token=token, application_name='citadel-citadel')
 
 
 # --- Verification ---

@@ -1,6 +1,6 @@
 ---
 name: ia-feature-builder
-description: Build or extend InfraRed Initial Access features using the existing project-scoped IA model/service/API/template/Celery patterns. Use when adding IA targets, recon/discovery, FOFA/scanner, business intel, landing page, email template, campaign, or event functionality.
+description: Build or extend Citadel Initial Access features using the existing project-scoped IA model/service/API/template/Celery patterns. Use when adding IA targets, recon/discovery, FOFA/scanner, business intel, landing page, email template, campaign, or event functionality.
 argument-hint: "<initial access feature>"
 allowed-tools: Read, Write, Edit, Grep, Glob, Bash(rg *), Bash(git *), Bash(python *)
 ---

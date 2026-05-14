@@ -1,4 +1,4 @@
-"""Flask CLI commands for InfraRed operational tasks."""
+"""Flask CLI commands for Citadel operational tasks."""
 import click
 from cryptography.fernet import InvalidToken
 from flask.cli import with_appcontext
@@ -107,5 +107,5 @@ def rotate_keys_sweep(dry_run):
 
 
 def register_cli(app):
-    """Attach InfraRed CLI commands to the Flask app."""
+    """Attach Citadel CLI commands to the Flask app."""
     app.cli.add_command(rotate_keys_sweep)

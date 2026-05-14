@@ -568,12 +568,12 @@
         .badge-pending { background: rgba(210,153,34,0.12); color: #d29922; border: 1px solid rgba(210,153,34,0.3); }
 
         /* ── Infrared button ─────────────────────────────────────────────────── */
-        .btn-infrared {
+        .btn-citadel {
             background: var(--ir-red);
             border: none;
             color: #fff;
         }
-        .btn-infrared:hover {
+        .btn-citadel:hover {
             background: #d63030;
             box-shadow: 0 0 12px var(--ir-red-glow);
             color: #fff;
@@ -1086,7 +1086,7 @@
     <script>
     // ── Notifications (global, persisted in localStorage) ──────────────────
     (function() {
-        var STORAGE_KEY = 'infrared:notifications';
+        var STORAGE_KEY = 'citadel:notifications';
         var MAX_NOTIFS = 30;
 
         function _load() {
@@ -1369,7 +1369,7 @@
 
     // ── Sidebar credential status dots (admin only) ────────────────────────────
     (function() {
-        if (window._INFRARED_USER_ROLE !== 'admin') return;
+        if (window._CITADEL_USER_ROLE !== 'admin') return;
 
         var SECTION_PROVIDERS = {
             'infra':    ['docker', 'aws', 'npm', 'cloudflare'],
@@ -1407,7 +1407,7 @@
     })();
 
     // ── Current user info ───────────────────────────────────────────────────────
-    window._INFRARED_USER_ROLE = {{ (current_user.role if current_user.is_authenticated else "")|tojson }};
+    window._CITADEL_USER_ROLE = {{ (current_user.role if current_user.is_authenticated else "")|tojson }};
     window.IS_ADMIN = {{ 'true' if (current_user.is_authenticated and current_user.is_admin) else 'false' }};
     window.HETZNER_ENABLED = {{ 'true' if hetzner_enabled else 'false' }};
 
@@ -1449,7 +1449,7 @@
 
     // ── Upgrade required prompt ─────────────────────────────────────────────────
     window.showUpgradeRequired = function(message) {
-        var isAdmin = window._INFRARED_USER_ROLE === 'admin';
+        var isAdmin = window._CITADEL_USER_ROLE === 'admin';
         var body = escapeHtml(message || 'This feature is not available on your current plan.');
         if (isAdmin) {
             body += ' <a href="/admin/license" class="alert-link fw-semibold">Manage License &rarr;</a>';

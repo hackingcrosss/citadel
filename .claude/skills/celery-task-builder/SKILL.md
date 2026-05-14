@@ -1,6 +1,6 @@
 ---
 name: celery-task-builder
-description: Build InfraRed Celery background jobs with Flask app context, task logging, status endpoints, polling UI, idempotent service boundaries, and safe error handling. Use when adding async scans, provider operations, generation jobs, email grooming, deployment tasks, or long-running workflows.
+description: Build Citadel Celery background jobs with Flask app context, task logging, status endpoints, polling UI, idempotent service boundaries, and safe error handling. Use when adding async scans, provider operations, generation jobs, email grooming, deployment tasks, or long-running workflows.
 argument-hint: "<task description>"
 allowed-tools: Read, Write, Edit, Grep, Glob, Bash(rg *), Bash(git *), Bash(python *)
 ---

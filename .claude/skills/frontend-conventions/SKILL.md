@@ -1,6 +1,6 @@
 ---
 name: frontend-conventions
-description: InfraRed frontend conventions — Bootstrap 5 patterns, role gating, modals, toasts, fetch patterns, design tokens. Auto-loaded when editing templates or static files.
+description: Citadel frontend conventions — Bootstrap 5 patterns, role gating, modals, toasts, fetch patterns, design tokens. Auto-loaded when editing templates or static files.
 user-invocable: false
 paths:
   - "app/templates/**/*.html"
@@ -8,7 +8,7 @@ paths:
   - "app/static/**/*.css"
 ---
 
-# InfraRed Frontend Conventions
+# Citadel Frontend Conventions
 
 Apply these rules when writing or modifying templates and static assets.
 
@@ -17,7 +17,7 @@ Apply these rules when writing or modifying templates and static assets.
 1. **All pages extend `base.html`**:
    ```jinja
    {% extends "base.html" %}
-   {% block title %}Page Name - InfraRed{% endblock %}
+   {% block title %}Page Name - Citadel{% endblock %}
    {% block content %}
    ...
    {% endblock %}

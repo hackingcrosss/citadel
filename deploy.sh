@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# deploy.sh — sync InfraRed to a remote host and restart Docker services
+# deploy.sh — sync Citadel to a remote host and restart Docker services
 #
 # Usage:
 #   ./deploy.sh
@@ -14,7 +14,7 @@ set -euo pipefail
 
 # ─── Configuration ────────────────────────────────────────────────────────────
 REMOTE_HOST="${REMOTE_HOST:-user@10.0.0.1}"
-REMOTE_DIR="${REMOTE_DIR:-/opt/infrared}"
+REMOTE_DIR="${REMOTE_DIR:-/opt/citadel}"
 SSH_KEY="${SSH_KEY:-$HOME/.ssh/id_ed25519}"
 HTTP_PORT="${HTTP_PORT:-80}"
 HTTPS_PORT="${HTTPS_PORT:-443}"
@@ -103,7 +103,7 @@ ssh "${SSH_OPTS[@]}" "$REMOTE_HOST" \
   "cd '${REMOTE_DIR}' && docker compose ps"
 
 echo ""
-echo "Done. InfraRed is running on ${REMOTE_HOST}"
+echo "Done. Citadel is running on ${REMOTE_HOST}"
 echo ""
 echo "First time? Initialize the database with:"
 echo "  ssh -i \$SSH_KEY ${REMOTE_HOST} \"cd ${REMOTE_DIR} && docker compose exec web python init_db.py\""

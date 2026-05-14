@@ -6,7 +6,7 @@ from app.services.credential_service import get_credential, get_account_labels
 
 _log = logging.getLogger(__name__)
 
-_INFRARED_TAG = 'infrared-managed'
+_CITADEL_TAG = 'citadel-managed'
 
 
 # ---------------------------------------------------------------------------
@@ -62,8 +62,8 @@ def list_cf_all_accounts():
 
 def create_cloudfront_distribution(origin_host, origin_port, comment, label='default'):
     client = _get_cf_client(label)
-    origin_id = f"infrared-{origin_host.replace('.', '-').replace(':', '-')}"
-    caller_ref = f"infrared-{int(time.time())}"
+    origin_id = f"citadel-{origin_host.replace('.', '-').replace(':', '-')}"
+    caller_ref = f"citadel-{int(time.time())}"
 
     protocol = 'https-only' if origin_port == 443 else 'http-only'
 
@@ -150,7 +150,7 @@ def update_cloudfront_origin(dist_id, origin_host, origin_port, comment, label='
     etag = resp['ETag']
     config = resp['DistributionConfig']
 
-    new_origin_id = f"infrared-{origin_host.replace('.', '-').replace(':', '-')}"
+    new_origin_id = f"citadel-{origin_host.replace('.', '-').replace(':', '-')}"
     protocol = 'https-only' if origin_port == 443 else 'http-only'
 
     origins = config.get('Origins', {}).get('Items', [])
@@ -181,10 +181,10 @@ def delete_cloudfront_distribution(dist_id, etag, label='default'):
 # ---------------------------------------------------------------------------
 
 def _afd_profile_name():
-    """Generate a unique AFD profile name: infrared-cdn-<8 random hex chars>.
+    """Generate a unique AFD profile name: citadel-cdn-<8 random hex chars>.
     Each distribution gets its own profile so a failed creation never blocks the next one.
     """
-    return f"infrared-cdn-{secrets.token_hex(4)}"
+    return f"citadel-cdn-{secrets.token_hex(4)}"
 
 
 def _get_afd_client(label='default'):

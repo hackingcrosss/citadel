@@ -1,6 +1,6 @@
 ---
 name: api-endpoint-builder
-description: Build new InfraRed Flask API endpoints using the local api_bp pattern, authentication, RBAC, feature gating, input validation, JSON error contracts, audit logging, and project scoping. Use when adding or extending app/api modules.
+description: Build new Citadel Flask API endpoints using the local api_bp pattern, authentication, RBAC, feature gating, input validation, JSON error contracts, audit logging, and project scoping. Use when adding or extending app/api modules.
 argument-hint: "<endpoint description>"
 allowed-tools: Read, Write, Edit, Grep, Glob, Bash(rg *), Bash(git *)
 ---
