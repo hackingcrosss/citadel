@@ -1,4 +1,4 @@
-# InfraRed - Troubleshooting Guide
+# Citadel - Troubleshooting Guide
 
 ## Bad Gateway (502)
 
@@ -55,7 +55,7 @@ python -c "import secrets; print(secrets.token_hex(32))"
 docker compose ps
 # postgres should show "Up"
 
-docker compose exec postgres psql -U infrared -d infrared -c "SELECT 1;"
+docker compose exec postgres psql -U citadel -d citadel -c "SELECT 1;"
 ```
 
 ### 3. Complete Reset
@@ -75,7 +75,7 @@ from app import create_app, db
 from app.models.user import User
 app = create_app()
 with app.app_context():
-    user = User.query.filter_by(email='admin@infrared.local').first()
+    user = User.query.filter_by(email='admin@citadel.local').first()
     print(f'User found: {user}')
     print(f'Password check: {user.check_password(\"admin\")}')
 "
@@ -107,7 +107,7 @@ from werkzeug.security import generate_password_hash
 
 app = create_app()
 with app.app_context():
-    user = User.query.filter_by(email='admin@infrared.local').first()
+    user = User.query.filter_by(email='admin@citadel.local').first()
     user.password_hash = generate_password_hash('admin')
     user.must_change_password = True
     db.session.commit()
@@ -119,7 +119,7 @@ This only resets the password. API credentials stored in the database are not af
 
 ## Password Change Flow
 
-1. Login with `admin@infrared.local` / `admin`
+1. Login with `admin@citadel.local` / `admin`
 2. Automatically redirected to `/change-password`
 3. Enter current password: `admin`
 4. Enter new password — must meet all of:
@@ -240,7 +240,7 @@ The workflow creates the A record first, then the NPM proxy host. If the proxy s
 Configure the GoPhish API URL and API Key in **Settings** → GoPhish section. The API URL should include the port if non-standard (e.g., `https://gophish.example.com:3333`). The API Key is found in GoPhish admin panel under Settings.
 
 ### Sending profiles not loading
-- Verify the GoPhish instance is reachable from the InfraRed server
+- Verify the GoPhish instance is reachable from the Citadel server
 - GoPhish uses self-signed certificates by default — the service layer disables SSL verification (`verify=False`)
 - Test with: `docker compose exec web python -c "from app.services.gophish_service import verify_connection; print(verify_connection())"`
 
@@ -259,7 +259,7 @@ Configure the Teamserver URL, username, and password in **Settings** → Cobalt 
 - Ensure the teamserver was started with REST API support enabled
 
 ### Listeners not loading
-- Verify the teamserver is reachable from the InfraRed server on port 50443
+- Verify the teamserver is reachable from the Citadel server on port 50443
 - CS teamservers use self-signed certificates — the service disables SSL verification
 - Test with: `docker compose exec web python -c "from app.services.cobaltstrike_service import verify_connection; print(verify_connection())"`
 

@@ -1,6 +1,6 @@
 ---
 name: rbac-review
-description: Review InfraRed code changes for role-based access control mistakes across admin, project_admin, operator, white_team, and auditor users. Use for route/API/template reviews, authorization bugs, or when changes touch user roles, permissions, project membership, company access, or read-only behavior.
+description: Review Citadel code changes for role-based access control mistakes across admin, project_admin, operator, white_team, and auditor users. Use for route/API/template reviews, authorization bugs, or when changes touch user roles, permissions, project membership, company access, or read-only behavior.
 argument-hint: "[base-branch or files]"
 context: fork
 allowed-tools: Read, Grep, Glob, Bash(git *)
@@ -8,7 +8,7 @@ allowed-tools: Read, Grep, Glob, Bash(git *)
 
 # RBAC Review
 
-Review changed or requested files for InfraRed authorization regressions.
+Review changed or requested files for Citadel authorization regressions.
 
 ## Role Model
 
@@ -39,7 +39,7 @@ Relevant helpers:
 7. Confirm frontend hiding/disabling of controls is backed by backend checks.
 8. Check serializers and list endpoints for cross-project or cross-company leakage.
 
-## Common InfraRed Failure Modes
+## Common Citadel Failure Modes
 
 - Treating `project_admin` as `admin`.
 - Checking only `current_user.is_authenticated` on write endpoints.

@@ -10,7 +10,7 @@
             <i class="bi bi-arrow-clockwise"></i> Refresh
         </button>
         {% if current_user.role not in ['viewer', 'auditor', 'white_team'] and active_project_role != 'white_team' %}
-        <button class="btn btn-sm btn-infrared" data-bs-toggle="modal" data-bs-target="#newSearchModal">
+        <button class="btn btn-sm btn-citadel" data-bs-toggle="modal" data-bs-target="#newSearchModal">
             <i class="bi bi-plus-circle"></i> New Search
         </button>
         {% endif %}
@@ -129,7 +129,7 @@
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                <button type="button" class="btn btn-infrared" onclick="startSearch()">
+                <button type="button" class="btn btn-citadel" onclick="startSearch()">
                     <i class="bi bi-search"></i> Search
                 </button>
             </div>

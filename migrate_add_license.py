@@ -23,7 +23,7 @@ def run():
             return
 
         print("Inserting default Community license...")
-        lic = License(tier='community', org_name='InfraRed')
+        lic = License(tier='community', org_name='Citadel')
         db.session.add(lic)
         db.session.commit()
         print("✓ Community license created.")

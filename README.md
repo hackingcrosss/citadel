@@ -1,4 +1,4 @@
-# InfraRed - Red Team Infrastructure Management
+# Citadel - Red Team Infrastructure Management
 
 A web application for managing red team infrastructure including domains, Docker containers, AWS EC2 instances, Nginx Proxy Manager, GoPhish, and Cobalt Strike — all from a single authenticated dashboard.
 
@@ -26,7 +26,7 @@ The minimum spec will run all five Docker services (nginx, web, celery, postgres
 
 The recommended spec provides comfortable headroom for multiple concurrent users, larger DNS zone syncs, and database growth over an engagement lifecycle.
 
-> **Note:** These figures cover InfraRed itself. They do not account for Cobalt Strike, GoPhish, or any other red team tooling you run on the same host.
+> **Note:** These figures cover Citadel itself. They do not account for Cobalt Strike, GoPhish, or any other red team tooling you run on the same host.
 
 ---
 
@@ -90,7 +90,7 @@ docker compose exec web python init_db.py
 Open http://localhost in your browser.
 
 **Default Credentials:**
-- Email: `admin@infrared.local`
+- Email: `admin@citadel.local`
 - Password: `admin`
 
 You will be forced to change the password on first login.
@@ -136,7 +136,7 @@ The `web` container mounts `/var/run/docker.sock` for direct Docker container ma
 
 ## User Management & Roles
 
-InfraRed has three roles:
+Citadel has three roles:
 
 | Role | Description |
 |------|-------------|
@@ -404,7 +404,7 @@ The **Sync DB** button opens a modal that:
 4. Shows live progress with colour-coded status lines
 5. Refreshes the infra map on completion
 
-> NPM proxy hosts are fetched live and are not stored in InfraRed's database. To remove stale NPM entries, delete them directly from the [NPM page](/npm).
+> NPM proxy hosts are fetched live and are not stored in Citadel's database. To remove stale NPM entries, delete them directly from the [NPM page](/npm).
 
 ### User Management (`/admin/users`)
 Admin-only. Create, edit, and delete users. Fields per user: email, display name, role (admin/operator/viewer), active status, and optional plan override tier.

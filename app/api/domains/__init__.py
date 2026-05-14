@@ -470,7 +470,7 @@ def create_dns_record(zone_id):
                 ttl=record.get('ttl', 1),
                 proxied=record.get('proxied', False),
                 priority=record.get('priority'),
-                managed_by='infrared',
+                managed_by='citadel',
                 provider=domain.provider or 'cloudflare',
             )
             db.session.add(db_rec)
@@ -709,7 +709,7 @@ def enable_zone_dmarc(zone_id):
                     content=record['content'],
                     ttl=1,
                     proxied=False,
-                    managed_by='infrared',
+                    managed_by='citadel',
                     provider=domain.provider or 'cloudflare',
                 ))
             db.session.commit()

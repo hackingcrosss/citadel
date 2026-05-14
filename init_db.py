@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Initialize the InfraRed database with default user and tables
+Initialize the Citadel database with default user and tables
 Run this after starting the containers with: docker-compose exec web python init_db.py
 """
 
@@ -28,13 +28,13 @@ def init_database():
         db.create_all()
         
         # Check if admin user exists
-        admin = User.query.filter_by(email='admin@infrared.local').first()
+        admin = User.query.filter_by(email='admin@citadel.local').first()
         
         if not admin:
             # Create default admin user
             print("Creating default admin user...")
             admin = User(
-                email='admin@infrared.local',
+                email='admin@citadel.local',
                 display_name='Administrator',
                 role='admin',
                 must_change_password=True  # Force password change on first login
@@ -45,7 +45,7 @@ def init_database():
             db.session.commit()
             
             print("✓ Default admin user created")
-            print("  Email: admin@infrared.local")
+            print("  Email: admin@citadel.local")
             print("  Password: admin")
             print("  ⚠️  You will be required to change the password on first login!")
         else:
@@ -56,7 +56,7 @@ def init_database():
             print("Creating default project...")
             # admin is guaranteed to exist at this point
             if not admin:
-                admin = User.query.filter_by(email='admin@infrared.local').first()
+                admin = User.query.filter_by(email='admin@citadel.local').first()
             default_project = Project(
                 name='Default',
                 code='DEFAULT',
@@ -81,7 +81,7 @@ def init_database():
         # Create default Community license if none exists
         if not License.query.first():
             print("Creating default Community license...")
-            lic = License(tier='community', org_name='InfraRed')
+            lic = License(tier='community', org_name='Citadel')
             db.session.add(lic)
             db.session.commit()
             print("✓ Default Community license created")

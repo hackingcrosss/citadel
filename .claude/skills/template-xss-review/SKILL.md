@@ -1,6 +1,6 @@
 ---
 name: template-xss-review
-description: Review InfraRed Jinja templates and inline JavaScript for XSS and unsafe rendering. Use when changes touch app/templates, dynamic tables/modals, email or landing page previews, Initial Access pages, user-controlled content, innerHTML, Jinja safe filters, or JSON injection into scripts.
+description: Review Citadel Jinja templates and inline JavaScript for XSS and unsafe rendering. Use when changes touch app/templates, dynamic tables/modals, email or landing page previews, Initial Access pages, user-controlled content, innerHTML, Jinja safe filters, or JSON injection into scripts.
 argument-hint: "[template files or base-branch]"
 context: fork
 allowed-tools: Read, Grep, Glob, Bash(rg *), Bash(git *)

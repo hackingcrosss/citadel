@@ -1,6 +1,6 @@
 ---
 name: db-migrate
-description: Create a database migration script following InfraRed's migration pattern, then apply it.
+description: Create a database migration script following Citadel's migration pattern, then apply it.
 disable-model-invocation: true
 argument-hint: "<description>"
 allowed-tools: Read, Write, Edit, Glob, Grep, Bash(docker compose *), Bash(python3 *)

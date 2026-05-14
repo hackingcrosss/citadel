@@ -10,7 +10,7 @@
             <i class="bi bi-arrow-clockwise"></i> Refresh
         </button>
         {% if current_user.role not in ['viewer', 'auditor', 'white_team'] and active_project_role != 'white_team' %}
-        <button class="btn btn-sm btn-infrared" id="btn-generate" data-bs-toggle="modal" data-bs-target="#generateModal">
+        <button class="btn btn-sm btn-citadel" id="btn-generate" data-bs-toggle="modal" data-bs-target="#generateModal">
             <i class="bi bi-stars"></i> Generate
         </button>
         {% endif %}
@@ -91,7 +91,7 @@
             </div>
             <div class="modal-footer border-secondary">
                 <button class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                <button class="btn btn-infrared" onclick="startGeneration()">
+                <button class="btn btn-citadel" onclick="startGeneration()">
                     <i class="bi bi-stars"></i> Generate
                 </button>
             </div>
@@ -147,7 +147,7 @@
             </div>
             <div class="modal-footer border-secondary">
                 <button class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                <button class="btn btn-infrared" onclick="saveTemplate()">
+                <button class="btn btn-citadel" onclick="saveTemplate()">
                     <i class="bi bi-floppy"></i> Save
                 </button>
             </div>
@@ -201,7 +201,7 @@
             <div class="modal-footer border-secondary">
                 <button class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
                 {% if current_user.role not in ['viewer', 'auditor', 'white_team'] and active_project_role != 'white_team' %}
-                <button class="btn btn-infrared" onclick="assignSelectedTargets()">
+                <button class="btn btn-citadel" onclick="assignSelectedTargets()">
                     <i class="bi bi-plus"></i> Assign Selected
                 </button>
                 {% endif %}
@@ -221,7 +221,7 @@
 
     let _pollTimer = null;
     let _currentBatchId = null;
-    const GEN_TASK_KEY = 'infrared:email_gen_task';
+    const GEN_TASK_KEY = 'citadel:email_gen_task';
     const _SOURCE_COLORS = { scanner: 'info', fofa: 'warning' };
 
     /* ── Batches ──────────────────────────────────────────────────────── */

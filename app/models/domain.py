@@ -75,7 +75,7 @@ class DNSRecord(db.Model):
     ttl = db.Column(db.Integer, default=1)  # 1 = auto
     proxied = db.Column(db.Boolean, default=False)
     priority = db.Column(db.Integer)  # for MX records
-    managed_by = db.Column(db.String(30), default='manual')  # manual, infrared, mailgun
+    managed_by = db.Column(db.String(30), default='manual')  # manual, citadel, mailgun
     provider = db.Column(db.String(50), nullable=False, default='cloudflare')
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

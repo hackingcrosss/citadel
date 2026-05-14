@@ -53,7 +53,7 @@
                 </div>
                 {% if current_user.role not in ['viewer', 'auditor', 'white_team'] and active_project_role != 'white_team' %}
                 <div class="col-md-6 d-flex align-items-end gap-2 flex-wrap">
-                    <button class="btn btn-infrared" id="btn-add-mailgun" onclick="setupEmail()">
+                    <button class="btn btn-citadel" id="btn-add-mailgun" onclick="setupEmail()">
                         <i class="bi bi-1-circle"></i> Add to Mailgun
                     </button>
                     <button class="btn btn-outline-primary" id="btn-push-dns" onclick="pushDnsRecords()" disabled>
@@ -184,7 +184,7 @@
 
             {% if current_user.role not in ['viewer', 'auditor', 'white_team'] and active_project_role != 'white_team' %}
             <div class="mb-3">
-                <button class="btn btn-infrared" id="btn-point-domain" onclick="pointDomain()">
+                <button class="btn btn-citadel" id="btn-point-domain" onclick="pointDomain()">
                     <i class="bi bi-plus-circle"></i> Create
                 </button>
             </div>
@@ -222,7 +222,7 @@
 
             {% if current_user.role not in ['viewer', 'auditor', 'white_team'] and active_project_role != 'white_team' %}
             <div class="mb-3">
-                <button class="btn btn-infrared" data-bs-toggle="modal" data-bs-target="#c2Modal">
+                <button class="btn btn-citadel" data-bs-toggle="modal" data-bs-target="#c2Modal">
                     <i class="bi bi-plus-circle"></i> New C2 Setup
                 </button>
             </div>
@@ -315,7 +315,7 @@
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button type="button" class="btn btn-infrared" id="btn-c2-setup" onclick="setupC2()">
+                    <button type="button" class="btn btn-citadel" id="btn-c2-setup" onclick="setupC2()">
                         <i class="bi bi-play-circle"></i> Create C2 Setup
                     </button>
                 </div>
@@ -356,7 +356,7 @@
                 </div>
                 {% if current_user.role not in ['viewer', 'auditor', 'white_team'] and active_project_role != 'white_team' %}
                 <div class="col-md-6 d-flex align-items-end gap-2 flex-wrap">
-                    <button class="btn btn-infrared" id="wg-btn-generate" onclick="generateWebsite()">
+                    <button class="btn btn-citadel" id="wg-btn-generate" onclick="generateWebsite()">
                         <i class="bi bi-stars"></i> Generate Website
                     </button>
                     <button class="btn btn-outline-secondary d-none" id="wg-btn-download" onclick="downloadGeneratedHtml()">
@@ -455,7 +455,7 @@
             </div>
 
             {% if current_user.role not in ['viewer', 'auditor', 'white_team'] and active_project_role != 'white_team' %}
-            <button class="btn btn-infrared" id="btn-eg-save" onclick="saveEmailGrooming()">
+            <button class="btn btn-citadel" id="btn-eg-save" onclick="saveEmailGrooming()">
                 <i class="bi bi-save"></i> Save Configuration
             </button>
             {% endif %}

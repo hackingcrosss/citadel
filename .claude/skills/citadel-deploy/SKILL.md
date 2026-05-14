@@ -1,11 +1,11 @@
 ---
-name: infrared-deploy
-description: Deploy InfraRed — rebuild containers, run migrations, verify health, tail logs.
+name: citadel-deploy
+description: Deploy Citadel — rebuild containers, run migrations, verify health, tail logs.
 disable-model-invocation: true
 allowed-tools: Bash(docker compose *), Bash(git *)
 ---
 
-# InfraRed Deploy
+# Citadel Deploy
 
 ## Pre-flight
 1. Check git status is clean (warn if uncommitted changes, but don't block):

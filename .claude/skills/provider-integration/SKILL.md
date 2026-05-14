@@ -1,6 +1,6 @@
 ---
 name: provider-integration
-description: Add a new InfraRed external provider integration using encrypted credentials, account labels, service functions, API endpoints, settings UI support, project scoping, and audit logging. Use when integrating a cloud, DNS, CDN, mail, scanner, phishing, or infrastructure provider.
+description: Add a new Citadel external provider integration using encrypted credentials, account labels, service functions, API endpoints, settings UI support, project scoping, and audit logging. Use when integrating a cloud, DNS, CDN, mail, scanner, phishing, or infrastructure provider.
 argument-hint: "<provider name and capability>"
 allowed-tools: Read, Write, Edit, Grep, Glob, Bash(rg *), Bash(git *), Bash(python *)
 ---

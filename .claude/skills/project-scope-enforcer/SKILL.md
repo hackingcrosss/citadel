@@ -1,13 +1,13 @@
 ---
 name: project-scope-enforcer
-description: Implement or repair InfraRed active-project scoping for APIs, services, templates, and resource mutations. Use when adding project-scoped features, fixing cross-project leakage, tagging resources to projects, or enforcing operator/white_team/auditor access.
+description: Implement or repair Citadel active-project scoping for APIs, services, templates, and resource mutations. Use when adding project-scoped features, fixing cross-project leakage, tagging resources to projects, or enforcing operator/white_team/auditor access.
 argument-hint: "<feature or files>"
 allowed-tools: Read, Write, Edit, Grep, Glob, Bash(rg *), Bash(git *)
 ---
 
 # Project Scope Enforcer
 
-Use this when a feature must respect InfraRed project membership and active-project boundaries.
+Use this when a feature must respect Citadel project membership and active-project boundaries.
 
 ## Core Concepts
 

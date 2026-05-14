@@ -1,7 +1,7 @@
-# InfraRed - Red Team Infrastructure Management Platform
+# Citadel - Red Team Infrastructure Management Platform
 
 ## Project Overview
-InfraRed is a Flask-based web application for managing red team infrastructure. It provides a centralized dashboard to manage domains, Docker containers, AWS EC2 instances, and Nginx Proxy Manager entries with encrypted credential storage.
+Citadel is a Flask-based web application for managing red team infrastructure. It provides a centralized dashboard to manage domains, Docker containers, AWS EC2 instances, and Nginx Proxy Manager entries with encrypted credential storage.
 
 ## Tech Stack
 - **Backend**: Flask (Python 3.11)
@@ -13,7 +13,7 @@ InfraRed is a Flask-based web application for managing red team infrastructure. 
 
 ## Project Structure
 ```
-infrared/
+citadel/
 ├── docker-compose.yml          # Multi-container orchestration
 ├── Dockerfile                  # Web application container
 ├── requirements.txt            # Python dependencies
@@ -99,7 +99,7 @@ services:
 ### Authentication & Security
 - Flask-Login for session management
 - Password hashing with Werkzeug (PBKDF2)
-- Forced password change on first login (default: admin@infrared.local / admin)
+- Forced password change on first login (default: admin@citadel.local / admin)
 - `must_change_password` flag on User model (enforced via `@app.before_request` hook)
 - Password complexity: 12+ chars, must have uppercase, lowercase, digit (`_check_password_complexity` in routes.py)
 - Login rate limiting: 10 failures/IP in 10-minute window, tracked in Redis (`login_fail:<ip>` key)
@@ -211,7 +211,7 @@ class DNSRecord(db.Model):
     ttl: int (default=1)
     proxied: bool (default=False)
     priority: int                   # for MX records
-    managed_by: str (default=manual) # manual, infrared, mailgun
+    managed_by: str (default=manual) # manual, citadel, mailgun
     created_at: datetime
     updated_at: datetime
 ```
@@ -250,7 +250,7 @@ SECRET_KEY=<64-char-hex>
 MASTER_ENCRYPTION_KEY=<base64-fernet-key>
 
 # Database
-DATABASE_URL=postgresql://infrared:infrared_password@postgres:5432/infrared
+DATABASE_URL=postgresql://citadel:citadel_password@postgres:5432/citadel
 
 # Redis/Celery
 REDIS_URL=redis://redis:6379/0
@@ -283,7 +283,7 @@ docker compose up -d --build
 docker compose exec web python init_db.py
 
 # Access at http://localhost
-# Login: admin@infrared.local / admin (will force password change)
+# Login: admin@citadel.local / admin (will force password change)
 ```
 
 ## Development Commands
@@ -312,7 +312,7 @@ docker compose down
 
 # Reset database
 docker compose down -v
-docker volume rm infrared_postgres_data
+docker volume rm citadel_postgres_data
 docker compose up -d --build
 docker compose exec web python init_db.py
 ```
@@ -407,7 +407,7 @@ docker compose exec web python init_db.py
 
 ### Database Connection Failed
 1. Check postgres running: `docker compose ps`
-2. Test connection: `docker compose exec postgres psql -U infrared -d infrared -c "SELECT 1;"`
+2. Test connection: `docker compose exec postgres psql -U citadel -d citadel -c "SELECT 1;"`
 3. Check DATABASE_URL in `.env`
 
 ### Image Missing Files
@@ -435,5 +435,5 @@ See TROUBLESHOOTING.md for complete debug guide.
 - Sidebar: Dark gradient with red accents
 
 ## Default Credentials
-- Email: admin@infrared.local
+- Email: admin@citadel.local
 - Password: admin (must change on first login)

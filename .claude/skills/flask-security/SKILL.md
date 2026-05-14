@@ -1,6 +1,6 @@
 ---
 name: flask-security
-description: Security conventions for InfraRed Flask app. Auto-invoked when editing API endpoints, routes, services, or models to prevent common vulnerabilities.
+description: Security conventions for Citadel Flask app. Auto-invoked when editing API endpoints, routes, services, or models to prevent common vulnerabilities.
 user-invocable: false
 paths:
   - "app/api/**/*.py"
@@ -11,7 +11,7 @@ paths:
   - "app/tasks/**/*.py"
 ---
 
-# InfraRed Security Conventions
+# Citadel Security Conventions
 
 Apply these rules when writing or modifying backend Python code.
 

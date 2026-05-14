@@ -34,7 +34,7 @@ def list_containers():
             c['project_code'] = tag['project_code'] if tag else None
             c['project_resource_id'] = tag['project_resource_id'] if tag else None
 
-        # Non-admins: hide platform-core containers (infrared-web etc.) and
+        # Non-admins: hide platform-core containers (citadel-web etc.) and
         # any container tagged to a project they're not a member of. Untagged
         # containers are visible — until K-03 (auto-tag at deploy) lands,
         # requiring a tag would hide every operator-deployed container.

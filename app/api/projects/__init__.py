@@ -719,7 +719,7 @@ def teardown_preview(project_id):
                     'content': rec.get('content', ''),
                     'managed_by': rec_managed_by,
                 }
-                if rec_managed_by in ('infrared', 'mailgun'):
+                if rec_managed_by in ('citadel', 'mailgun'):
                     managed.append(entry)
                 else:
                     manual.append(entry)

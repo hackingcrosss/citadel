@@ -2,7 +2,7 @@ import json
 import time
 import calendar
 
-TASK_LOG_KEY = 'infrared:task_log'
+TASK_LOG_KEY = 'citadel:task_log'
 MAX_TASKS = 100
 
 

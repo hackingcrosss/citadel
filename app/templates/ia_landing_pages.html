@@ -18,7 +18,7 @@
             <i class="bi bi-arrow-clockwise"></i> Refresh
         </button>
         {% if current_user.role not in ['viewer', 'auditor', 'white_team'] and active_project_role != 'white_team' %}
-        <button class="btn btn-sm btn-infrared" data-bs-toggle="modal" data-bs-target="#createPageModal">
+        <button class="btn btn-sm btn-citadel" data-bs-toggle="modal" data-bs-target="#createPageModal">
             <i class="bi bi-plus-circle"></i> New Page
         </button>
         {% endif %}
@@ -140,7 +140,7 @@
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                <button type="button" class="btn btn-infrared" onclick="savePage()">
+                <button type="button" class="btn btn-citadel" onclick="savePage()">
                     <i class="bi bi-check-lg"></i> Save
                 </button>
             </div>

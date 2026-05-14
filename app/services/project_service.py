@@ -247,7 +247,7 @@ def assert_resource_writable(resource_type, external_id, user):
 
 
 _CONTAINER_PLATFORM_CORE_RE = re.compile(
-    r'^/?infrared-(web|celery|postgres|redis|nginx)$'
+    r'^/?citadel-(web|celery|postgres|redis|nginx)$'
 )
 
 
@@ -263,8 +263,8 @@ def assert_resource_readable(resource_type, external_id, user):
     - Admins: always allowed.
     - Non-operators (project_admin, auditor, white_team, plain users): blocked —
       they have no operational need to see live infrastructure state.
-    - Operators: blocked from platform-core containers (infrared-web,
-      infrared-postgres, etc.) and from resources tagged to other projects.
+    - Operators: blocked from platform-core containers (citadel-web,
+      citadel-postgres, etc.) and from resources tagged to other projects.
       Untagged resources are allowed — deploy flows don't auto-tag containers
       yet (tracked as K-03), so requiring a tag would break the operator
       workflow. The Config.Env strip in docker_service is the load-bearing

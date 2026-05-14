@@ -43,7 +43,7 @@
         </div>
         <div class="d-flex gap-2 align-items-center">
             {% if current_user.role not in ['viewer', 'auditor'] %}
-            <button id="save-btn" class="btn btn-sm btn-infrared" onclick="saveProfile()" style="display:none">
+            <button id="save-btn" class="btn btn-sm btn-citadel" onclick="saveProfile()" style="display:none">
                 <i class="bi bi-check-lg me-1"></i> Save Changes
             </button>
             {% endif %}
