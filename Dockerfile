@@ -17,8 +17,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 # Create non-root user
-RUN useradd -m -u 1000 infrared && chown -R infrared:infrared /app
-USER infrared
+RUN useradd -m -u 1000 citadel && chown -R citadel:citadel /app
+USER citadel
 
 EXPOSE 5000
 

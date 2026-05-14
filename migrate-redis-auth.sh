@@ -1,5 +1,5 @@
 #!/bin/bash
-# One-shot migration: enables Redis AUTH on an existing InfraRed deployment.
+# One-shot migration: enables Redis AUTH on an existing Citadel deployment.
 #
 # - Generates a fresh REDIS_PASSWORD.
 # - Appends REDIS_PASSWORD / REDIS_URL / CELERY_BROKER_URL / CELERY_RESULT_BACKEND
@@ -18,7 +18,7 @@ set -euo pipefail
 
 cd "$(dirname "$0")"
 
-SECRETS_FILE="${INFRARED_SECRETS_FILE:-$HOME/.config/infrared/secrets.env}"
+SECRETS_FILE="${CITADEL_SECRETS_FILE:-$HOME/.config/citadel/secrets.env}"
 
 if [ ! -f .env ]; then
     echo "[!] .env not found in $(pwd)" >&2

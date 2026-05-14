@@ -3,17 +3,17 @@ version: '3.8'
 services:
   postgres:
     image: postgres:15-alpine
-    container_name: infrared-postgres
+    container_name: citadel-postgres
     environment:
-      POSTGRES_DB: infrared
-      POSTGRES_USER: infrared
+      POSTGRES_DB: citadel
+      POSTGRES_USER: citadel
       # POSTGRES_PASSWORD comes from the secrets file env_file below. The
       # value is only consulted by postgres on first init (creates the
       # superuser); subsequent boots use whatever is in pg_authid, which
       # `flask` migrations and the migrate-postgres-password.sh helper
       # keep in sync.
     env_file:
-      - ${INFRARED_SECRETS_FILE:-${HOME}/.config/infrared/secrets.env}
+      - ${CITADEL_SECRETS_FILE:-${HOME}/.config/citadel/secrets.env}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     # No host port mapping — DB is reachable only from inside the docker
@@ -21,12 +21,12 @@ services:
     expose:
       - "5432"
     networks:
-      - infrared-network
+      - citadel-network
     restart: unless-stopped
 
   redis:
     image: redis:7-alpine
-    container_name: infrared-redis
+    container_name: citadel-redis
     # Shell wrapper so $REDIS_PASSWORD (from env_file) is dereferenced by the
     # container's shell at start. redis-server itself doesn't expand env vars
     # in CLI args, so the indirection is required. `exec` makes redis-server
@@ -36,19 +36,19 @@ services:
       - -c
       - exec redis-server --requirepass "$$REDIS_PASSWORD" --protected-mode yes
     env_file:
-      - ${INFRARED_SECRETS_FILE:-${HOME}/.config/infrared/secrets.env}
+      - ${CITADEL_SECRETS_FILE:-${HOME}/.config/citadel/secrets.env}
     # No host port mapping — Redis / the Celery broker are reachable only from
     # inside the docker bridge network. Host-side ops use `docker compose exec
     # redis redis-cli`.
     expose:
       - "6379"
     networks:
-      - infrared-network
+      - citadel-network
     restart: unless-stopped
 
   web:
     build: .
-    container_name: infrared-web
+    container_name: citadel-web
     # NOTE: --reload is intentionally NOT here. In production it tails the
     # mounted source tree and reloads on file change, which combined with the
     # ./app:/app/app bind-mount turns any in-container file write into a
@@ -69,33 +69,33 @@ services:
       - "host.docker.internal:host-gateway"
     env_file:
       - .env
-      - ${INFRARED_SECRETS_FILE:-${HOME}/.config/infrared/secrets.env}
+      - ${CITADEL_SECRETS_FILE:-${HOME}/.config/citadel/secrets.env}
     depends_on:
       - postgres
       - redis
     networks:
-      - infrared-network
+      - citadel-network
     restart: unless-stopped
 
   celery:
     build: .
-    container_name: infrared-celery
+    container_name: citadel-celery
     command: celery -A app.tasks.celery_app worker --beat --loglevel=info
     volumes:
       - ./app:/app/app
     env_file:
       - .env
-      - ${INFRARED_SECRETS_FILE:-${HOME}/.config/infrared/secrets.env}
+      - ${CITADEL_SECRETS_FILE:-${HOME}/.config/citadel/secrets.env}
     depends_on:
       - postgres
       - redis
     networks:
-      - infrared-network
+      - citadel-network
     restart: unless-stopped
 
   nginx:
     image: nginx:alpine
-    container_name: infrared-nginx
+    container_name: citadel-nginx
     ports:
       - "${HTTP_PORT:-80}:80"
       - "${HTTPS_PORT:-443}:443"
@@ -105,12 +105,12 @@ services:
     depends_on:
       - web
     networks:
-      - infrared-network
+      - citadel-network
     restart: unless-stopped
 
 volumes:
   postgres_data:
 
 networks:
-  infrared-network:
+  citadel-network:
     driver: bridge

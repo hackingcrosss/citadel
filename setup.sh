@@ -1,14 +1,14 @@
 #!/bin/bash
-# InfraRed Setup Script
+# Citadel Setup Script
 #
 # Generates a per-deployment configuration on first install:
 #   .env             — non-secret config (templated from .env.example)
-#   $INFRARED_SECRETS_FILE
+#   $CITADEL_SECRETS_FILE
 #                    — SECRET_KEY + MASTER_ENCRYPTION_KEY, stored OUTSIDE the
 #                      repo so secrets never land in source control.
-#                      Defaults to $HOME/.config/infrared/secrets.env (user-owned,
+#                      Defaults to $HOME/.config/citadel/secrets.env (user-owned,
 #                      XDG-style, no sudo). Override by exporting
-#                      INFRARED_SECRETS_FILE before running.
+#                      CITADEL_SECRETS_FILE before running.
 #
 # Idempotent: never overwrites an existing .env or secrets file. Re-run safely.
 
@@ -16,9 +16,9 @@ set -euo pipefail
 
 cd "$(dirname "$0")"
 
-SECRETS_FILE="${INFRARED_SECRETS_FILE:-$HOME/.config/infrared/secrets.env}"
+SECRETS_FILE="${CITADEL_SECRETS_FILE:-$HOME/.config/citadel/secrets.env}"
 
-echo "=== InfraRed Infrastructure Setup ==="
+echo "=== Citadel Infrastructure Setup ==="
 echo "Secrets file path: $SECRETS_FILE"
 echo ""
 
@@ -56,7 +56,7 @@ else
         echo "SECRET_KEY=$SECRET_KEY"
         echo "MASTER_ENCRYPTION_KEY=$MASTER_ENCRYPTION_KEY"
         echo "POSTGRES_PASSWORD=$POSTGRES_PASSWORD"
-        echo "DATABASE_URL=postgresql://infrared:$POSTGRES_PASSWORD@postgres:5432/infrared"
+        echo "DATABASE_URL=postgresql://citadel:$POSTGRES_PASSWORD@postgres:5432/citadel"
         echo "REDIS_PASSWORD=$REDIS_PASSWORD"
         echo "REDIS_URL=redis://:$REDIS_PASSWORD@redis:6379/0"
         echo "CELERY_BROKER_URL=redis://:$REDIS_PASSWORD@redis:6379/0"
