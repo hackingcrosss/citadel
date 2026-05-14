@@ -9,6 +9,7 @@ from app import db
 from app.utils.decorators import feature_required
 from app.services.project_service import build_project_tag_map, get_active_project, get_project_domain_names, get_project_resource_external_ids
 from app.models.project_resource import ProjectResource
+from app.utils.errors import safe_error
 
 _log = logging.getLogger(__name__)
 
@@ -116,7 +117,7 @@ def cdn_list_distributions():
 
         return jsonify({'distributions': result})
     except Exception as e:
-        return jsonify({'error': str(e)}), 400
+        return safe_error(e, 400)
 
 
 @api_bp.route('/cdn/distributions/import', methods=['POST'])
@@ -301,7 +302,7 @@ def cdn_get_distribution_status(dist_id):
 
         return jsonify({'status': new_status, 'id': dist_id})
     except Exception as e:
-        return jsonify({'error': str(e)}), 400
+        return safe_error(e, 400)
 
 
 @api_bp.route('/cdn/distributions/<int:dist_id>/force-refresh', methods=['POST'])
@@ -343,7 +344,7 @@ def cdn_get_probe_settings(dist_id):
             'probe_interval': (hp.probe_interval_in_seconds or 100) if hp else 100,
         })
     except Exception as e:
-        return jsonify({'error': str(e)}), 400
+        return safe_error(e, 400)
 
 
 @api_bp.route('/cdn/distributions/<int:dist_id>', methods=['PATCH'])
@@ -390,7 +391,7 @@ def cdn_update_distribution(dist_id):
 
     except Exception as e:
         db.session.rollback()
-        return jsonify({'error': str(e)}), 400
+        return safe_error(e, 400)
 
 
 @api_bp.route('/cdn/distributions/<int:dist_id>', methods=['DELETE'])
@@ -456,4 +457,4 @@ def cdn_delete_distribution(dist_id):
 
     except Exception as e:
         db.session.rollback()
-        return jsonify({'error': str(e)}), 400
+        return safe_error(e, 400)

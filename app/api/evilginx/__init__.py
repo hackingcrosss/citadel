@@ -11,6 +11,7 @@ from app.models.domain import Domain
 from app.services import audit_service, evilginx_service
 from app.services.project_service import get_active_project
 from app.utils.decorators import feature_required
+from app.utils.errors import safe_error
 
 _log = logging.getLogger(__name__)
 
@@ -53,7 +54,7 @@ def evilginx_parse():
     try:
         parsed = evilginx_service.parse_phishlet_yaml(raw)
     except ValueError as e:
-        return jsonify({'error': str(e)}), 400
+        return safe_error(e, 400)
     return jsonify({'phishlet': parsed})
 
 
@@ -132,7 +133,7 @@ def evilginx_create():
             user_id=current_user.id,
         )
     except ValueError as e:
-        return jsonify({'error': str(e)}), 400
+        return safe_error(e, 400)
 
     audit_service.log(
         'evilginx.create', 'phishlet', phishlet.id, f'project:{project.code}',
@@ -162,7 +163,7 @@ def evilginx_deploy(phishlet_id):
     try:
         steps = evilginx_service.deploy_phishlet(p)
     except ValueError as e:
-        return jsonify({'error': str(e)}), 400
+        return safe_error(e, 400)
     except Exception as e:
         _log.exception('Phishlet deploy failed (id=%s)', phishlet_id)
         return jsonify({'error': f'Deploy failed: {e}'}), 500
@@ -220,7 +221,7 @@ def evilginx_delete(phishlet_id):
     try:
         evilginx_service.delete_phishlet(p, force=force)
     except ValueError as e:
-        return jsonify({'error': str(e)}), 400
+        return safe_error(e, 400)
 
     audit_service.log(
         'evilginx.delete', 'phishlet', phishlet_id,

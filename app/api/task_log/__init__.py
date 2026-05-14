@@ -1,6 +1,7 @@
 from flask import jsonify
 from flask_login import login_required
 from app.api import api_bp
+from app.utils.errors import safe_error
 
 
 @api_bp.route('/task-log', methods=['GET'])
@@ -11,7 +12,7 @@ def get_task_log():
         tasks = task_log_service.get_tasks()
         return jsonify({'tasks': tasks})
     except Exception as e:
-        return jsonify({'error': str(e), 'tasks': []}), 500
+        return safe_error(e, 500, tasks=[])
 
 
 @api_bp.route('/task-log/completed', methods=['DELETE'])
@@ -22,7 +23,7 @@ def clear_completed_tasks():
         task_log_service.clear_completed()
         return jsonify({'ok': True})
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        return safe_error(e, 500)
 
 
 @api_bp.route('/task-log/<task_id>/revoke', methods=['POST'])
@@ -36,4 +37,4 @@ def revoke_task(task_id):
         celery.backend.store_result(task_id, None, 'REVOKED')
         return jsonify({'ok': True})
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        return safe_error(e, 500)

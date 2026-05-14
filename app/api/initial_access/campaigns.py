@@ -7,6 +7,7 @@ from app.api import api_bp
 from app.services import ia_campaign_service, audit_service
 from app.services.project_service import get_active_project
 from app.utils.decorators import feature_required
+from app.utils.errors import safe_error
 
 _log = logging.getLogger(__name__)
 
@@ -61,7 +62,7 @@ def ia_create_campaign():
     try:
         campaign = ia_campaign_service.create_campaign(project.id, data, current_user.id)
     except ValueError as e:
-        return jsonify({'error': str(e)}), 400
+        return safe_error(e, 400)
 
     audit_service.log('ia.campaign_create', 'ia_campaign', campaign.id,
                       f'project:{project.code}', {'name': campaign.name, 'vector': campaign.vector})
@@ -94,7 +95,7 @@ def ia_update_campaign(campaign_id):
     try:
         updated = ia_campaign_service.update_campaign(campaign, data)
     except ValueError as e:
-        return jsonify({'error': str(e)}), 400
+        return safe_error(e, 400)
 
     return jsonify(updated.to_dict())
 
@@ -130,7 +131,7 @@ def ia_launch_campaign(campaign_id):
     try:
         launched = ia_campaign_service.launch_campaign(campaign)
     except ValueError as e:
-        return jsonify({'error': str(e)}), 400
+        return safe_error(e, 400)
     except Exception as e:
         _log.exception('Failed to launch campaign %s', campaign_id)
         return jsonify({'error': f'GoPhish error: {e}'}), 502
@@ -163,7 +164,7 @@ def ia_reschedule_campaign(campaign_id):
             scheduled_end=data.get('scheduled_end'),
         )
     except ValueError as e:
-        return jsonify({'error': str(e)}), 400
+        return safe_error(e, 400)
     except Exception as e:
         _log.exception('Failed to reschedule campaign %s', campaign_id)
         return jsonify({'error': f'GoPhish error: {e}'}), 502
@@ -219,7 +220,7 @@ def ia_log_event(campaign_id):
     try:
         event = ia_campaign_service.log_manual_event(campaign, data)
     except ValueError as e:
-        return jsonify({'error': str(e)}), 400
+        return safe_error(e, 400)
 
     return jsonify(event.to_dict()), 201
 
