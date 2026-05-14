@@ -4,7 +4,7 @@
 # - Reads the OLD password from .env's DATABASE_URL.
 # - Generates a fresh POSTGRES_PASSWORD.
 # - Stops web + celery to drain SQLAlchemy connection pools before the ALTER.
-# - Runs `ALTER USER infrared WITH PASSWORD '<new>'` against the running
+# - Runs `ALTER USER citadel WITH PASSWORD '<new>'` against the running
 #   postgres container, authenticating with the OLD password.
 # - Appends POSTGRES_PASSWORD + DATABASE_URL (with NEW password embedded) to
 #   the secrets file.
@@ -20,7 +20,7 @@ set -euo pipefail
 
 cd "$(dirname "$0")"
 
-SECRETS_FILE="${INFRARED_SECRETS_FILE:-$HOME/.config/infrared/secrets.env}"
+SECRETS_FILE="${CITADEL_SECRETS_FILE:-$HOME/.config/citadel/secrets.env}"
 
 # --- Validation ---
 if [ ! -f .env ]; then
@@ -43,7 +43,7 @@ fi
 OLD_DATABASE_URL=$(grep '^DATABASE_URL=' .env | head -1 | cut -d= -f2-)
 if [ -z "$OLD_DATABASE_URL" ]; then
     echo "[!] DATABASE_URL not found in .env" >&2
-    echo "    Expected line: DATABASE_URL=postgresql://infrared:<password>@postgres:5432/infrared" >&2
+    echo "    Expected line: DATABASE_URL=postgresql://citadel:<password>@postgres:5432/citadel" >&2
     exit 1
 fi
 OLD_PG_PASSWORD=$(echo "$OLD_DATABASE_URL" | sed -n 's|^postgresql://[^:]*:\([^@]*\)@.*$|\1|p')
@@ -76,11 +76,11 @@ echo "[+] Stopping web + celery (avoids pool-recycle auth failures during ALTER)
 docker compose stop web celery
 
 # --- ALTER USER on postgres (uses OLD password to authenticate) ---
-echo "[+] ALTER USER infrared WITH PASSWORD <new>"
+echo "[+] ALTER USER citadel WITH PASSWORD <new>"
 docker compose exec -T -e PGPASSWORD="$OLD_PG_PASSWORD" postgres \
-    psql -U infrared -d infrared \
+    psql -U citadel -d citadel \
     -v ON_ERROR_STOP=1 \
-    -c "ALTER USER infrared WITH PASSWORD '$NEW_PG_PASSWORD';" \
+    -c "ALTER USER citadel WITH PASSWORD '$NEW_PG_PASSWORD';" \
     > /dev/null
 echo "[+] Postgres user password rotated"
 
@@ -88,7 +88,7 @@ echo "[+] Postgres user password rotated"
 echo "[+] Appending postgres entries to $SECRETS_FILE"
 {
     echo "POSTGRES_PASSWORD=$NEW_PG_PASSWORD"
-    echo "DATABASE_URL=postgresql://infrared:$NEW_PG_PASSWORD@postgres:5432/infrared"
+    echo "DATABASE_URL=postgresql://citadel:$NEW_PG_PASSWORD@postgres:5432/citadel"
 } >> "$SECRETS_FILE"
 chmod 0600 "$SECRETS_FILE"
 
@@ -109,7 +109,7 @@ echo "     # postgres re-reads env_file (POSTGRES_PASSWORD env now matches the"
 echo "     # in-DB password); web/celery pick up the new DATABASE_URL."
 echo "  2. docker compose ps                    # all five Up, no restart loops"
 echo "  3. docker compose exec -T -e PGPASSWORD=\"\$POSTGRES_PASSWORD\" postgres \\"
-echo "       sh -c 'psql -U infrared -d infrared -c \"SELECT 1;\"'"
+echo "       sh -c 'psql -U citadel -d citadel -c \"SELECT 1;\"'"
 echo "     # Expected: 1"
 echo "  4. docker compose exec web flask shell <<<'from app.services.credential_service import get_all_for_provider; print(list(get_all_for_provider(\"cloudflare\").keys()))'"
 echo "     # Expected: provider labels, no decryption errors"

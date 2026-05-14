@@ -3,8 +3,8 @@
 # if present) from the repo-local .env to an external secrets file so they
 # never sit alongside source code.
 #
-# Default destination: $HOME/.config/infrared/secrets.env (user-owned, no sudo).
-# Override with INFRARED_SECRETS_FILE=/some/path before running.
+# Default destination: $HOME/.config/citadel/secrets.env (user-owned, no sudo).
+# Override with CITADEL_SECRETS_FILE=/some/path before running.
 #
 # Aborts if the destination already exists. The original .env is backed up
 # before lines are stripped — restore it if anything goes wrong.
@@ -13,7 +13,7 @@ set -euo pipefail
 
 cd "$(dirname "$0")"
 
-SECRETS_FILE="${INFRARED_SECRETS_FILE:-$HOME/.config/infrared/secrets.env}"
+SECRETS_FILE="${CITADEL_SECRETS_FILE:-$HOME/.config/citadel/secrets.env}"
 SECRETS_DIR=$(dirname "$SECRETS_FILE")
 
 if [ ! -f .env ]; then
