@@ -4,6 +4,7 @@ from app.api import api_bp
 from app.services import email_service
 from app.services.project_service import build_project_tag_map, get_active_project, get_project_domain_names
 from app.utils.decorators import admin_required
+from app.utils.errors import safe_error
 
 
 # --- Domains ---
@@ -41,7 +42,7 @@ def list_mailgun_domains():
 
         return jsonify({'domains': domains})
     except Exception as e:
-        return jsonify({'error': str(e)}), 400
+        return safe_error(e, 400)
 
 
 @api_bp.route('/email/domains', methods=['POST'])
@@ -57,7 +58,7 @@ def add_mailgun_domain():
         result = email_service.add_domain(data['name'], region=region)
         return jsonify({'domain': result}), 201
     except Exception as e:
-        return jsonify({'error': str(e)}), 400
+        return safe_error(e, 400)
 
 
 @api_bp.route('/email/domains/<path:name>', methods=['GET'])
@@ -68,7 +69,7 @@ def get_mailgun_domain(name):
         result = email_service.get_domain(name, region=region)
         return jsonify(result)
     except Exception as e:
-        return jsonify({'error': str(e)}), 400
+        return safe_error(e, 400)
 
 
 @api_bp.route('/email/domains/<path:name>', methods=['DELETE'])
@@ -80,7 +81,7 @@ def delete_mailgun_domain(name):
         email_service.delete_domain(name, region=region)
         return jsonify({'deleted': True})
     except Exception as e:
-        return jsonify({'error': str(e)}), 400
+        return safe_error(e, 400)
 
 
 @api_bp.route('/email/domains/<path:name>/verify', methods=['POST'])
@@ -93,7 +94,7 @@ def verify_mailgun_domain(name):
         result = email_service.verify_domain(name, region=region)
         return jsonify(result)
     except Exception as e:
-        return jsonify({'error': str(e)}), 400
+        return safe_error(e, 400)
 
 
 # --- SMTP Credentials ---
@@ -106,7 +107,7 @@ def list_smtp_credentials(name):
         creds = email_service.list_smtp_credentials(name, region=region)
         return jsonify({'credentials': creds})
     except Exception as e:
-        return jsonify({'error': str(e)}), 400
+        return safe_error(e, 400)
 
 
 @api_bp.route('/email/domains/<path:name>/credentials', methods=['POST'])
@@ -122,7 +123,7 @@ def create_smtp_credential(name):
         result = email_service.create_smtp_credential(name, data['login'], data['password'], region=region)
         return jsonify(result), 201
     except Exception as e:
-        return jsonify({'error': str(e)}), 400
+        return safe_error(e, 400)
 
 
 @api_bp.route('/email/domains/<path:name>/credentials/<login>', methods=['DELETE'])
@@ -134,4 +135,4 @@ def delete_smtp_credential(name, login):
         email_service.delete_smtp_credential(name, login, region=region)
         return jsonify({'deleted': True})
     except Exception as e:
-        return jsonify({'error': str(e)}), 400
+        return safe_error(e, 400)

@@ -9,6 +9,7 @@ from app.models.instance_ssh_config import InstanceSSHConfig
 from app.services.credential_service import _get_fernet, get_account_labels
 from app.utils.decorators import admin_required
 from app.services import audit_service
+from app.utils.errors import safe_error
 
 
 _PROVIDER = 'hetzner'
@@ -80,7 +81,7 @@ def hetzner_list_servers():
 
         return jsonify({'servers': servers})
     except Exception as e:
-        return jsonify({'error': str(e)}), 400
+        return safe_error(e, 400)
 
 
 @api_bp.route('/hetzner/servers/<server_id>', methods=['GET'])
@@ -91,7 +92,7 @@ def hetzner_get_server(server_id):
         server = hetzner_service.get_server(server_id, label=_server_label(server_id))
         return jsonify({'server': server})
     except Exception as e:
-        return jsonify({'error': str(e)}), 400
+        return safe_error(e, 400)
 
 
 @api_bp.route('/hetzner/servers', methods=['POST'])
@@ -129,7 +130,7 @@ def hetzner_create_server():
         )
         return jsonify({'server': result}), 201
     except Exception as e:
-        return jsonify({'error': str(e)}), 400
+        return safe_error(e, 400)
 
 
 @api_bp.route('/hetzner/servers/<server_id>/poweron', methods=['POST'])
@@ -142,7 +143,7 @@ def hetzner_start_server(server_id):
         audit_service.log('hetzner.start', 'hetzner', label, server_id, {})
         return jsonify({'result': result})
     except Exception as e:
-        return jsonify({'error': str(e)}), 400
+        return safe_error(e, 400)
 
 
 @api_bp.route('/hetzner/servers/<server_id>/poweroff', methods=['POST'])
@@ -155,7 +156,7 @@ def hetzner_stop_server(server_id):
         audit_service.log('hetzner.stop', 'hetzner', label, server_id, {})
         return jsonify({'result': result})
     except Exception as e:
-        return jsonify({'error': str(e)}), 400
+        return safe_error(e, 400)
 
 
 @api_bp.route('/hetzner/servers/<server_id>/reboot', methods=['POST'])
@@ -168,7 +169,7 @@ def hetzner_reboot_server(server_id):
         audit_service.log('hetzner.reboot', 'hetzner', label, server_id, {})
         return jsonify({'result': result})
     except Exception as e:
-        return jsonify({'error': str(e)}), 400
+        return safe_error(e, 400)
 
 
 @api_bp.route('/hetzner/servers/<server_id>', methods=['DELETE'])
@@ -188,7 +189,7 @@ def hetzner_delete_server(server_id):
         return jsonify({'result': result})
     except Exception as e:
         db.session.rollback()
-        return jsonify({'error': str(e)}), 400
+        return safe_error(e, 400)
 
 
 # --- Lookups: locations, server types, images ---
@@ -202,7 +203,7 @@ def hetzner_list_locations():
         locations = hetzner_service.list_locations(label=label)
         return jsonify({'locations': locations})
     except Exception as e:
-        return jsonify({'error': str(e)}), 400
+        return safe_error(e, 400)
 
 
 @api_bp.route('/hetzner/server-types', methods=['GET'])
@@ -214,7 +215,7 @@ def hetzner_list_server_types():
         types = hetzner_service.list_server_types(label=label)
         return jsonify({'server_types': types})
     except Exception as e:
-        return jsonify({'error': str(e)}), 400
+        return safe_error(e, 400)
 
 
 @api_bp.route('/hetzner/images', methods=['GET'])
@@ -227,7 +228,7 @@ def hetzner_list_images():
         images = hetzner_service.list_images(label=label, image_type=image_type)
         return jsonify({'images': images})
     except Exception as e:
-        return jsonify({'error': str(e)}), 400
+        return safe_error(e, 400)
 
 
 # --- Local Tags (provider-scoped) ---
@@ -244,7 +245,7 @@ def hetzner_list_distinct_tags():
                 .all())
         return jsonify({'tags': [r[0] for r in rows]})
     except Exception as e:
-        return jsonify({'error': str(e)}), 400
+        return safe_error(e, 400)
 
 
 @api_bp.route('/hetzner/servers/<server_id>/tags', methods=['GET'])
@@ -255,7 +256,7 @@ def hetzner_get_server_tags(server_id):
         tags = InstanceTag.query.filter_by(provider=_PROVIDER, instance_id=str(server_id)).all()
         return jsonify({'tags': [t.to_dict() for t in tags]})
     except Exception as e:
-        return jsonify({'error': str(e)}), 400
+        return safe_error(e, 400)
 
 
 @api_bp.route('/hetzner/servers/<server_id>/tags', methods=['POST'])
@@ -299,7 +300,7 @@ def hetzner_get_ssh_config(server_id):
         config = InstanceSSHConfig.query.filter_by(provider=_PROVIDER, instance_id=str(server_id)).first()
         return jsonify({'ssh_config': config.to_dict() if config else None})
     except Exception as e:
-        return jsonify({'error': str(e)}), 400
+        return safe_error(e, 400)
 
 
 @api_bp.route('/hetzner/servers/<server_id>/ssh', methods=['POST'])
@@ -339,7 +340,7 @@ def hetzner_save_ssh_config(server_id):
         return jsonify({'ssh_config': config.to_dict()}), 200
     except Exception as e:
         db.session.rollback()
-        return jsonify({'error': str(e)}), 400
+        return safe_error(e, 400)
 
 
 @api_bp.route('/hetzner/servers/<server_id>/ssh', methods=['DELETE'])
@@ -356,7 +357,7 @@ def hetzner_delete_ssh_config(server_id):
         return jsonify({'deleted': True})
     except Exception as e:
         db.session.rollback()
-        return jsonify({'error': str(e)}), 400
+        return safe_error(e, 400)
 
 
 # --- Hetzner project SSH keys (public keys uploaded to Hetzner) ---
@@ -370,7 +371,7 @@ def hetzner_list_project_ssh_keys():
         keys = hetzner_service.list_ssh_keys(label=label)
         return jsonify({'ssh_keys': keys, 'label': label})
     except Exception as e:
-        return jsonify({'error': str(e)}), 400
+        return safe_error(e, 400)
 
 
 @api_bp.route('/hetzner/ssh-keys', methods=['POST'])
@@ -391,7 +392,7 @@ def hetzner_create_project_ssh_key():
         audit_service.log('hetzner.ssh_key.create', 'hetzner', label, str(result['id']), {'name': name})
         return jsonify({'ssh_key': result, 'label': label}), 201
     except Exception as e:
-        return jsonify({'error': str(e)}), 400
+        return safe_error(e, 400)
 
 
 @api_bp.route('/hetzner/ssh-keys/<int:key_id>', methods=['DELETE'])
@@ -405,4 +406,4 @@ def hetzner_delete_project_ssh_key(key_id):
         audit_service.log('hetzner.ssh_key.delete', 'hetzner', label, str(key_id), {})
         return jsonify(result)
     except Exception as e:
-        return jsonify({'error': str(e)}), 400
+        return safe_error(e, 400)

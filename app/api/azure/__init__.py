@@ -8,6 +8,7 @@ from app.models.instance_ssh_config import InstanceSSHConfig
 from app.services.credential_service import _get_fernet, get_account_labels
 from app.services.project_service import build_project_tag_map, assert_resource_writable
 from app.utils.decorators import admin_required
+from app.utils.errors import safe_error
 
 
 def _vm_label(vm_id):
@@ -66,7 +67,7 @@ def azure_list_vms():
 
         return jsonify({'vms': vms})
     except Exception as e:
-        return jsonify({'error': str(e)}), 400
+        return safe_error(e, 400)
 
 
 @api_bp.route('/azure/vms/<rg>/<vm_name>', methods=['GET'])
@@ -78,7 +79,7 @@ def azure_get_vm(rg, vm_name):
         vm = azure_service.get_vm(rg, vm_name, label=label)
         return jsonify({'vm': vm})
     except Exception as e:
-        return jsonify({'error': str(e)}), 400
+        return safe_error(e, 400)
 
 
 @api_bp.route('/azure/vms/<rg>/<vm_name>/start', methods=['POST'])
@@ -91,7 +92,7 @@ def azure_start_vm(rg, vm_name):
         result = azure_service.start_vm(rg, vm_name, label=label)
         return jsonify({'result': result})
     except Exception as e:
-        return jsonify({'error': str(e)}), 400
+        return safe_error(e, 400)
 
 
 @api_bp.route('/azure/vms/<rg>/<vm_name>/stop', methods=['POST'])
@@ -104,7 +105,7 @@ def azure_stop_vm(rg, vm_name):
         result = azure_service.stop_vm(rg, vm_name, label=label)
         return jsonify({'result': result})
     except Exception as e:
-        return jsonify({'error': str(e)}), 400
+        return safe_error(e, 400)
 
 
 @api_bp.route('/azure/vms/<rg>/<vm_name>/restart', methods=['POST'])
@@ -117,7 +118,7 @@ def azure_restart_vm(rg, vm_name):
         result = azure_service.restart_vm(rg, vm_name, label=label)
         return jsonify({'result': result})
     except Exception as e:
-        return jsonify({'error': str(e)}), 400
+        return safe_error(e, 400)
 
 
 @api_bp.route('/azure/vms/<rg>/<vm_name>/delete', methods=['POST'])
@@ -130,7 +131,7 @@ def azure_delete_vm(rg, vm_name):
         result = azure_service.delete_vm(rg, vm_name, label=label)
         return jsonify({'result': result})
     except Exception as e:
-        return jsonify({'error': str(e)}), 400
+        return safe_error(e, 400)
 
 
 # --- SSH Configs ---
@@ -143,7 +144,7 @@ def azure_get_ssh_config(rg, vm_name):
         config = InstanceSSHConfig.query.filter_by(provider='azure', instance_id=vm_id).first()
         return jsonify({'ssh_config': config.to_dict() if config else None})
     except Exception as e:
-        return jsonify({'error': str(e)}), 400
+        return safe_error(e, 400)
 
 
 @api_bp.route('/azure/vms/<rg>/<vm_name>/ssh', methods=['POST'])
@@ -186,7 +187,7 @@ def azure_save_ssh_config(rg, vm_name):
         return jsonify({'ssh_config': config.to_dict()}), 200
     except Exception as e:
         db.session.rollback()
-        return jsonify({'error': str(e)}), 400
+        return safe_error(e, 400)
 
 
 @api_bp.route('/azure/vms/<rg>/<vm_name>/ssh', methods=['DELETE'])
@@ -203,7 +204,7 @@ def azure_delete_ssh_config(rg, vm_name):
         return jsonify({'deleted': True})
     except Exception as e:
         db.session.rollback()
-        return jsonify({'error': str(e)}), 400
+        return safe_error(e, 400)
 
 
 # --- Local Tags ---
@@ -219,7 +220,7 @@ def azure_list_distinct_tags():
                 .all())
         return jsonify({'tags': [r[0] for r in rows]})
     except Exception as e:
-        return jsonify({'error': str(e)}), 400
+        return safe_error(e, 400)
 
 
 @api_bp.route('/azure/vms/<rg>/<vm_name>/tags', methods=['GET'])
@@ -230,7 +231,7 @@ def azure_get_vm_tags(rg, vm_name):
         tags = InstanceTag.query.filter_by(provider='azure', instance_id=vm_id).all()
         return jsonify({'tags': [t.to_dict() for t in tags]})
     except Exception as e:
-        return jsonify({'error': str(e)}), 400
+        return safe_error(e, 400)
 
 
 @api_bp.route('/azure/vms/<rg>/<vm_name>/tags', methods=['POST'])
@@ -278,4 +279,4 @@ def azure_list_resource_groups():
         rgs = azure_service.list_resource_groups(label=label)
         return jsonify({'resource_groups': rgs})
     except Exception as e:
-        return jsonify({'error': str(e)}), 400
+        return safe_error(e, 400)

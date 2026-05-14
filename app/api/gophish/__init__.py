@@ -4,6 +4,7 @@ from app.api import api_bp
 from app.services import gophish_service
 from app.utils.decorators import feature_required
 from app.services.project_service import build_project_tag_map, get_active_project, get_project_domain_names
+from app.utils.errors import safe_error
 
 
 @api_bp.route('/gophish/profiles', methods=['GET'])
@@ -49,7 +50,7 @@ def list_gophish_profiles():
 
         return jsonify({'profiles': profiles})
     except Exception as e:
-        return jsonify({'error': str(e)}), 400
+        return safe_error(e, 400)
 
 
 @api_bp.route('/gophish/profiles/<int:profile_id>', methods=['GET'])
@@ -60,7 +61,7 @@ def get_gophish_profile(profile_id):
         profile = gophish_service.get_sending_profile(profile_id)
         return jsonify({'profile': profile})
     except Exception as e:
-        return jsonify({'error': str(e)}), 400
+        return safe_error(e, 400)
 
 
 @api_bp.route('/gophish/profiles', methods=['POST'])
@@ -90,7 +91,7 @@ def create_gophish_profile():
         result = gophish_service.create_sending_profile(profile_data)
         return jsonify({'profile': result}), 201
     except Exception as e:
-        return jsonify({'error': str(e)}), 400
+        return safe_error(e, 400)
 
 
 @api_bp.route('/gophish/profiles/<int:profile_id>', methods=['DELETE'])
@@ -101,7 +102,7 @@ def delete_gophish_profile(profile_id):
         gophish_service.delete_sending_profile(profile_id)
         return jsonify({'deleted': True})
     except Exception as e:
-        return jsonify({'error': str(e)}), 400
+        return safe_error(e, 400)
 
 
 # ---------------------------------------------------------------------------
@@ -116,7 +117,7 @@ def list_gophish_templates():
         templates = gophish_service.list_templates()
         return jsonify({'templates': templates if isinstance(templates, list) else []})
     except Exception as e:
-        return jsonify({'error': str(e)}), 400
+        return safe_error(e, 400)
 
 
 @api_bp.route('/gophish/templates/<int:template_id>', methods=['GET'])
@@ -127,7 +128,7 @@ def get_gophish_template(template_id):
         template = gophish_service.get_template(template_id)
         return jsonify({'template': template})
     except Exception as e:
-        return jsonify({'error': str(e)}), 400
+        return safe_error(e, 400)
 
 
 @api_bp.route('/gophish/templates', methods=['POST'])
@@ -152,7 +153,7 @@ def create_gophish_template():
         result = gophish_service.create_template(template_data)
         return jsonify({'template': result}), 201
     except Exception as e:
-        return jsonify({'error': str(e)}), 400
+        return safe_error(e, 400)
 
 
 @api_bp.route('/gophish/templates/<int:template_id>', methods=['PUT'])
@@ -175,7 +176,7 @@ def update_gophish_template(template_id):
         result = gophish_service.update_template(template_id, updated)
         return jsonify({'template': result})
     except Exception as e:
-        return jsonify({'error': str(e)}), 400
+        return safe_error(e, 400)
 
 
 @api_bp.route('/gophish/templates/<int:template_id>', methods=['DELETE'])
@@ -186,7 +187,7 @@ def delete_gophish_template(template_id):
         gophish_service.delete_template(template_id)
         return jsonify({'deleted': True})
     except Exception as e:
-        return jsonify({'error': str(e)}), 400
+        return safe_error(e, 400)
 
 
 @api_bp.route('/gophish/templates/import', methods=['POST'])
@@ -203,7 +204,7 @@ def import_gophish_template():
         })
         return jsonify({'template': result}), 200
     except Exception as e:
-        return jsonify({'error': str(e)}), 400
+        return safe_error(e, 400)
 
 
 # ---------------------------------------------------------------------------
@@ -218,7 +219,7 @@ def list_gophish_groups():
         groups = gophish_service.list_groups()
         return jsonify({'groups': groups if isinstance(groups, list) else []})
     except Exception as e:
-        return jsonify({'error': str(e)}), 400
+        return safe_error(e, 400)
 
 
 @api_bp.route('/gophish/groups/<int:group_id>', methods=['GET'])
@@ -229,7 +230,7 @@ def get_gophish_group(group_id):
         group = gophish_service.get_group(group_id)
         return jsonify({'group': group})
     except Exception as e:
-        return jsonify({'error': str(e)}), 400
+        return safe_error(e, 400)
 
 
 @api_bp.route('/gophish/groups/<int:group_id>', methods=['DELETE'])
@@ -240,7 +241,7 @@ def delete_gophish_group(group_id):
         gophish_service.delete_group(group_id)
         return jsonify({'deleted': True})
     except Exception as e:
-        return jsonify({'error': str(e)}), 400
+        return safe_error(e, 400)
 
 
 # ---------------------------------------------------------------------------
@@ -260,7 +261,7 @@ def list_gophish_campaigns():
             campaigns = [c for c in campaigns if (c.get('status') or '').lower() != 'completed']
         return jsonify({'campaigns': campaigns})
     except Exception as e:
-        return jsonify({'error': str(e)}), 400
+        return safe_error(e, 400)
 
 
 @api_bp.route('/gophish/campaigns/<int:campaign_id>', methods=['GET'])
@@ -271,7 +272,7 @@ def get_gophish_campaign(campaign_id):
         campaign = gophish_service.get_campaign(campaign_id)
         return jsonify({'campaign': campaign})
     except Exception as e:
-        return jsonify({'error': str(e)}), 400
+        return safe_error(e, 400)
 
 
 @api_bp.route('/gophish/campaigns/<int:campaign_id>/reschedule', methods=['POST'])
@@ -333,7 +334,7 @@ def reschedule_gophish_campaign(campaign_id):
         new_campaign = gophish_service.create_campaign(payload)
         return jsonify({'campaign': new_campaign})
     except Exception as e:
-        return jsonify({'error': str(e)}), 400
+        return safe_error(e, 400)
 
 
 @api_bp.route('/gophish/campaigns/<int:campaign_id>/summary', methods=['GET'])
@@ -344,4 +345,4 @@ def get_gophish_campaign_summary(campaign_id):
         summary = gophish_service.get_campaign_summary(campaign_id)
         return jsonify({'summary': summary})
     except Exception as e:
-        return jsonify({'error': str(e)}), 400
+        return safe_error(e, 400)
