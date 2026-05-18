@@ -734,6 +734,7 @@
                             <th>Listener IP</th>
                             <th>Redirector IP</th>
                             <th>Profile</th>
+                            <th>TLS</th>
                             <th></th>
                         </tr>
                     </thead>
@@ -806,6 +807,15 @@
                             </div>
                         </div>
                         <div class="col-12">
+                            <div class="form-check mt-1">
+                                <input class="form-check-input" type="checkbox" id="c2-new-tls-verify" checked>
+                                <label class="form-check-label" for="c2-new-tls-verify">
+                                    Verify TLS certificate
+                                </label>
+                                <small class="text-muted d-block">Uncheck only for self-signed teamserver certs. Disabling TLS verification exposes credentials to MITM interception.</small>
+                            </div>
+                        </div>
+                        <div class="col-12">
                             <button class="btn btn-sm btn-outline-primary" onclick="addC2Server()"><i class="bi bi-check-circle"></i> Save Server</button>
                             <button class="btn btn-sm btn-outline-secondary ms-1" onclick="toggleC2AddForm()">Cancel</button>
                         </div>
@@ -861,6 +871,15 @@
                                     <i class="bi bi-upload"></i> Upload
                                 </label>
                                 <input type="file" id="c2-edit-profile-file" class="d-none" accept=".profile,.txt,.c2profile" onchange="loadC2ProfileFile(this, 'c2-edit-profile')">
+                            </div>
+                        </div>
+                        <div class="col-12">
+                            <div class="form-check mt-1">
+                                <input class="form-check-input" type="checkbox" id="c2-edit-tls-verify" checked>
+                                <label class="form-check-label" for="c2-edit-tls-verify">
+                                    Verify TLS certificate
+                                </label>
+                                <small class="text-muted d-block">Uncheck only for self-signed teamserver certs. Disabling TLS verification exposes credentials to MITM interception.</small>
                             </div>
                         </div>
                         <div class="col-12">
@@ -2058,6 +2077,9 @@
                         <td><span class="font-monospace small">${s.listener_ip ? escHtml(s.listener_ip) : '<span class="text-muted">—</span>'}</span></td>
                         <td><span class="font-monospace small">${s.redirector_ip ? escHtml(s.redirector_ip) : '<span class="text-muted">—</span>'}</span></td>
                         <td>${s.has_profile ? '<i class="bi bi-check-circle text-success"></i>' : '<span class="text-muted">—</span>'}</td>
+                        <td><span class="c2-tls-status" data-tls-verify="${s.tls_verify !== false}">${s.tls_verify !== false
+                            ? '<i class="bi bi-shield-lock-fill text-success" title="TLS verified"></i>'
+                            : '<i class="bi bi-shield-exclamation text-warning" title="TLS verification disabled"></i>'}</span></td>
                         <td class="text-end">
                             <button class="btn btn-sm btn-outline-secondary me-1" title="Edit"
                                     onclick="openC2Edit('${escHtml(lbl)}')">
@@ -2172,7 +2194,8 @@
             return;
         }
 
-        const body = {label: label, c2_type: c2Type, api_url: apiUrl};
+        const tlsVerify = document.getElementById('c2-new-tls-verify').checked;
+        const body = {label: label, c2_type: c2Type, api_url: apiUrl, tls_verify: tlsVerify ? '1' : '0'};
         if (username) body.username = username;
         if (password) body.password = password;
         if (listenerIp) body.listener_ip = listenerIp;
@@ -2213,6 +2236,11 @@
         document.getElementById('c2-edit-redirector-ip').value = '';
         document.getElementById('c2-edit-profile').value = '';
         document.getElementById('c2-edit-profile-status').textContent = '';
+        // Load current TLS verify state from the server table row
+        const row = document.querySelector(`tr[data-c2-row="${label}"]`);
+        const tlsIcon = row ? row.querySelector('.c2-tls-status') : null;
+        document.getElementById('c2-edit-tls-verify').checked =
+            tlsIcon ? tlsIcon.dataset.tlsVerify === 'true' : true;
         document.getElementById('c2-edit-panel').classList.remove('d-none');
         loadC2Ec2Pickers();
     }
@@ -2223,7 +2251,8 @@
 
     function saveC2Edit() {
         const label = document.getElementById('c2-edit-label').value;
-        const body = {label: label};
+        const tlsVerify = document.getElementById('c2-edit-tls-verify').checked;
+        const body = {label: label, tls_verify: tlsVerify ? '1' : '0'};
         const apiUrl = document.getElementById('c2-edit-api-url').value.trim();
         const username = document.getElementById('c2-edit-username').value.trim();
         const password = document.getElementById('c2-edit-password').value.trim();
@@ -2237,11 +2266,6 @@
         if (listenerIp) body.listener_ip = listenerIp;
         if (redirectorIp) body.redirector_ip = redirectorIp;
         if (profile) body.malleable_profile = profile;
-
-        if (Object.keys(body).length <= 1) {
-            showToast('Enter at least one field to update.', 'warning');
-            return;
-        }
 
         fetch('/api/credentials/cobaltstrike', {
             method: 'POST',

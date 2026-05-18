@@ -24,6 +24,20 @@ def _base_url(label='default'):
     return url.rstrip('/')
 
 
+def _tls_verify(label='default'):
+    """Return the TLS verification setting for this CS server.
+
+    Defaults to True (secure). An administrator can explicitly set the
+    stored credential ``tls_verify`` to ``"0"`` to disable verification
+    for self-signed teamserver certs. The UI exposes this as a conscious
+    opt-in toggle.
+    """
+    val = get_credential('cobaltstrike', 'tls_verify', label=label)
+    if val is None:
+        return True
+    return val.strip().lower() not in ('0', 'false', 'no', 'off')
+
+
 def _get_credentials(label='default'):
     username = get_credential('cobaltstrike', 'username', label=label)
     password = get_credential('cobaltstrike', 'password', label=label)
@@ -39,7 +53,7 @@ def _authenticate(label='default'):
     resp = requests.post(url, json={
         'username': username,
         'password': password
-    }, verify=True, timeout=15)
+    }, verify=_tls_verify(label), timeout=15)
     if resp.status_code >= 400:
         raise Exception(f'Cobalt Strike auth failed ({resp.status_code}): {resp.text}')
     data = resp.json()
@@ -80,10 +94,11 @@ def _is_jwt_error(resp):
 def _request(method, path, label='default', **kwargs):
     url = _base_url(label) + path
     token = _get_token(label)
+    tls = _tls_verify(label)
     resp = requests.request(
         method, url,
         headers=_headers(label, token),
-        verify=True,
+        verify=tls,
         timeout=15,
         **kwargs
     )
@@ -95,7 +110,7 @@ def _request(method, path, label='default', **kwargs):
         resp = requests.request(
             method, url,
             headers=_headers(label, new_token),
-            verify=True,
+            verify=tls,
             timeout=15,
             **kwargs
         )
