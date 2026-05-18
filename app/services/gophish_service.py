@@ -9,9 +9,9 @@ def _base_url():
     url = get_credential('gophish', 'api_url')
     if not url:
         raise ValueError('GoPhish API URL not configured')
-    # E-1: block SSRF at runtime
+    # E-1: scheme + format check — GoPhish lives on private infra by design
     from app.utils.url_validation import validate_outbound_url
-    ok, reason = validate_outbound_url(url)
+    ok, reason = validate_outbound_url(url, resolve=False)
     if not ok:
         raise ValueError(f'GoPhish API URL blocked: {reason}')
     return url.rstrip('/')
