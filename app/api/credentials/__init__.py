@@ -2,7 +2,7 @@ import logging
 from flask import request, jsonify
 from flask_login import login_required, current_user
 from app.api import api_bp
-from app.services import credential_service
+from app.services import credential_service, audit_service
 from app.utils.decorators import admin_required
 from app.utils.errors import safe_error
 
@@ -72,6 +72,10 @@ def save_credentials(provider):
                         return jsonify({'error': f'Invalid {key_name}: {reason}'}), 400
                 credential_service.set_credential(provider, key_name, val, label=label)
                 saved.append(key_name)
+        # L-01: audit credential writes
+        if saved:
+            audit_service.log('credential.update', 'credential', '', f'{provider}/{label}',
+                              {'provider': provider, 'label': label, 'keys': sorted(saved)})
         return jsonify({'saved': saved, 'provider': provider, 'label': label})
 
     # Other providers: always use label='default'
@@ -86,6 +90,10 @@ def save_credentials(provider):
                     return jsonify({'error': f'Invalid {key_name}: {reason}'}), 400
             credential_service.set_credential(provider, key_name, val)
             saved.append(key_name)
+    # L-01: audit credential writes
+    if saved:
+        audit_service.log('credential.update', 'credential', '', provider,
+                          {'provider': provider, 'keys': sorted(saved)})
     return jsonify({'saved': saved, 'provider': provider})
 
 
@@ -98,6 +106,8 @@ def delete_cloudflare_account(label):
         return jsonify({'error': 'Cannot delete the last Cloudflare account'}), 400
     deleted = credential_service.delete_account('cloudflare', label)
     if deleted:
+        audit_service.log('credential.delete', 'credential', '', f'cloudflare/{label}',
+                          {'provider': 'cloudflare', 'label': label})
         return jsonify({'deleted': True, 'label': label})
     return jsonify({'error': 'Account not found'}), 404
 
@@ -111,6 +121,8 @@ def delete_aws_account(label):
         return jsonify({'error': 'Cannot delete the last AWS account'}), 400
     deleted = credential_service.delete_account('aws', label)
     if deleted:
+        audit_service.log('credential.delete', 'credential', '', f'aws/{label}',
+                          {'provider': 'aws', 'label': label})
         return jsonify({'deleted': True, 'label': label})
     return jsonify({'error': 'Account not found'}), 404
 
@@ -124,6 +136,8 @@ def delete_azure_account(label):
         return jsonify({'error': 'Cannot delete the last Azure account'}), 400
     deleted = credential_service.delete_account('azure', label)
     if deleted:
+        audit_service.log('credential.delete', 'credential', '', f'azure/{label}',
+                          {'provider': 'azure', 'label': label})
         return jsonify({'deleted': True, 'label': label})
     return jsonify({'error': 'Account not found'}), 404
 
@@ -137,6 +151,8 @@ def delete_cobaltstrike_account(label):
         return jsonify({'error': 'Cannot delete the last C2 server'}), 400
     deleted = credential_service.delete_account('cobaltstrike', label)
     if deleted:
+        audit_service.log('credential.delete', 'credential', '', f'cobaltstrike/{label}',
+                          {'provider': 'cobaltstrike', 'label': label})
         return jsonify({'deleted': True, 'label': label})
     return jsonify({'error': 'C2 server not found'}), 404
 
@@ -149,6 +165,8 @@ def delete_hetzner_account(label):
     # (sidebar disappears, /hetzner redirects, API returns 404).
     deleted = credential_service.delete_account('hetzner', label)
     if deleted:
+        audit_service.log('credential.delete', 'credential', '', f'hetzner/{label}',
+                          {'provider': 'hetzner', 'label': label})
         return jsonify({'deleted': True, 'label': label})
     return jsonify({'error': 'Account not found'}), 404
 

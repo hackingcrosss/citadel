@@ -1,6 +1,7 @@
 from flask import jsonify, abort
 from flask_login import login_required, current_user
 from app.api import api_bp
+from app.services import audit_service
 from app.utils.errors import safe_error
 
 
@@ -21,6 +22,7 @@ def clear_completed_tasks():
     from app.services import task_log_service
     try:
         task_log_service.clear_completed(user=current_user)
+        audit_service.log('task_log.clear', 'task_log', '', '')
         return jsonify({'ok': True})
     except Exception as e:
         return safe_error(e, 500)
@@ -42,6 +44,7 @@ def revoke_task(task_id):
         # For PENDING tasks, control.revoke() never writes to the result backend,
         # so AsyncResult.status stays PENDING forever. Force it to REVOKED now.
         celery.backend.store_result(task_id, None, 'REVOKED')
+        audit_service.log('task_log.revoke', 'task', task_id, task_id)
         return jsonify({'ok': True})
     except Exception as e:
         return safe_error(e, 500)

@@ -4,6 +4,7 @@ from flask_login import login_required, current_user
 from app.api import api_bp
 from app.utils.decorators import feature_required
 from app.services.project_service import get_active_project, get_project_domain_names
+from app.services import audit_service
 from app.utils.errors import safe_error
 
 
@@ -57,6 +58,8 @@ def website_generator_generate():
                               meta={'subdomain': subdomain, 'domain': domain or '',
                                     'zone_id': zone_id, 'zone_name': zone_name},
                               user_id=current_user.id)
+    audit_service.log('website_generator.generate', 'website', task.id, category,
+                      {'domain': domain or '', 'subdomain': subdomain})
     return jsonify({'task_id': task.id})
 
 
@@ -98,6 +101,8 @@ def website_generator_deploy():
     try:
         from app.services import website_generator_service
         result = website_generator_service.deploy_website(html, category)
+        audit_service.log('website_generator.deploy', 'website', '', category,
+                          {'folder': result.get('folder_name', '')})
         return jsonify(result)
     except Exception as e:
         return safe_error(e, 500)
@@ -111,6 +116,7 @@ def website_generator_relaunch():
     try:
         from app.services import website_generator_service
         result = website_generator_service.relaunch_containers()
+        audit_service.log('website_generator.relaunch', 'website', '', '')
         return jsonify(result)
     except Exception as e:
         return safe_error(e, 500)
@@ -150,6 +156,8 @@ def website_generator_publish():
             zone_name=zone_name,
             subdomain=subdomain,
         )
+        audit_service.log('website_generator.publish', 'website', '', category,
+                          {'zone_name': zone_name, 'subdomain': subdomain})
         return jsonify(result)
     except Exception as e:
         return safe_error(e, 500)
@@ -204,6 +212,7 @@ def delete_deployed_site(folder_name):
     try:
         from app.services import website_generator_service
         result = website_generator_service.remove_deployed_site(folder_name)
+        audit_service.log('website_generator.delete', 'website', folder_name, folder_name)
         return jsonify({'ok': True, **result})
     except Exception as e:
         return safe_error(e, 500)
