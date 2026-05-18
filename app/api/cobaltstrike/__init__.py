@@ -196,6 +196,8 @@ def list_c2_servers():
         listener_ip = get_credential('cobaltstrike', 'listener_ip', label=label) or ''
         redirector_ip = get_credential('cobaltstrike', 'redirector_ip', label=label) or ''
         has_profile = bool(get_credential('cobaltstrike', 'malleable_profile', label=label))
+        tls_raw = get_credential('cobaltstrike', 'tls_verify', label=label)
+        tls_verify = tls_raw is None or tls_raw.strip().lower() not in ('0', 'false', 'no', 'off')
         api_url_info = keys.get('api_url', {})
         servers.append({
             'label': label,
@@ -203,6 +205,7 @@ def list_c2_servers():
             'listener_ip': listener_ip,
             'redirector_ip': redirector_ip,
             'has_profile': has_profile,
+            'tls_verify': tls_verify,
             'configured': bool(api_url_info),
             'api_url_masked': api_url_info.get('masked', ''),
         })
