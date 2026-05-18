@@ -55,7 +55,8 @@ def website_generator_generate():
     task = generate_website_task.delay(category, domain=domain, extra_context=extra_context)
     task_log_service.log_task(task.id, 'website_generation', category,
                               meta={'subdomain': subdomain, 'domain': domain or '',
-                                    'zone_id': zone_id, 'zone_name': zone_name})
+                                    'zone_id': zone_id, 'zone_name': zone_name},
+                              user_id=current_user.id)
     return jsonify({'task_id': task.id})
 
 
@@ -63,6 +64,13 @@ def website_generator_generate():
 @login_required
 @feature_required('website_generator')
 def website_generator_status(task_id):
+    # API-IDOR-01: only the task submitter or admin/auditor may poll status
+    from app.services import task_log_service
+    owner_id = task_log_service.get_task_owner(task_id)
+    if owner_id is not None and owner_id != current_user.id \
+            and not current_user.is_admin and not current_user.is_auditor:
+        abort(403)
+
     from app.tasks.celery_app import celery
     result = celery.AsyncResult(task_id)
 

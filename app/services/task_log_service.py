@@ -16,8 +16,12 @@ def _redis():
     return redis.from_url(url, decode_responses=True)
 
 
-def log_task(task_id, task_type, description, meta=None):
-    """Record a submitted task so it shows up in the task log."""
+def log_task(task_id, task_type, description, meta=None, user_id=None):
+    """Record a submitted task so it shows up in the task log.
+
+    *user_id* tags the entry so get_tasks / clear_completed can scope by
+    ownership (API-IDOR-01).
+    """
     r = _redis()
     entry = {
         'task_id': task_id,
@@ -27,12 +31,19 @@ def log_task(task_id, task_type, description, meta=None):
     }
     if meta:
         entry['meta'] = meta
+    if user_id is not None:
+        entry['user_id'] = user_id
     r.lpush(TASK_LOG_KEY, json.dumps(entry))
     r.ltrim(TASK_LOG_KEY, 0, MAX_TASKS - 1)
 
 
-def get_tasks():
-    """Return all logged tasks enriched with current Celery status."""
+def get_tasks(user=None):
+    """Return logged tasks enriched with current Celery status.
+
+    If *user* is provided and is not admin/auditor, only tasks owned by
+    that user are returned (API-IDOR-01).  Legacy entries without a
+    user_id are visible only to admins/auditors.
+    """
     from app.tasks.celery_app import celery
 
     r = _redis()
@@ -40,8 +51,17 @@ def get_tasks():
     now = time.time()
     result = []
 
+    # Determine whether we need to filter
+    scope_all = user is None or getattr(user, 'is_admin', False) or getattr(user, 'is_auditor', False)
+
     for item in raw:
         t = json.loads(item)
+
+        # Ownership filter (API-IDOR-01)
+        if not scope_all:
+            if t.get('user_id') != getattr(user, 'id', None):
+                continue
+
         task_id = t['task_id']
         ar = celery.AsyncResult(task_id)
         status = ar.status
@@ -76,9 +96,26 @@ def get_tasks():
     return result
 
 
-def clear_completed():
-    """Remove SUCCESS / FAILURE / REVOKED tasks from the log."""
+def get_task_owner(task_id):
+    """Return the user_id that submitted *task_id*, or None."""
+    r = _redis()
+    raw = r.lrange(TASK_LOG_KEY, 0, -1)
+    for item in raw:
+        t = json.loads(item)
+        if t['task_id'] == task_id:
+            return t.get('user_id')
+    return None
+
+
+def clear_completed(user=None):
+    """Remove SUCCESS / FAILURE / REVOKED tasks from the log.
+
+    If *user* is provided and is not admin, only that user's completed
+    tasks are removed (API-IDOR-01).
+    """
     from app.tasks.celery_app import celery
+
+    scope_all = user is None or getattr(user, 'is_admin', False)
 
     r = _redis()
     raw = r.lrange(TASK_LOG_KEY, 0, -1)
@@ -86,7 +123,12 @@ def clear_completed():
     for item in raw:
         t = json.loads(item)
         ar = celery.AsyncResult(t['task_id'])
-        if ar.status not in ('SUCCESS', 'FAILURE', 'REVOKED'):
+        is_done = ar.status in ('SUCCESS', 'FAILURE', 'REVOKED')
+        # Keep the entry if it's not done, or if it belongs to someone
+        # else and we're scoping by user.
+        if not is_done:
+            keep.append(item)
+        elif not scope_all and t.get('user_id') != getattr(user, 'id', None):
             keep.append(item)
 
     r.delete(TASK_LOG_KEY)
