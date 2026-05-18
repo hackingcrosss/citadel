@@ -3,7 +3,7 @@ import re
 from flask import request, jsonify, abort
 from flask_login import login_required, current_user
 from app.api import api_bp
-from app.services import email_service
+from app.services import email_service, audit_service
 from app.services.project_service import build_project_tag_map, get_active_project, get_project_domain_names
 from app.utils.decorators import admin_required
 from app.utils.errors import safe_error
@@ -67,6 +67,8 @@ def add_mailgun_domain():
     region = data.get('region', 'us')
     try:
         result = email_service.add_domain(data['name'], region=region)
+        audit_service.log('email.domain_add', 'mailgun_domain', '', data['name'],
+                          {'region': region})
         return jsonify({'domain': result}), 201
     except Exception as e:
         return safe_error(e, 400)
@@ -92,6 +94,8 @@ def delete_mailgun_domain(name):
     region = request.args.get('region', 'us')
     try:
         email_service.delete_domain(name, region=region)
+        audit_service.log('email.domain_delete', 'mailgun_domain', '', name,
+                          {'region': region})
         return jsonify({'deleted': True})
     except Exception as e:
         return safe_error(e, 400)
@@ -137,6 +141,8 @@ def create_smtp_credential(name):
     region = data.get('region', 'us')
     try:
         result = email_service.create_smtp_credential(name, data['login'], data['password'], region=region)
+        audit_service.log('email.smtp_credential_create', 'mailgun_credential', '', f'{data["login"]}@{name}',
+                          {'domain': name, 'login': data['login'], 'region': region})
         return jsonify(result), 201
     except Exception as e:
         return safe_error(e, 400)
@@ -150,6 +156,8 @@ def delete_smtp_credential(name, login):
     region = request.args.get('region', 'us')
     try:
         email_service.delete_smtp_credential(name, login, region=region)
+        audit_service.log('email.smtp_credential_delete', 'mailgun_credential', '', f'{login}@{name}',
+                          {'domain': name, 'login': login, 'region': region})
         return jsonify({'deleted': True})
     except Exception as e:
         return safe_error(e, 400)

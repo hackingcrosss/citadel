@@ -1,8 +1,7 @@
 """Audit logging service.
 
 Call audit_service.log() from any API endpoint to record an infrastructure
-change. The function is intentionally safe — it never raises, so a logging
-failure never breaks the actual operation.
+change.
 
 Action naming convention:  <entity_type>.<verb>
 Examples:
@@ -14,17 +13,50 @@ Examples:
   cs_listener.create    cs_listener.delete
   npm_proxy.create      npm_proxy.delete
   user.create           user.update           user.delete
-  credential.update
+  credential.update     credential.delete
   auth.login            auth.login_failed     auth.password_change
+  container.start       container.stop        container.restart  container.delete
+  website_generator.generate  website_generator.deploy
+  license.update
 """
 import json
 import logging
+import re
 
 _log = logging.getLogger(__name__)
 
+# D-03: strip control characters and truncate entity_name to prevent
+# log injection / CSV formula injection / search pollution.
+_CONTROL_RE = re.compile(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]')
+_MAX_ENTITY_NAME = 120
 
-def log(action, entity_type='', entity_id='', entity_name='', details=None):
-    """Record an audit trail entry. Never raises."""
+
+def _sanitise_text(value, max_len=_MAX_ENTITY_NAME):
+    """Strip control chars, CSV-formula prefixes, and truncate."""
+    if not value:
+        return ''
+    value = str(value)
+    # Strip CR/LF/control bytes
+    value = _CONTROL_RE.sub('', value).replace('\r', '').replace('\n', ' ')
+    # CSV formula injection guard: prefix dangerous leading chars
+    if value and value[0] in ('=', '+', '-', '@', '\t'):
+        value = "'" + value
+    return value[:max_len]
+
+
+def log(action, entity_type='', entity_id='', entity_name='', details=None,
+        session=None):
+    """Record an audit trail entry.
+
+    If *session* is provided the entry is added to that SQLAlchemy session
+    (L-02: caller controls the commit so audit participates in the same
+    transaction). If *session* is ``None`` the function creates its own
+    commit — this is the legacy path for callsites that haven't been
+    migrated yet.
+
+    On failure the exception is logged at WARNING level but never
+    re-raised, so a logging failure never breaks the actual operation.
+    """
     try:
         from flask import request
         from flask_login import current_user
@@ -45,18 +77,33 @@ def log(action, entity_type='', entity_id='', entity_name='', details=None):
         except Exception:
             ip = ''
 
+        # D-03: sanitise user-influenced fields
+        clean_name = _sanitise_text(entity_name)
+        clean_eid  = _sanitise_text(str(entity_id) if entity_id != '' else '', max_len=80)
+
         entry = AuditLog(
             user_id     = user_id,
             user_email  = user_email,
             user_role   = user_role,
             action      = action,
-            entity_type = entity_type or '',
-            entity_id   = str(entity_id) if entity_id != '' else '',
-            entity_name = entity_name or '',
+            entity_type = str(entity_type or '')[:40],
+            entity_id   = clean_eid,
+            entity_name = clean_name,
             details     = json.dumps(details) if details is not None else None,
             ip_address  = ip,
         )
-        db.session.add(entry)
-        db.session.commit()
+
+        # L-02: if caller provides a session, add to it (same-txn audit).
+        # Otherwise fall back to an independent commit.
+        sess = session or db.session
+        sess.add(entry)
+        if session is None:
+            db.session.commit()
     except Exception as exc:
         _log.warning('audit_service.log failed for action=%r: %s', action, exc)
+        # L-02: attempt a rollback so the session isn't left dirty
+        try:
+            from app import db as _db
+            _db.session.rollback()
+        except Exception:
+            pass

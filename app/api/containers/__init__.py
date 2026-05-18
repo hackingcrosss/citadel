@@ -9,6 +9,7 @@ from app.services.project_service import (
     get_user_project_ids,
     is_platform_core_container,
 )
+from app.services import audit_service
 from app.utils.errors import safe_error
 
 
@@ -72,6 +73,7 @@ def start_container(container_id):
     assert_resource_writable('container', container_id, current_user)
     try:
         result = docker_service.start_container(container_id)
+        audit_service.log('container.start', 'container', container_id, container_id)
         return jsonify({'result': result})
     except Exception as e:
         return safe_error(e, 400)
@@ -83,6 +85,7 @@ def stop_container(container_id):
     assert_resource_writable('container', container_id, current_user)
     try:
         result = docker_service.stop_container(container_id)
+        audit_service.log('container.stop', 'container', container_id, container_id)
         return jsonify({'result': result})
     except Exception as e:
         return safe_error(e, 400)
@@ -94,6 +97,7 @@ def restart_container(container_id):
     assert_resource_writable('container', container_id, current_user)
     try:
         result = docker_service.restart_container(container_id)
+        audit_service.log('container.restart', 'container', container_id, container_id)
         return jsonify({'result': result})
     except Exception as e:
         return safe_error(e, 400)
@@ -106,6 +110,8 @@ def remove_container(container_id):
     force = request.args.get('force', 'false').lower() == 'true'
     try:
         result = docker_service.remove_container(container_id, force=force)
+        audit_service.log('container.delete', 'container', container_id, container_id,
+                          {'force': force})
         return jsonify({'result': result})
     except Exception as e:
         return safe_error(e, 400)

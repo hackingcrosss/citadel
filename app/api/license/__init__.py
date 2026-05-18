@@ -85,6 +85,11 @@ def update_license():
 
     _log.info('Admin %s changed license tier to %s', current_user.email, lic.tier)
 
+    # L-01: audit license changes
+    from app.services import audit_service
+    audit_service.log('license.update', 'license', '', lic.org_name or '',
+                      {'tier': lic.tier, 'org_name': lic.org_name or ''})
+
     # Return fresh plan info
     plan = get_current_plan()
     return jsonify({

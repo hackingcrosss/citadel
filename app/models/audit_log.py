@@ -6,7 +6,7 @@ from app import db
 class AuditLog(db.Model):
     __tablename__ = 'audit_logs'
 
-    id          = db.Column(db.Integer, primary_key=True)
+    id          = db.Column(db.BigInteger, primary_key=True)
     timestamp   = db.Column(db.DateTime, default=datetime.utcnow, nullable=False, index=True)
     user_id     = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='SET NULL'), nullable=True, index=True)
     user_email  = db.Column(db.String(120), nullable=False, default='system')
