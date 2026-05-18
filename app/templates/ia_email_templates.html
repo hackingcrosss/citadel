@@ -364,10 +364,17 @@
                         _pollTimer = null;
                         localStorage.removeItem(GEN_TASK_KEY);
                         document.getElementById('gen-progress-card').style.display = 'none';
-                        showToast('Templates generated successfully', 'success');
-                        addNotification('Email templates generated', 'success', '/initial-access/email-templates');
+                        const inner = data.result || {};
+                        if (inner.status === 'failed' || inner.error) {
+                            const msg = inner.error || 'Unknown error';
+                            showToast('Generation failed: ' + msg, 'danger');
+                            addNotification('Email template generation failed: ' + msg, 'danger', '/initial-access/email-templates');
+                        } else {
+                            showToast('Templates generated successfully', 'success');
+                            addNotification('Email templates generated', 'success', '/initial-access/email-templates');
+                        }
                         loadBatches();
-                        viewBatch(batchId);
+                        if (!inner.error) viewBatch(batchId);
                     } else if (data.state === 'FAILURE') {
                         clearInterval(_pollTimer);
                         _pollTimer = null;

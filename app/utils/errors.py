@@ -15,11 +15,25 @@ def safe_error(exc, status=400, **extra):
 
     `extra` keys are merged into the response body so endpoints that previously
     returned auxiliary fields (e.g. `tasks=[]`, `sites=[]`) keep working.
+
+    Error visibility rules:
+    - Debug mode: full error string (developer workflow).
+    - Admin users: error string included (operational diagnostics).
+    - Everyone else: generic "Internal error" + correlation id.
     """
     err_id = uuid4().hex[:12]
     current_app.logger.exception('api error [%s]', err_id)
     body = {'err_id': err_id}
-    if current_app.debug:
+
+    show_detail = current_app.debug
+    if not show_detail:
+        try:
+            from flask_login import current_user
+            show_detail = current_user.is_authenticated and current_user.is_admin
+        except Exception:
+            pass
+
+    if show_detail:
         body['error'] = str(exc)
     else:
         body['error'] = 'Internal error'

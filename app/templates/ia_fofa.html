@@ -191,7 +191,7 @@
                     <td title="${escapeAttr(s.query || '')}"><code class="small">${escapeHtml(queryShort)}</code></td>
                     <td><span class="badge bg-dark">${escapeHtml(s.scope_type || '-')}</span> ${escapeHtml(s.scope_value || '')}</td>
                     <td>${s.results_count != null ? s.results_count : '-'}${s.total_results != null ? ' / ' + s.total_results : ''}</td>
-                    <td><span class="badge ${statusCls}">${escapeHtml(s.status)}</span></td>
+                    <td><span class="badge ${statusCls}">${escapeHtml(s.status)}</span>${s.error_message ? `<br><small class="text-danger">${escapeHtml(s.error_message.substring(0, 120))}</small>` : ''}</td>
                     <td><small>${escapeHtml(date)}</small></td>
                     <td>
                         ${s.status === 'completed' && s.results_count > 0 ? `<button class="btn btn-sm btn-outline-primary" onclick="viewResults(${s.id})" title="View results" aria-label="View results"><i class="bi bi-eye"></i></button>` : ''}
@@ -326,8 +326,17 @@
                     clearInterval(_pollTimer);
                     _pollTimer = null;
                     localStorage.removeItem(FOFA_TASK_KEY);
-                    if (typeof addNotification === 'function') {
-                        addNotification('FOFA search completed', 'success');
+                    const inner = data.result || {};
+                    if (inner.status === 'failed') {
+                        const msg = inner.error || 'Unknown error';
+                        showToast('FOFA search failed: ' + msg, 'danger');
+                        if (typeof addNotification === 'function') {
+                            addNotification('FOFA search failed: ' + msg, 'danger');
+                        }
+                    } else {
+                        if (typeof addNotification === 'function') {
+                            addNotification('FOFA search completed', 'success');
+                        }
                     }
                     loadSearches();
                 } else if (data.state === 'FAILURE') {
