@@ -9,9 +9,11 @@ def _base_url():
     url = get_credential('npm', 'api_url')
     if not url:
         raise ValueError("NPM API URL not configured. Set it in Settings.")
-    # E-1: block SSRF at runtime
+    # E-1: scheme + format check only — NPM is a legitimate internal host
+    # managed by the admin. DNS-resolution blocking is skipped because NPM
+    # lives on the operator's private infrastructure by design.
     from app.utils.url_validation import validate_outbound_url
-    ok, reason = validate_outbound_url(url)
+    ok, reason = validate_outbound_url(url, resolve=False)
     if not ok:
         raise ValueError(f'NPM API URL blocked: {reason}')
     return url.rstrip('/')

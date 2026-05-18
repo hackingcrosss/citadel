@@ -21,9 +21,10 @@ def _base_url(label='default'):
     url = get_credential('cobaltstrike', 'api_url', label=label)
     if not url:
         raise ValueError(f'Cobalt Strike API URL not configured for server "{label}"')
-    # E-1: block SSRF at runtime (defence-in-depth, also checked at save time)
+    # E-1: scheme + format check — CS teamservers live on private infra by design,
+    # so DNS-resolution blocking is skipped. Scheme/userinfo/format still validated.
     from app.utils.url_validation import validate_outbound_url
-    ok, reason = validate_outbound_url(url)
+    ok, reason = validate_outbound_url(url, resolve=False)
     if not ok:
         raise ValueError(f'Cobalt Strike API URL blocked: {reason}')
     return url.rstrip('/')
