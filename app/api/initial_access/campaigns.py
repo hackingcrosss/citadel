@@ -5,7 +5,7 @@ from flask import request, jsonify
 from flask_login import login_required, current_user
 from app.api import api_bp
 from app.services import ia_campaign_service, audit_service
-from app.services.project_service import get_active_project
+from app.services.project_service import get_active_project, assert_record_accessible
 from app.utils.decorators import feature_required
 from app.utils.errors import safe_error
 
@@ -19,14 +19,12 @@ def _require_active_project():
     return project
 
 
-def _get_campaign_or_404(campaign_id):
+def _get_campaign_or_404(campaign_id, write=False):
     campaign = ia_campaign_service.get_campaign(campaign_id)
     if not campaign:
         return None, jsonify({'error': 'Campaign not found'}), 404
-    project = _require_active_project()
-    if not project or campaign.project_id != project.id:
-        if not current_user.is_admin:
-            return None, jsonify({'error': 'Access denied'}), 403
+    # C-04: authorise via membership, not session active-project
+    assert_record_accessible(campaign, current_user, write=write)
     return campaign, None, None
 
 
@@ -85,7 +83,7 @@ def ia_get_campaign(campaign_id):
 @login_required
 @feature_required('initial_access')
 def ia_update_campaign(campaign_id):
-    campaign, err, code = _get_campaign_or_404(campaign_id)
+    campaign, err, code = _get_campaign_or_404(campaign_id, write=True)
     if err:
         return err, code
     if not current_user.can_write_infra:
@@ -104,14 +102,15 @@ def ia_update_campaign(campaign_id):
 @login_required
 @feature_required('initial_access')
 def ia_archive_campaign(campaign_id):
-    campaign, err, code = _get_campaign_or_404(campaign_id)
+    campaign, err, code = _get_campaign_or_404(campaign_id, write=True)
     if err:
         return err, code
     if not current_user.can_write_infra:
         return jsonify({'error': 'Write access required'}), 403
 
+    project = _require_active_project()
     audit_service.log('ia.campaign_archive', 'ia_campaign', campaign.id,
-                      f'project:{_require_active_project().code}', {'name': campaign.name})
+                      f'project:{project.code if project else "?"}', {'name': campaign.name})
     ia_campaign_service.archive_campaign(campaign)
     return jsonify({'ok': True})
 
@@ -122,7 +121,7 @@ def ia_archive_campaign(campaign_id):
 @login_required
 @feature_required('initial_access')
 def ia_launch_campaign(campaign_id):
-    campaign, err, code = _get_campaign_or_404(campaign_id)
+    campaign, err, code = _get_campaign_or_404(campaign_id, write=True)
     if err:
         return err, code
     if not current_user.can_write_infra:
@@ -147,7 +146,7 @@ def ia_launch_campaign(campaign_id):
 @login_required
 @feature_required('initial_access')
 def ia_reschedule_campaign(campaign_id):
-    campaign, err, code = _get_campaign_or_404(campaign_id)
+    campaign, err, code = _get_campaign_or_404(campaign_id, write=True)
     if err:
         return err, code
     if not current_user.can_write_infra:
@@ -207,7 +206,7 @@ def ia_campaign_events(campaign_id):
 @feature_required('initial_access')
 def ia_log_event(campaign_id):
     """Manually log a vishing/smishing/other event."""
-    campaign, err, code = _get_campaign_or_404(campaign_id)
+    campaign, err, code = _get_campaign_or_404(campaign_id, write=True)
     if err:
         return err, code
     if not current_user.can_write_infra:
@@ -231,7 +230,7 @@ def ia_log_event(campaign_id):
 @login_required
 @feature_required('initial_access')
 def ia_add_campaign_targets(campaign_id):
-    campaign, err, code = _get_campaign_or_404(campaign_id)
+    campaign, err, code = _get_campaign_or_404(campaign_id, write=True)
     if err:
         return err, code
     if not current_user.can_write_infra:
@@ -250,7 +249,7 @@ def ia_add_campaign_targets(campaign_id):
 @login_required
 @feature_required('initial_access')
 def ia_remove_campaign_target(campaign_id, target_id):
-    campaign, err, code = _get_campaign_or_404(campaign_id)
+    campaign, err, code = _get_campaign_or_404(campaign_id, write=True)
     if err:
         return err, code
     if not current_user.can_write_infra:

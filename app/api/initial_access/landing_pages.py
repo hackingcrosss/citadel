@@ -5,7 +5,7 @@ from flask import request, jsonify
 from flask_login import login_required, current_user
 from app.api import api_bp
 from app.services import ia_landing_service, audit_service
-from app.services.project_service import get_active_project
+from app.services.project_service import get_active_project, assert_record_accessible
 from app.utils.decorators import feature_required
 from app.utils.errors import safe_error
 
@@ -19,14 +19,12 @@ def _require_active_project():
     return project
 
 
-def _get_page_or_403(page_id):
+def _get_page_or_403(page_id, write=False):
     page = ia_landing_service.get_landing_page(page_id)
     if not page:
         return None, jsonify({'error': 'Landing page not found'}), 404
-    project = _require_active_project()
-    if not project or page.project_id != project.id:
-        if not current_user.is_admin:
-            return None, jsonify({'error': 'Access denied'}), 403
+    # C-04: authorise via membership, not session active-project
+    assert_record_accessible(page, current_user, write=write)
     return page, None, None
 
 
@@ -81,7 +79,7 @@ def ia_get_landing_page(page_id):
 @login_required
 @feature_required('initial_access')
 def ia_update_landing_page(page_id):
-    page, err, code = _get_page_or_403(page_id)
+    page, err, code = _get_page_or_403(page_id, write=True)
     if err:
         return err, code
     if not current_user.can_write_infra:
@@ -100,7 +98,7 @@ def ia_update_landing_page(page_id):
 @login_required
 @feature_required('initial_access')
 def ia_deploy_landing_page(page_id):
-    page, err, code = _get_page_or_403(page_id)
+    page, err, code = _get_page_or_403(page_id, write=True)
     if err:
         return err, code
     if not current_user.can_write_infra:
@@ -125,7 +123,7 @@ def ia_deploy_landing_page(page_id):
 @login_required
 @feature_required('initial_access')
 def ia_teardown_landing_page(page_id):
-    page, err, code = _get_page_or_403(page_id)
+    page, err, code = _get_page_or_403(page_id, write=True)
     if err:
         return err, code
     if not current_user.can_write_infra:

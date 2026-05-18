@@ -9,7 +9,7 @@ from flask_login import current_user, login_required
 from app.api import api_bp
 from app.models.domain import Domain
 from app.services import audit_service, evilginx_service
-from app.services.project_service import get_active_project
+from app.services.project_service import get_active_project, assert_record_accessible
 from app.utils.decorators import feature_required
 from app.utils.errors import safe_error
 
@@ -26,13 +26,12 @@ def _require_active_project():
     return project
 
 
-def _get_phishlet_or_403(phishlet_id):
+def _get_phishlet_or_403(phishlet_id, write=False):
     p = evilginx_service.get_phishlet(phishlet_id)
     if not p:
         return None, jsonify({'error': 'Phishlet not found'}), 404
-    project = _require_active_project()
-    if not current_user.is_admin and (not project or p.project_id != project.id):
-        return None, jsonify({'error': 'Access denied'}), 403
+    # C-04: authorise via membership, not session active-project
+    assert_record_accessible(p, current_user, write=write)
     return p, None, None
 
 
@@ -154,7 +153,7 @@ def evilginx_create():
 @login_required
 @feature_required('evilginx')
 def evilginx_deploy(phishlet_id):
-    p, err, code = _get_phishlet_or_403(phishlet_id)
+    p, err, code = _get_phishlet_or_403(phishlet_id, write=True)
     if err:
         return err, code
     if not _can_write():
@@ -182,7 +181,7 @@ def evilginx_deploy(phishlet_id):
 @login_required
 @feature_required('evilginx')
 def evilginx_teardown(phishlet_id):
-    p, err, code = _get_phishlet_or_403(phishlet_id)
+    p, err, code = _get_phishlet_or_403(phishlet_id, write=True)
     if err:
         return err, code
     if not _can_write():
@@ -208,7 +207,7 @@ def evilginx_teardown(phishlet_id):
 @login_required
 @feature_required('evilginx')
 def evilginx_delete(phishlet_id):
-    p, err, code = _get_phishlet_or_403(phishlet_id)
+    p, err, code = _get_phishlet_or_403(phishlet_id, write=True)
     if err:
         return err, code
     if not _can_write():
