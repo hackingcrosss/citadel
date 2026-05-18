@@ -80,32 +80,56 @@ def _headers(label='default', token=None):
     }
 
 
-def _is_jwt_error(resp):
-    """Return True if the response indicates a JWT signature/validity error."""
-    try:
-        body = resp.json()
-        text = str(body.get('detail') or body.get('message') or body.get('title') or '')
-    except Exception:
-        text = resp.text or ''
-    keywords = ('jwt', 'signature', 'token')
-    return any(k in text.lower() for k in keywords)
+def _is_auth_error(resp):
+    """Return True if the response indicates the cached JWT is stale.
+
+    After a teamserver restart the signing key is regenerated, so any
+    previously cached token will fail validation. CS may return:
+      - 401 Unauthorized
+      - 403 Forbidden (some CS REST API builds)
+      - 400 with a body mentioning jwt/signature/token/expired/invalid
+      - 422 (validation error on malformed/expired bearer)
+    """
+    if resp.status_code in (401, 403, 422):
+        return True
+    if resp.status_code == 400:
+        try:
+            body = resp.json()
+            text = str(body.get('detail') or body.get('message') or body.get('title') or '')
+        except Exception:
+            text = resp.text or ''
+        keywords = ('jwt', 'signature', 'token', 'expired', 'invalid', 'unauthorized', 'forbidden')
+        return any(k in text.lower() for k in keywords)
+    return False
 
 
 def _request(method, path, label='default', **kwargs):
     url = _base_url(label) + path
-    token = _get_token(label)
     tls = _tls_verify(label)
-    resp = requests.request(
-        method, url,
-        headers=_headers(label, token),
-        verify=tls,
-        timeout=15,
-        **kwargs
-    )
 
-    # Re-authenticate on 401, or on 400 with a JWT error (CS returns 400 for
-    # stale tokens after a teamserver restart that regenerates the signing key).
-    if resp.status_code == 401 or (resp.status_code == 400 and _is_jwt_error(resp)):
+    # First attempt — use the cached token.  If the CS REST API restarted
+    # the TCP connect itself may fail (ConnectionError / timeout), so catch
+    # that and retry once after a short pause.
+    for attempt in range(2):
+        try:
+            token = _get_token(label, force_refresh=(attempt > 0))
+            resp = requests.request(
+                method, url,
+                headers=_headers(label, token),
+                verify=tls,
+                timeout=15,
+                **kwargs
+            )
+            break
+        except (requests.ConnectionError, requests.Timeout):
+            if attempt == 0:
+                import time
+                time.sleep(2)
+                continue
+            raise
+
+    # Re-authenticate on any auth-related error (stale JWT after CS restart).
+    if _is_auth_error(resp):
         new_token = _get_token(label, force_refresh=True)
         resp = requests.request(
             method, url,
@@ -130,7 +154,12 @@ def _request(method, path, label='default', **kwargs):
 
 
 def verify_connection(label='default'):
-    """Test connectivity by listing listeners."""
+    """Test connectivity by listing listeners (always re-authenticates)."""
+    # Force a fresh token — the most common reason to hit "Test" is after
+    # a teamserver restart that invalidated the cached JWT.
+    cache = _get_label_cache(label)
+    with cache['lock']:
+        cache['token'] = None
     listeners = _request('GET', '/api/v1/listeners', label=label)
     count = len(listeners) if isinstance(listeners, list) else 0
     return {'listener_count': count}
