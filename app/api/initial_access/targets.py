@@ -5,7 +5,7 @@ from flask import request, jsonify
 from flask_login import login_required, current_user
 from app.api import api_bp
 from app.services import ia_target_service, ia_scan_service, audit_service
-from app.services.project_service import get_active_project
+from app.services.project_service import get_active_project, assert_record_accessible
 from app.utils.decorators import feature_required
 from app.utils.errors import safe_error
 
@@ -97,11 +97,8 @@ def ia_get_target(target_id):
     if not target:
         return jsonify({'error': 'Target not found'}), 404
 
-    project = _require_active_project()
-    if not project or target.project_id != project.id:
-        if not current_user.is_admin:
-            return jsonify({'error': 'Access denied'}), 403
-
+    # C-04: authorise via membership, not session active-project
+    assert_record_accessible(target, current_user)
     return jsonify(target.to_dict())
 
 
@@ -114,10 +111,8 @@ def ia_target_campaigns(target_id):
     if not target:
         return jsonify({'error': 'Target not found'}), 404
 
-    project = _require_active_project()
-    if not project or target.project_id != project.id:
-        if not current_user.is_admin:
-            return jsonify({'error': 'Access denied'}), 403
+    # C-04: authorise via membership, not session active-project
+    assert_record_accessible(target, current_user)
 
     campaigns = [
         {'id': c.id, 'name': c.name, 'vector': c.vector, 'status': c.status,
@@ -137,11 +132,8 @@ def ia_update_target(target_id):
     if not target:
         return jsonify({'error': 'Target not found'}), 404
 
-    project = _require_active_project()
-    if not project or target.project_id != project.id:
-        if not current_user.is_admin:
-            return jsonify({'error': 'Access denied'}), 403
-
+    # C-04: authorise via membership, not session active-project
+    assert_record_accessible(target, current_user, write=True)
     if not current_user.can_write_infra:
         return jsonify({'error': 'Write access required'}), 403
 
@@ -166,11 +158,8 @@ def ia_delete_target(target_id):
     if not target:
         return jsonify({'error': 'Target not found'}), 404
 
-    project = _require_active_project()
-    if not project or target.project_id != project.id:
-        if not current_user.is_admin:
-            return jsonify({'error': 'Access denied'}), 403
-
+    # C-04: authorise via membership, not session active-project
+    assert_record_accessible(target, current_user, write=True)
     if not current_user.can_write_infra:
         return jsonify({'error': 'Write access required'}), 403
 
@@ -191,18 +180,15 @@ def ia_enrich_target(target_id):
     if not target:
         return jsonify({'error': 'Target not found'}), 404
 
-    project = _require_active_project()
-    if not project or target.project_id != project.id:
-        if not current_user.is_admin:
-            return jsonify({'error': 'Access denied'}), 403
-
+    # C-04: authorise via membership, not session active-project
+    assert_record_accessible(target, current_user, write=True)
     if not current_user.can_write_infra:
         return jsonify({'error': 'Write access required'}), 403
 
-    # Find latest completed scan for the project
+    # Find latest completed scan for the target's project
     latest_scan = (
         IAScanJob.query
-        .filter_by(project_id=project.id, status='completed')
+        .filter_by(project_id=target.project_id, status='completed')
         .order_by(IAScanJob.completed_at.desc())
         .first()
     )

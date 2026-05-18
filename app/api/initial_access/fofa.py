@@ -5,7 +5,7 @@ from app import db
 from app.api import api_bp
 from app.models.ia_fofa_search import IAFofaSearch
 from app.services import fofa_service, audit_service
-from app.services.project_service import get_active_project
+from app.services.project_service import get_active_project, assert_record_accessible
 from app.utils.decorators import feature_required
 
 _log = logging.getLogger(__name__)
@@ -34,14 +34,11 @@ def ia_fofa_list_searches():
 @feature_required('initial_access')
 def ia_fofa_get_search(search_id):
     """Get a FOFA search with results."""
-    project = get_active_project(current_user)
-    if not project:
-        return jsonify({'error': 'No active project selected'}), 400
-
     record = IAFofaSearch.query.get(search_id)
-    if not record or record.project_id != project.id:
+    if not record:
         return jsonify({'error': 'Search not found'}), 404
-
+    # C-04: authorise via membership, not session active-project
+    assert_record_accessible(record, current_user)
     return jsonify({'search': record.to_dict(include_results=True)})
 
 
@@ -50,16 +47,13 @@ def ia_fofa_get_search(search_id):
 @feature_required('initial_access')
 def ia_fofa_delete_search(search_id):
     """Delete a FOFA search record."""
-    project = get_active_project(current_user)
-    if not project:
-        return jsonify({'error': 'No active project selected'}), 400
-
+    record = IAFofaSearch.query.get(search_id)
+    if not record:
+        return jsonify({'error': 'Search not found'}), 404
+    # C-04: authorise via membership, not session active-project
+    assert_record_accessible(record, current_user, write=True)
     if not current_user.can_write_infra:
         return jsonify({'error': 'Write access required'}), 403
-
-    record = IAFofaSearch.query.get(search_id)
-    if not record or record.project_id != project.id:
-        return jsonify({'error': 'Search not found'}), 404
 
     db.session.delete(record)
     db.session.commit()

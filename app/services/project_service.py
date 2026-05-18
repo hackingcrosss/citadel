@@ -216,6 +216,36 @@ def get_project_resource_external_ids(project_id, resource_type):
     return {row[0] for row in rows}
 
 
+def assert_record_accessible(obj, user, write=False):
+    """Abort 403 if *user* cannot access a project-owned DB record.
+
+    Authorization is based on the record's ``project_id`` and the user's
+    membership — NOT the session's active-project.  This replaces the
+    pattern where IA endpoints compared ``obj.project_id`` against
+    ``get_active_project()`` (C-04).
+
+    Rules:
+        - Admins: always allowed.
+        - Auditors: read-only access to any project.
+        - Others: must hold a membership for ``obj.project_id``.
+          Write access additionally requires an operator or project_admin
+          role in that project.
+    """
+    if user.is_admin:
+        return
+    if user.is_auditor:
+        if write:
+            abort(403)
+        return
+    project_id = getattr(obj, 'project_id', None)
+    if project_id is None:
+        abort(403)
+    if not can_read(user, project_id):
+        abort(403)
+    if write and not can_write(user, project_id):
+        abort(403)
+
+
 def assert_resource_writable(resource_type, external_id, user):
     """Abort 403 if the user cannot perform write actions on this external resource.
 

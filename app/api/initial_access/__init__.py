@@ -4,7 +4,7 @@ from flask import request, jsonify
 from flask_login import login_required, current_user
 from app.api import api_bp
 from app.services import ia_scan_service, audit_service
-from app.services.project_service import get_active_project
+from app.services.project_service import get_active_project, assert_record_accessible
 from app.utils.decorators import feature_required
 from app.utils.errors import safe_error
 
@@ -95,11 +95,8 @@ def ia_get_scan(job_id):
     if not job:
         return jsonify({'error': 'Scan job not found'}), 404
 
-    project = _require_active_project()
-    if not project or job.project_id != project.id:
-        if not current_user.is_admin:
-            return jsonify({'error': 'Access denied'}), 403
-
+    # C-04: authorise via membership, not session active-project
+    assert_record_accessible(job, current_user)
     include_raw = request.args.get('include_raw', 'false').lower() == 'true'
     return jsonify(job.to_dict(include_raw=include_raw))
 
@@ -115,10 +112,8 @@ def ia_poll_scan(job_id):
     if not job:
         return jsonify({'error': 'Scan job not found'}), 404
 
-    project = _require_active_project()
-    if not project or job.project_id != project.id:
-        if not current_user.is_admin:
-            return jsonify({'error': 'Access denied'}), 403
+    # C-04: authorise via membership, not session active-project
+    assert_record_accessible(job, current_user, write=True)
 
     try:
         updated = ia_scan_service.poll_scan_job(job_id)
@@ -141,10 +136,8 @@ def ia_scan_results(job_id):
     if not job:
         return jsonify({'error': 'Scan job not found'}), 404
 
-    project = _require_active_project()
-    if not project or job.project_id != project.id:
-        if not current_user.is_admin:
-            return jsonify({'error': 'Access denied'}), 403
+    # C-04: authorise via membership, not session active-project
+    assert_record_accessible(job, current_user)
 
     results = ia_scan_service.get_scan_results(job_id)
     if results is None:

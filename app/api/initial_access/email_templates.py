@@ -9,7 +9,7 @@ from app.models.ia_email_template import (
 )
 from app.models.ia_target import IATarget
 from app.services import audit_service
-from app.services.project_service import get_active_project
+from app.services.project_service import get_active_project, assert_record_accessible
 from app.utils.decorators import feature_required
 from app.utils.errors import safe_error
 
@@ -41,14 +41,11 @@ def ia_list_template_batches():
 @feature_required('initial_access')
 def ia_get_template_batch(batch_id):
     """Get a batch with its templates."""
-    project = get_active_project(current_user)
-    if not project:
-        return jsonify({'error': 'No active project selected'}), 400
-
     batch = IAEmailTemplateBatch.query.get(batch_id)
-    if not batch or batch.project_id != project.id:
+    if not batch:
         return jsonify({'error': 'Batch not found'}), 404
-
+    # C-04: authorise via membership, not session active-project
+    assert_record_accessible(batch, current_user)
     return jsonify({'batch': batch.to_dict(include_templates=True)})
 
 
@@ -57,19 +54,17 @@ def ia_get_template_batch(batch_id):
 @feature_required('initial_access')
 def ia_delete_template_batch(batch_id):
     """Delete a batch and its templates (cascade)."""
-    project = get_active_project(current_user)
-    if not project:
-        return jsonify({'error': 'No active project selected'}), 400
-
+    batch = IAEmailTemplateBatch.query.get(batch_id)
+    if not batch:
+        return jsonify({'error': 'Batch not found'}), 404
+    # C-04: authorise via membership, not session active-project
+    assert_record_accessible(batch, current_user, write=True)
     if not current_user.can_write_infra:
         return jsonify({'error': 'Write access required'}), 403
 
-    batch = IAEmailTemplateBatch.query.get(batch_id)
-    if not batch or batch.project_id != project.id:
-        return jsonify({'error': 'Batch not found'}), 404
-
+    project = get_active_project(current_user)
     audit_service.log('ia.email_batch_delete', 'ia_email_template_batch', batch.id,
-                      f'project:{project.code}', {'template_count': len(batch.templates)})
+                      f'project:{project.code if project else "?"}', {'template_count': len(batch.templates)})
 
     db.session.delete(batch)
     db.session.commit()
@@ -156,14 +151,11 @@ def ia_template_generation_status(task_id):
 @feature_required('initial_access')
 def ia_get_template(template_id):
     """Get a single email template."""
-    project = get_active_project(current_user)
-    if not project:
-        return jsonify({'error': 'No active project selected'}), 400
-
     tpl = IAEmailTemplate.query.get(template_id)
-    if not tpl or tpl.project_id != project.id:
+    if not tpl:
         return jsonify({'error': 'Template not found'}), 404
-
+    # C-04: authorise via membership, not session active-project
+    assert_record_accessible(tpl, current_user)
     return jsonify({'template': tpl.to_dict()})
 
 
@@ -172,16 +164,13 @@ def ia_get_template(template_id):
 @feature_required('initial_access')
 def ia_update_template(template_id):
     """Edit whitelisted fields on a template."""
-    project = get_active_project(current_user)
-    if not project:
-        return jsonify({'error': 'No active project selected'}), 400
-
+    tpl = IAEmailTemplate.query.get(template_id)
+    if not tpl:
+        return jsonify({'error': 'Template not found'}), 404
+    # C-04: authorise via membership, not session active-project
+    assert_record_accessible(tpl, current_user, write=True)
     if not current_user.can_write_infra:
         return jsonify({'error': 'Write access required'}), 403
-
-    tpl = IAEmailTemplate.query.get(template_id)
-    if not tpl or tpl.project_id != project.id:
-        return jsonify({'error': 'Template not found'}), 404
 
     data = request.get_json(silent=True) or {}
     updated = []
@@ -202,16 +191,13 @@ def ia_update_template(template_id):
 @feature_required('initial_access')
 def ia_push_template_to_gophish(template_id):
     """Push a template to GoPhish."""
-    project = get_active_project(current_user)
-    if not project:
-        return jsonify({'error': 'No active project selected'}), 400
-
+    tpl = IAEmailTemplate.query.get(template_id)
+    if not tpl:
+        return jsonify({'error': 'Template not found'}), 404
+    # C-04: authorise via membership, not session active-project
+    assert_record_accessible(tpl, current_user, write=True)
     if not current_user.can_write_infra:
         return jsonify({'error': 'Write access required'}), 403
-
-    tpl = IAEmailTemplate.query.get(template_id)
-    if not tpl or tpl.project_id != project.id:
-        return jsonify({'error': 'Template not found'}), 404
 
     try:
         from app.services.email_template_service import push_template_to_gophish
@@ -220,9 +206,10 @@ def ia_push_template_to_gophish(template_id):
         _log.exception('Failed to push template %s to GoPhish', template_id)
         return safe_error(e, 502)
 
+    project = get_active_project(current_user)
     campaign_data = result.get('campaign')
     audit_service.log('ia.email_push_gophish', 'ia_email_template', tpl.id,
-                      f'project:{project.code}',
+                      f'project:{project.code if project else "?"}',
                       {'gophish_template_id': tpl.gophish_template_id,
                        'gophish_group_id': tpl.gophish_group_id,
                        'campaign_id': campaign_data.get('id') if campaign_data else None})
@@ -237,13 +224,11 @@ def ia_push_template_to_gophish(template_id):
 @feature_required('initial_access')
 def ia_list_template_targets(template_id):
     """List targets assigned to a template."""
-    project = get_active_project(current_user)
-    if not project:
-        return jsonify({'error': 'No active project selected'}), 400
-
     tpl = IAEmailTemplate.query.get(template_id)
-    if not tpl or tpl.project_id != project.id:
+    if not tpl:
         return jsonify({'error': 'Template not found'}), 404
+    # C-04: authorise via membership, not session active-project
+    assert_record_accessible(tpl, current_user)
 
     targets = tpl.assigned_targets.all()
     return jsonify({'targets': [t.to_dict() for t in targets]})
@@ -254,16 +239,13 @@ def ia_list_template_targets(template_id):
 @feature_required('initial_access')
 def ia_assign_template_targets(template_id):
     """Assign targets to a template. Body: {target_ids: [int]}"""
-    project = get_active_project(current_user)
-    if not project:
-        return jsonify({'error': 'No active project selected'}), 400
-
+    tpl = IAEmailTemplate.query.get(template_id)
+    if not tpl:
+        return jsonify({'error': 'Template not found'}), 404
+    # C-04: authorise via membership, not session active-project
+    assert_record_accessible(tpl, current_user, write=True)
     if not current_user.can_write_infra:
         return jsonify({'error': 'Write access required'}), 403
-
-    tpl = IAEmailTemplate.query.get(template_id)
-    if not tpl or tpl.project_id != project.id:
-        return jsonify({'error': 'Template not found'}), 404
 
     data = request.get_json(silent=True) or {}
     target_ids = data.get('target_ids', [])
@@ -277,7 +259,7 @@ def ia_assign_template_targets(template_id):
         if tid in existing:
             continue
         target = IATarget.query.get(tid)
-        if not target or target.project_id != project.id:
+        if not target or target.project_id != tpl.project_id:
             continue
         tpl.assigned_targets.append(target)
         existing.add(tid)
@@ -285,8 +267,9 @@ def ia_assign_template_targets(template_id):
 
     if added:
         db.session.commit()
+        project = get_active_project(current_user)
         audit_service.log('ia.template_assign_targets', 'ia_email_template', tpl.id,
-                          f'project:{project.code}', {'added': added})
+                          f'project:{project.code if project else "?"}', {'added': added})
 
     return jsonify({'added': added, 'assigned_targets_count': tpl.assigned_targets.count()})
 
@@ -296,16 +279,13 @@ def ia_assign_template_targets(template_id):
 @feature_required('initial_access')
 def ia_unassign_template_target(template_id, target_id):
     """Unassign a target from a template."""
-    project = get_active_project(current_user)
-    if not project:
-        return jsonify({'error': 'No active project selected'}), 400
-
+    tpl = IAEmailTemplate.query.get(template_id)
+    if not tpl:
+        return jsonify({'error': 'Template not found'}), 404
+    # C-04: authorise via membership, not session active-project
+    assert_record_accessible(tpl, current_user, write=True)
     if not current_user.can_write_infra:
         return jsonify({'error': 'Write access required'}), 403
-
-    tpl = IAEmailTemplate.query.get(template_id)
-    if not tpl or tpl.project_id != project.id:
-        return jsonify({'error': 'Template not found'}), 404
 
     target = IATarget.query.get(target_id)
     if not target or target not in tpl.assigned_targets.all():
@@ -353,20 +333,18 @@ def _compute_role_match(target, roles):
 @feature_required('initial_access')
 def ia_suggest_template_targets(template_id):
     """Auto-suggest target assignments based on target_roles matching."""
-    project = get_active_project(current_user)
-    if not project:
-        return jsonify({'error': 'No active project selected'}), 400
-
     tpl = IAEmailTemplate.query.get(template_id)
-    if not tpl or tpl.project_id != project.id:
+    if not tpl:
         return jsonify({'error': 'Template not found'}), 404
+    # C-04: authorise via membership, not session active-project
+    assert_record_accessible(tpl, current_user)
 
     roles = tpl.parsed_target_roles
     if not roles:
         return jsonify({'suggestions': [], 'message': 'Template has no target_roles to match against'})
 
     already_assigned = set(t.id for t in tpl.assigned_targets.all())
-    targets = IATarget.query.filter_by(project_id=project.id).all()
+    targets = IATarget.query.filter_by(project_id=tpl.project_id).all()
 
     suggestions = []
     for target in targets:
