@@ -87,12 +87,11 @@ def validate_outbound_url(url, *, resolve=True, allow_schemes=('http', 'https'))
     if parsed.username or parsed.password:
         return False, 'URL must not contain user credentials'
 
-    # Check if host is a literal IP in a blocked range
-    if _is_blocked_ip(host):
-        return False, f'Host {host} resolves to a blocked address'
-
-    # DNS resolution check
+    # IP / DNS resolution checks — only when resolve=True
     if resolve:
+        # Check if host is a literal IP in a blocked range
+        if _is_blocked_ip(host):
+            return False, f'Host {host} resolves to a blocked address'
         try:
             results = socket.getaddrinfo(host, None, socket.AF_UNSPEC, socket.SOCK_STREAM)
             for family, _, _, _, sockaddr in results:
