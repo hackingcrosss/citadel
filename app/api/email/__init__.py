@@ -1,10 +1,21 @@
-from flask import request, jsonify
+import re
+
+from flask import request, jsonify, abort
 from flask_login import login_required, current_user
 from app.api import api_bp
 from app.services import email_service
 from app.services.project_service import build_project_tag_map, get_active_project, get_project_domain_names
 from app.utils.decorators import admin_required
 from app.utils.errors import safe_error
+
+# D-01: strict domain name validation — no slashes, no path traversal
+_MG_DOMAIN_RE = re.compile(r'^[a-z0-9]([a-z0-9\-\.]{0,251}[a-z0-9])?$', re.IGNORECASE)
+
+
+def _validate_domain_name(name):
+    """Abort 400 if *name* is not a valid Mailgun domain name."""
+    if not name or not _MG_DOMAIN_RE.match(name) or '..' in name:
+        abort(400, 'Invalid domain name')
 
 
 # --- Domains ---
@@ -61,9 +72,10 @@ def add_mailgun_domain():
         return safe_error(e, 400)
 
 
-@api_bp.route('/email/domains/<path:name>', methods=['GET'])
+@api_bp.route('/email/domains/<name>', methods=['GET'])
 @login_required
 def get_mailgun_domain(name):
+    _validate_domain_name(name)
     region = request.args.get('region', 'us')
     try:
         result = email_service.get_domain(name, region=region)
@@ -72,10 +84,11 @@ def get_mailgun_domain(name):
         return safe_error(e, 400)
 
 
-@api_bp.route('/email/domains/<path:name>', methods=['DELETE'])
+@api_bp.route('/email/domains/<name>', methods=['DELETE'])
 @login_required
 @admin_required
 def delete_mailgun_domain(name):
+    _validate_domain_name(name)
     region = request.args.get('region', 'us')
     try:
         email_service.delete_domain(name, region=region)
@@ -84,10 +97,11 @@ def delete_mailgun_domain(name):
         return safe_error(e, 400)
 
 
-@api_bp.route('/email/domains/<path:name>/verify', methods=['POST'])
+@api_bp.route('/email/domains/<name>/verify', methods=['POST'])
 @login_required
 @admin_required
 def verify_mailgun_domain(name):
+    _validate_domain_name(name)
     data = request.get_json(silent=True) or {}
     region = data.get('region', request.args.get('region', 'us'))
     try:
@@ -99,9 +113,10 @@ def verify_mailgun_domain(name):
 
 # --- SMTP Credentials ---
 
-@api_bp.route('/email/domains/<path:name>/credentials', methods=['GET'])
+@api_bp.route('/email/domains/<name>/credentials', methods=['GET'])
 @login_required
 def list_smtp_credentials(name):
+    _validate_domain_name(name)
     region = request.args.get('region', 'us')
     try:
         creds = email_service.list_smtp_credentials(name, region=region)
@@ -110,10 +125,11 @@ def list_smtp_credentials(name):
         return safe_error(e, 400)
 
 
-@api_bp.route('/email/domains/<path:name>/credentials', methods=['POST'])
+@api_bp.route('/email/domains/<name>/credentials', methods=['POST'])
 @login_required
 @admin_required
 def create_smtp_credential(name):
+    _validate_domain_name(name)
     data = request.get_json()
     if not data or not data.get('login') or not data.get('password'):
         return jsonify({'error': 'Login and password are required'}), 400
@@ -126,10 +142,11 @@ def create_smtp_credential(name):
         return safe_error(e, 400)
 
 
-@api_bp.route('/email/domains/<path:name>/credentials/<login>', methods=['DELETE'])
+@api_bp.route('/email/domains/<name>/credentials/<login>', methods=['DELETE'])
 @login_required
 @admin_required
 def delete_smtp_credential(name, login):
+    _validate_domain_name(name)
     region = request.args.get('region', 'us')
     try:
         email_service.delete_smtp_credential(name, login, region=region)

@@ -8,6 +8,10 @@ from app.utils.errors import safe_error
 
 _log = logging.getLogger(__name__)
 
+# Keys whose values must pass outbound-URL validation before being stored.
+# Blocks SSRF via credential-write (E-1).
+_URL_CREDENTIAL_KEYS = {'api_url', 'endpoint', 'host', 'webhook_url'}
+
 
 _MULTI_ACCOUNT_PROVIDERS = {'cloudflare', 'aws', 'azure', 'cobaltstrike', 'hetzner'}
 
@@ -53,12 +57,20 @@ def save_credentials(provider):
     if not payload:
         return jsonify({'error': 'No data provided'}), 400
 
+    from app.utils.url_validation import validate_outbound_url
+
     if provider in _MULTI_ACCOUNT_PROVIDERS:
         label = (payload.pop('label', None) or 'default').strip()
         saved = []
         for key_name, value in payload.items():
             if value and str(value).strip():
-                credential_service.set_credential(provider, key_name, str(value).strip(), label=label)
+                val = str(value).strip()
+                # E-1: validate URL-type credentials against SSRF allowlist
+                if key_name in _URL_CREDENTIAL_KEYS:
+                    ok, reason = validate_outbound_url(val, resolve=False)
+                    if not ok:
+                        return jsonify({'error': f'Invalid {key_name}: {reason}'}), 400
+                credential_service.set_credential(provider, key_name, val, label=label)
                 saved.append(key_name)
         return jsonify({'saved': saved, 'provider': provider, 'label': label})
 
@@ -66,7 +78,13 @@ def save_credentials(provider):
     saved = []
     for key_name, value in payload.items():
         if value and str(value).strip():
-            credential_service.set_credential(provider, key_name, str(value).strip())
+            val = str(value).strip()
+            # E-1: validate URL-type credentials against SSRF allowlist
+            if key_name in _URL_CREDENTIAL_KEYS:
+                ok, reason = validate_outbound_url(val, resolve=False)
+                if not ok:
+                    return jsonify({'error': f'Invalid {key_name}: {reason}'}), 400
+            credential_service.set_credential(provider, key_name, val)
             saved.append(key_name)
     return jsonify({'saved': saved, 'provider': provider})
 
