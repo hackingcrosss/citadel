@@ -812,26 +812,6 @@
                 </a>
             </div>
 
-            {% if current_user.is_authenticated and current_user.role == 'admin' %}
-            <div class="nav-divider"></div>
-
-            <!-- Admin: Platform section (shared) -->
-            <button class="nav-section {% if request.endpoint not in admin_plat_pages %}collapsed{% endif %}" data-bs-toggle="collapse" data-bs-target="#nav-ia-admin-platform">
-                <span><i class="bi bi-sliders"></i> Platform</span>
-                <i class="bi bi-chevron-right"></i>
-            </button>
-            <div class="collapse nav-collapse {% if request.endpoint in admin_plat_pages %}show{% endif %}" id="nav-ia-admin-platform">
-                <a class="nav-link {% if request.endpoint == 'admin_users' %}active{% endif %}" href="{{ url_for('admin_users') }}">
-                    <i class="bi bi-person-gear"></i> Users
-                </a>
-                <a class="nav-link {% if request.endpoint == 'admin_license' %}active{% endif %}" href="{{ url_for('admin_license') }}">
-                    <i class="bi bi-patch-check"></i> License
-                </a>
-                <a class="nav-link {% if request.endpoint == 'settings' %}active{% endif %}" href="{{ url_for('settings') }}">
-                    <i class="bi bi-gear"></i> Settings
-                </a>
-            </div>
-            {% endif %}
         </nav>
 
         {% else %}
@@ -964,32 +944,6 @@
             </a>
             {% endif %}
 
-            {% if current_user.is_authenticated and current_user.role == 'admin' %}
-            <div class="nav-divider"></div>
-
-            <!-- Admin: Platform section -->
-            <button class="nav-section {% if request.endpoint not in admin_plat_pages %}collapsed{% endif %}" data-bs-toggle="collapse" data-bs-target="#nav-admin-platform">
-                <span><i class="bi bi-sliders"></i> Platform</span>
-                <i class="bi bi-chevron-right"></i>
-            </button>
-            <div class="collapse nav-collapse {% if request.endpoint in admin_plat_pages %}show{% endif %}" id="nav-admin-platform">
-                <a class="nav-link {% if request.endpoint == 'admin_users' %}active{% endif %}" href="{{ url_for('admin_users') }}">
-                    <i class="bi bi-person-gear"></i> Users
-                </a>
-                <a class="nav-link {% if request.endpoint == 'admin_domain_pool' %}active{% endif %}" href="{{ url_for('admin_domain_pool') }}">
-                    <i class="bi bi-collection"></i> Domain Pool
-                </a>
-                <a class="nav-link {% if request.endpoint == 'admin_license' %}active{% endif %}" href="{{ url_for('admin_license') }}">
-                    <i class="bi bi-patch-check"></i> License
-                </a>
-                <a class="nav-link {% if request.endpoint == 'admin_audit' %}active{% endif %}" href="{{ url_for('admin_audit') }}">
-                    <i class="bi bi-journal-text"></i> Audit Trail
-                </a>
-                <a class="nav-link {% if request.endpoint == 'settings' %}active{% endif %}" href="{{ url_for('settings') }}">
-                    <i class="bi bi-gear"></i> Settings
-                </a>
-            </div>
-            {% endif %}
         </nav>
         {% endif %}{# end Arsenal / Frontline phase toggle #}
 
