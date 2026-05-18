@@ -222,13 +222,20 @@ def assert_resource_writable(resource_type, external_id, user):
     Rules:
     - Admins: always allowed.
     - Pure white_team users (no operator memberships at all): always blocked.
-    - Operators: allowed if the resource is untagged (no ProjectResource row) OR
-      tagged to one of their own projects. Blocked if tagged to another project.
+    - Platform-core containers (citadel-web, citadel-postgres, …): always
+      blocked for non-admins (K-02).
+    - Operators: allowed ONLY if the resource has a ProjectResource row tagged
+      to one of their own projects. Untagged resources are blocked — the read
+      path tolerates untagged (K-03 workaround) but the write path must not.
     """
     if user.is_admin:
         return
 
     if not user.can_write_infra and not user.is_project_admin:
+        abort(403)
+
+    # K-02: deny writes to platform-core containers for all non-admins
+    if resource_type == 'container' and is_platform_core_container(external_id):
         abort(403)
 
     from app.models.project import ProjectMember
@@ -242,7 +249,12 @@ def assert_resource_writable(resource_type, external_id, user):
     resource = ProjectResource.query.filter_by(
         resource_type=resource_type, external_id=str(external_id)
     ).first()
-    if resource is not None and resource.project_id not in get_user_project_ids(user):
+    # K-02: untagged resources are NOT writable by non-admins.
+    # This prevents operators from acting on platform containers or
+    # cross-tenant website-generator containers that lack a tag.
+    if resource is None:
+        abort(403)
+    if resource.project_id not in get_user_project_ids(user):
         abort(403)
 
 
