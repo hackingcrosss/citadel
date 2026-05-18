@@ -1,5 +1,5 @@
-from flask import jsonify
-from flask_login import login_required
+from flask import jsonify, abort
+from flask_login import login_required, current_user
 from app.api import api_bp
 from app.utils.errors import safe_error
 
@@ -9,7 +9,7 @@ from app.utils.errors import safe_error
 def get_task_log():
     from app.services import task_log_service
     try:
-        tasks = task_log_service.get_tasks()
+        tasks = task_log_service.get_tasks(user=current_user)
         return jsonify({'tasks': tasks})
     except Exception as e:
         return safe_error(e, 500, tasks=[])
@@ -20,7 +20,7 @@ def get_task_log():
 def clear_completed_tasks():
     from app.services import task_log_service
     try:
-        task_log_service.clear_completed()
+        task_log_service.clear_completed(user=current_user)
         return jsonify({'ok': True})
     except Exception as e:
         return safe_error(e, 500)
@@ -29,6 +29,13 @@ def clear_completed_tasks():
 @api_bp.route('/task-log/<task_id>/revoke', methods=['POST'])
 @login_required
 def revoke_task(task_id):
+    from app.services import task_log_service
+    # API-IDOR-01: only the task owner or admin can revoke
+    owner_id = task_log_service.get_task_owner(task_id)
+    if owner_id is not None and owner_id != current_user.id \
+            and not current_user.is_admin:
+        abort(403)
+
     from app.tasks.celery_app import celery
     try:
         celery.control.revoke(task_id, terminate=True)
