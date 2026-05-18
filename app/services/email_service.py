@@ -1,4 +1,5 @@
 import requests
+from urllib.parse import quote
 from app.services.credential_service import get_credential
 
 MG_BASES = {
@@ -59,9 +60,10 @@ def list_domains(region=None):
 
 
 def add_domain(name, region='us'):
+    safe_name = quote(name, safe='')
     # Check if domain already exists
     try:
-        existing = _request('GET', f'/domains/{name}', region=region)
+        existing = _request('GET', f'/domains/{safe_name}', region=region)
         # Domain exists – return it with a flag
         existing['already_existed'] = True
         return existing
@@ -79,29 +81,34 @@ def add_domain(name, region='us'):
 
 
 def get_domain(name, region='us'):
-    data = _request('GET', f'/domains/{name}', region=region)
+    safe_name = quote(name, safe='')
+    data = _request('GET', f'/domains/{safe_name}', region=region)
     return data
 
 
 def delete_domain(name, region='us'):
-    data = _request('DELETE', f'/domains/{name}', region=region)
+    safe_name = quote(name, safe='')
+    data = _request('DELETE', f'/domains/{safe_name}', region=region)
     return data
 
 
 def verify_domain(name, region='us'):
-    data = _request('PUT', f'/domains/{name}/verify', region=region)
+    safe_name = quote(name, safe='')
+    data = _request('PUT', f'/domains/{safe_name}/verify', region=region)
     return data
 
 
 # --- SMTP Credentials ---
 
 def list_smtp_credentials(domain, region='us'):
-    data = _request('GET', f'/domains/{domain}/credentials', region=region, params={'limit': 100})
+    safe_domain = quote(domain, safe='')
+    data = _request('GET', f'/domains/{safe_domain}/credentials', region=region, params={'limit': 100})
     return data.get('items', [])
 
 
 def create_smtp_credential(domain, login, password, region='us'):
-    data = _request('POST', f'/domains/{domain}/credentials', region=region, data={
+    safe_domain = quote(domain, safe='')
+    data = _request('POST', f'/domains/{safe_domain}/credentials', region=region, data={
         'login': login,
         'password': password
     })
@@ -114,5 +121,7 @@ def create_smtp_credential(domain, login, password, region='us'):
 
 
 def delete_smtp_credential(domain, login, region='us'):
-    data = _request('DELETE', f'/domains/{domain}/credentials/{login}', region=region)
+    safe_domain = quote(domain, safe='')
+    safe_login = quote(login, safe='')
+    data = _request('DELETE', f'/domains/{safe_domain}/credentials/{safe_login}', region=region)
     return data

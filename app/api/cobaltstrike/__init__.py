@@ -230,6 +230,10 @@ def parse_malleable_profile():
         from app.services.malleable_c2_parser import parse_profile, generate_nginx_config
         parsed = parse_profile(profile_text)
         backend = data.get('backend', '$forward_scheme://$server:$port')
+        # D-02: validate backend against injection
+        from app.utils.url_validation import is_safe_nginx_backend
+        if not is_safe_nginx_backend(backend):
+            return jsonify({'error': 'Invalid backend value — must not contain newlines, quotes, semicolons, or braces'}), 400
         nginx_config = generate_nginx_config(parsed, backend=backend)
         return jsonify({
             'parsed': parsed,

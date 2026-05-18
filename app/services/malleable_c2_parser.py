@@ -474,8 +474,14 @@ def _add_location_block(lines, uri, method, headers, backend):
 
 
 def _nginx_escape_regex(s):
-    """Escape special regex characters for use in nginx regex."""
-    special = r'\.+*?^${}()|[]/'
+    """Escape special regex characters for use in nginx regex.
+
+    D-02: also strips CR/LF/null and escapes backslash + double-quote
+    to prevent injection into nginx config blocks.
+    """
+    # Strip characters that must never appear in an nginx regex string
+    s = s.replace('\r', '').replace('\n', '').replace('\0', '')
+    special = r'\\.+*?^${}()|[]/"'
     out = []
     for ch in s:
         if ch in special:
