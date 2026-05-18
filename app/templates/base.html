@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>{% block title %}Citadel{% endblock %}</title>
     <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
@@ -998,9 +999,12 @@
             <i class="bi bi-person-circle"></i>
             <span class="role-badge role-badge-{{ current_user.role }}">{{ current_user.role | replace('_', ' ') }}</span>
         </a>
-        <a href="{{ url_for('logout') }}" class="btn btn-sm btn-outline-secondary px-2" title="Logout" style="font-size:0.75rem;">
-            <i class="bi bi-box-arrow-right"></i>
-        </a>
+        <form method="POST" action="{{ url_for('logout') }}" style="display:inline;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="btn btn-sm btn-outline-secondary px-2" title="Logout" style="font-size:0.75rem;">
+                <i class="bi bi-box-arrow-right"></i>
+            </button>
+        </form>
         {% endif %}
     </div>
 
@@ -1480,5 +1484,37 @@
     };
     </script>
     {% block extra_js %}{% endblock %}
+    <script>
+    // H-01: Global CSRF token injection for all fetch() calls.
+    // Monkey-patches window.fetch to auto-attach X-CSRFToken header
+    // on same-origin mutating requests. Templates don't need changes.
+    (function() {
+        var _origFetch = window.fetch;
+        window.fetch = function(url, opts) {
+            opts = opts || {};
+            var method = (opts.method || 'GET').toUpperCase();
+            if (method !== 'GET' && method !== 'HEAD' && method !== 'OPTIONS') {
+                // Only attach to same-origin requests
+                var isSameOrigin = true;
+                try {
+                    if (typeof url === 'string' && /^https?:\/\//i.test(url)) {
+                        isSameOrigin = new URL(url).origin === location.origin;
+                    }
+                } catch(e) {}
+                if (isSameOrigin) {
+                    var token = document.querySelector('meta[name="csrf-token"]');
+                    if (token) {
+                        if (opts.headers instanceof Headers) {
+                            if (!opts.headers.has('X-CSRFToken')) opts.headers.set('X-CSRFToken', token.content);
+                        } else {
+                            opts.headers = Object.assign({'X-CSRFToken': token.content}, opts.headers || {});
+                        }
+                    }
+                }
+            }
+            return _origFetch.call(this, url, opts);
+        };
+    })();
+    </script>
 </body>
 </html>

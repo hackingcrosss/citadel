@@ -2,12 +2,14 @@ from flask import Flask, g
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager
 from flask_migrate import Migrate
+from flask_wtf.csrf import CSRFProtect
 from werkzeug.middleware.proxy_fix import ProxyFix
 from app.config import Config
 
 db = SQLAlchemy()
 login_manager = LoginManager()
 migrate = Migrate()
+csrf = CSRFProtect()
 
 def create_app(config_class=Config):
     app = Flask(__name__)
@@ -26,6 +28,7 @@ def create_app(config_class=Config):
     login_manager.init_app(app)
     login_manager.login_view = 'login'
     migrate.init_app(app, db)
+    csrf.init_app(app)
 
     # Register blueprints
     from app.api import api_bp

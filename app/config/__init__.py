@@ -74,8 +74,13 @@ class Config:
     # verification. Leave at 'session' in steady state.
     SESSION_COOKIE_NAME = os.getenv('SESSION_COOKIE_NAME', 'session')
     SESSION_COOKIE_HTTPONLY = True
-    SESSION_COOKIE_SAMESITE = 'Lax'
+    SESSION_COOKIE_SAMESITE = 'Strict'
     SESSION_COOKIE_SECURE = os.getenv('FLASK_ENV') != 'development'
+    REMEMBER_COOKIE_HTTPONLY = True
+    REMEMBER_COOKIE_SAMESITE = 'Strict'
+    REMEMBER_COOKIE_SECURE = os.getenv('FLASK_ENV') != 'development'
+    # Flask-WTF CSRF
+    WTF_CSRF_TIME_LIMIT = 3600  # 1 hour token lifetime
 
     # Celery
     CELERY_BROKER_URL = os.getenv('CELERY_BROKER_URL')
