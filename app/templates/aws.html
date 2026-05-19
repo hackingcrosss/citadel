@@ -554,9 +554,10 @@
             const azHtml = escapeHtml(inst.az);
             const sshBtnClass = inst.ssh_configured ? 'btn-outline-success' : 'btn-outline-secondary';
             const canWrite = !!inst.can_write;
+            const canPower = !!inst.can_power;
             return `
             <tr>
-                <td>${canWrite ? `<input type="checkbox" class="inst-check" value="${idAttr}" onchange="updateBulkButtons()" aria-label="Select ${nameAttr}">` : ''}</td>
+                <td>${canPower ? `<input type="checkbox" class="inst-check" value="${idAttr}" onchange="updateBulkButtons()" aria-label="Select ${nameAttr}">` : ''}</td>
                 <td><span class="badge bg-warning text-dark" title="${escapeHtml(inst.account_label || 'default')}">${escapeHtml(inst.account_label && inst.account_label !== 'default' ? inst.account_label : 'AWS')}</span></td>
                 <td>${nameHtml}</td>
                 <td><code class="text-primary" style="cursor:pointer" onclick="showDetail('${idAttr}')">${id}</code></td>
@@ -570,9 +571,9 @@
                 <td>
                     <div class="btn-group btn-group-sm">
                         ${!IS_READONLY ? `<button class="btn btn-sm ${sshBtnClass}" title="SSH Config" onclick="openSSHConfig('${idAttr}', '${nameAttr}')"><i class="bi bi-key"></i></button>` : ''}
-                        ${canWrite && inst.state === 'stopped' ? `<button class="btn btn-outline-success btn-sm" title="Start" onclick="instanceAction('start', '${idAttr}')"><i class="bi bi-play-fill"></i></button>` : ''}
-                        ${canWrite && inst.state === 'running' ? `<button class="btn btn-outline-warning btn-sm" title="Stop" onclick="instanceAction('stop', '${idAttr}')"><i class="bi bi-stop-fill"></i></button>` : ''}
-                        ${canWrite && inst.state === 'running' ? `<button class="btn btn-outline-info btn-sm" title="Reboot" onclick="instanceAction('reboot', '${idAttr}')"><i class="bi bi-arrow-repeat"></i></button>` : ''}
+                        ${canPower && inst.state === 'stopped' ? `<button class="btn btn-outline-success btn-sm" title="Start" onclick="instanceAction('start', '${idAttr}')"><i class="bi bi-play-fill"></i></button>` : ''}
+                        ${canPower && inst.state === 'running' ? `<button class="btn btn-outline-warning btn-sm" title="Stop" onclick="instanceAction('stop', '${idAttr}')"><i class="bi bi-stop-fill"></i></button>` : ''}
+                        ${canPower && inst.state === 'running' ? `<button class="btn btn-outline-info btn-sm" title="Reboot" onclick="instanceAction('reboot', '${idAttr}')"><i class="bi bi-arrow-repeat"></i></button>` : ''}
                         ${canWrite ? `<button class="btn btn-outline-danger btn-sm" title="Terminate" onclick="confirmTerminate('${idAttr}', '${nameAttr}')"><i class="bi bi-trash"></i></button>` : ''}
                         <button class="btn btn-outline-primary btn-sm" title="Firewall Rules" onclick="showFirewall('${idAttr}', '${nameAttr}')"><i class="bi bi-shield-lock"></i></button>
                         <button class="btn btn-outline-secondary btn-sm" title="Status Checks" onclick="showStatusChecks('${idAttr}', '${nameAttr}')"><i class="bi bi-shield-check"></i></button>

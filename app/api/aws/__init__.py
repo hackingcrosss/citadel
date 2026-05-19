@@ -5,6 +5,7 @@ from app.services import aws_service
 from app import db
 from app.models.instance_tag import InstanceTag
 from app.models.instance_ssh_config import InstanceSSHConfig
+from app.models.project_resource import ProjectResource
 from app.services.credential_service import _get_fernet, get_account_labels
 from app.services import ssh_service
 from app.services.project_service import (
@@ -40,6 +41,27 @@ def _group_by_label(instance_ids):
         lbl = _instance_label(iid)
         groups.setdefault(lbl, []).append(iid)
     return groups
+
+
+def _assert_ec2_power_writable(instance_id):
+    """Allow AWS start/stop/reboot for tagged project resources and shared untagged EC2.
+
+    Current operating model: existing EC2 machines are reused across projects
+    until machine creation is enabled. Therefore any operator may perform
+    non-destructive power actions on untagged EC2 instances. Tagged instances
+    remain scoped to users who can write that project. Termination stays on the
+    stricter assert_resource_writable() path.
+    """
+    if current_user.is_admin:
+        return
+    resource = ProjectResource.query.filter_by(
+        resource_type='ec2', external_id=str(instance_id)
+    ).first()
+    if resource is None:
+        if current_user.is_operator:
+            return
+        abort(403, description='Untagged AWS instances can only be powered by operators')
+    assert_resource_writable('ec2', instance_id, current_user)
 
 
 # --- Instances ---
@@ -89,10 +111,11 @@ def aws_list_instances():
                     tag and tag['project_id'] in allowed_projects and can_write(current_user, tag['project_id'])
                 )
             )
+            inst['can_power'] = bool(inst['can_write'] or (tag is None and current_user.is_operator))
 
         # Non-admin scoping mirrors the container page:
         # - operators can see untagged instances so they can tag new assets to
-        #   their active project, but cannot start/stop them until tagged.
+        #   their active project or power shared/reused EC2 instances.
         # - project-admin, white-team, and auditor reads are active-project only.
         if not current_user.is_admin:
             if current_user.is_operator:
@@ -135,7 +158,7 @@ def aws_start_instances():
     if not ids:
         return jsonify({'error': 'No instance IDs provided'}), 400
     for iid in ids:
-        assert_resource_writable('ec2', iid, current_user)
+        _assert_ec2_power_writable(iid)
     try:
         results = []
         for lbl, grp in _group_by_label(ids).items():
@@ -155,7 +178,7 @@ def aws_stop_instances():
     if not ids:
         return jsonify({'error': 'No instance IDs provided'}), 400
     for iid in ids:
-        assert_resource_writable('ec2', iid, current_user)
+        _assert_ec2_power_writable(iid)
     try:
         results = []
         for lbl, grp in _group_by_label(ids).items():
@@ -175,7 +198,7 @@ def aws_reboot_instances():
     if not ids:
         return jsonify({'error': 'No instance IDs provided'}), 400
     for iid in ids:
-        assert_resource_writable('ec2', iid, current_user)
+        _assert_ec2_power_writable(iid)
     try:
         for lbl, grp in _group_by_label(ids).items():
             aws_service.reboot_instances(grp, region, label=lbl)
