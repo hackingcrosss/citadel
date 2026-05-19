@@ -1,4 +1,5 @@
 import logging
+import re
 from concurrent.futures import ThreadPoolExecutor, as_completed, TimeoutError as FuturesTimeoutError
 from flask import request, jsonify
 from flask_login import login_required, current_user
@@ -12,6 +13,34 @@ from app.models.project_resource import ProjectResource
 from app.utils.errors import safe_error
 
 _log = logging.getLogger(__name__)
+
+_AFD_EXTERNAL_ID_RE = re.compile(r'^[A-Za-z0-9_.()\-]{1,90}/[A-Za-z0-9\-]{1,260}/[A-Za-z0-9\-]{1,260}$')
+_CLOUDFRONT_EXTERNAL_ID_RE = re.compile(r'^[A-Z0-9]{8,32}$')
+
+
+def _validate_external_id(provider, external_id):
+    """Validate provider-specific CDN external identifiers before SDK calls."""
+    external_id = (external_id or '').strip()
+    if not external_id:
+        return False, 'external_id is required'
+    if provider == 'cloudfront' and '/' in external_id:
+        return False, 'CloudFront external_id must not contain path separators'
+    if provider == 'azure_front_door':
+        if not _AFD_EXTERNAL_ID_RE.fullmatch(external_id):
+            return False, 'Azure Front Door external_id must be resourceGroup/profile/endpoint'
+        return True, None
+    if provider == 'cloudfront':
+        if not _CLOUDFRONT_EXTERNAL_ID_RE.fullmatch(external_id):
+            return False, 'CloudFront external_id has invalid format'
+        return True, None
+    return False, 'provider must be cloudfront or azure_front_door'
+
+
+def _afd_external_id_parts(external_id):
+    ok, reason = _validate_external_id('azure_front_door', external_id)
+    if not ok:
+        raise ValueError(reason)
+    return external_id.split('/', 2)
 
 
 def _try_recover_creating_dist(dist):
@@ -129,15 +158,17 @@ def cdn_import_distribution():
     if not data:
         return jsonify({'error': 'No data provided'}), 400
 
+    provider = data.get('provider', '').strip()
     external_id = data.get('external_id', '').strip()
-    if not external_id:
-        return jsonify({'error': 'external_id is required'}), 400
+    ok, reason = _validate_external_id(provider, external_id)
+    if not ok:
+        return jsonify({'error': reason}), 400
 
     if CdnDistribution.query.filter_by(external_id=external_id).first():
         return jsonify({'error': 'Distribution already tracked'}), 409
 
     dist = CdnDistribution(
-        provider=data.get('provider', ''),
+        provider=provider,
         account_label=data.get('account_label', 'default'),
         external_id=external_id,
         domain=data.get('domain', ''),
@@ -169,7 +200,6 @@ def cdn_create_distribution():
     if not provider or not origin_host:
         return jsonify({'error': 'provider and origin_host are required'}), 400
 
-    import re
     _HOSTNAME_RE = re.compile(r'^(?!-)([a-zA-Z0-9-]{1,63}(?<!-)\.)+[a-zA-Z]{2,}$')
     _IPV4_RE = re.compile(r'^(\d{1,3}\.){3}\d{1,3}$')
     if not _HOSTNAME_RE.match(origin_host) and not _IPV4_RE.match(origin_host):
@@ -280,21 +310,20 @@ def cdn_get_distribution_status(dist_id):
     # Normal case — poll live status from cloud provider
     try:
         if dist.provider == 'cloudfront':
+            ok, reason = _validate_external_id('cloudfront', dist.external_id or '')
+            if not ok:
+                return jsonify({'error': reason}), 400
             live = cdn_service.get_cloudfront_distribution(dist.external_id, label=dist.account_label)
             new_status = live['status']
         else:
             # AFD — use provisioning_state (deployment_status is 'NotStarted' on new
             # endpoints that have had no explicit redeploy, which would wrongly stay
             # 'deploying' forever).
-            parts = (dist.external_id or '').split('/')
-            if len(parts) >= 3:
-                rg, profile, endpoint = parts[0], parts[1], parts[2]
-                client, _ = cdn_service._get_afd_client(label=dist.account_label)
-                ep = client.afd_endpoints.get(rg, profile, endpoint)
-                prov = str(ep.provisioning_state or '').lower()
-                new_status = 'deployed' if prov == 'succeeded' else 'deploying'
-            else:
-                new_status = dist.status
+            rg, profile, endpoint = _afd_external_id_parts(dist.external_id or '')
+            client, _ = cdn_service._get_afd_client(label=dist.account_label)
+            ep = client.afd_endpoints.get(rg, profile, endpoint)
+            prov = str(ep.provisioning_state or '').lower()
+            new_status = 'deployed' if prov == 'succeeded' else 'deploying'
 
         if dist.status != new_status:
             dist.status = new_status
@@ -328,10 +357,10 @@ def cdn_get_probe_settings(dist_id):
     dist = CdnDistribution.query.get_or_404(dist_id)
     if dist.provider != 'azure_front_door':
         return jsonify({'error': 'Not an Azure Front Door distribution'}), 400
-    parts = (dist.external_id or '').split('/')
-    if len(parts) < 2:
-        return jsonify({'probe_protocol': 'NotSet', 'probe_path': '/', 'probe_interval': 100})
-    rg, profile = parts[0], parts[1]
+    ok, reason = _validate_external_id('azure_front_door', dist.external_id or '')
+    if not ok:
+        return jsonify({'error': reason}), 400
+    rg, profile, _endpoint = _afd_external_id_parts(dist.external_id or '')
     try:
         client, _ = cdn_service._get_afd_client(label=dist.account_label)
         ogs = list(client.afd_origin_groups.list_by_profile(rg, profile))
@@ -366,22 +395,23 @@ def cdn_update_distribution(dist_id):
 
     try:
         if dist.provider == 'cloudfront':
+            ok, reason = _validate_external_id('cloudfront', dist.external_id or '')
+            if not ok:
+                return jsonify({'error': reason}), 400
             cdn_service.update_cloudfront_origin(
                 dist.external_id, origin_host, origin_port, comment, label=dist.account_label
             )
             dist.status = 'deploying'   # CF re-deploys after any config change
         else:
-            parts = (dist.external_id or '').split('/')
-            if len(parts) >= 2:
-                rg, profile = parts[0], parts[1]
-                cdn_service.update_afd_origin(
-                    rg, profile, origin_host, origin_port, label=dist.account_label
+            rg, profile, _endpoint = _afd_external_id_parts(dist.external_id or '')
+            cdn_service.update_afd_origin(
+                rg, profile, origin_host, origin_port, label=dist.account_label
+            )
+            if probe_protocol:
+                cdn_service.update_afd_health_probe(
+                    rg, profile, probe_protocol, probe_path, probe_interval,
+                    label=dist.account_label
                 )
-                if probe_protocol:
-                    cdn_service.update_afd_health_probe(
-                        rg, profile, probe_protocol, probe_path, probe_interval,
-                        label=dist.account_label
-                    )
 
         dist.origin_host = origin_host
         dist.origin_port = origin_port
@@ -417,6 +447,9 @@ def cdn_delete_distribution(dist_id):
             return jsonify({'deleted': True, 'id': dist_id, 'was_creating': True})
 
         if dist.provider == 'cloudfront':
+            ok, reason = _validate_external_id('cloudfront', dist.external_id or '')
+            if not ok:
+                return jsonify({'error': reason}), 400
             # Step 1: disable (required before delete)
             dist.status = 'disabling'
             db.session.commit()
@@ -446,10 +479,8 @@ def cdn_delete_distribution(dist_id):
                     raise
 
         elif dist.provider == 'azure_front_door':
-            parts = (dist.external_id or '').split('/')
-            if len(parts) >= 3:
-                rg, profile, endpoint = parts[0], parts[1], parts[2]
-                cdn_service.delete_afd_distribution(rg, profile, endpoint, label=dist.account_label)
+            rg, profile, endpoint = _afd_external_id_parts(dist.external_id or '')
+            cdn_service.delete_afd_distribution(rg, profile, endpoint, label=dist.account_label)
 
         db.session.delete(dist)
         db.session.commit()

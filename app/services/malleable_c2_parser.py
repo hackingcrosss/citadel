@@ -8,6 +8,9 @@ blocks that restrict reverse-proxy traffic to only allow matching C2 comms.
 
 import re
 
+_MAX_PROFILE_TOKENS = 20000
+_MAX_PROFILE_DEPTH = 50
+
 
 # ---------------------------------------------------------------------------
 # Tokeniser — strips comments, then yields tokens one at a time
@@ -46,7 +49,7 @@ def _unquote(s):
 # Recursive-descent parser — builds a simple AST
 # ---------------------------------------------------------------------------
 
-def _parse_block(tokens, pos):
+def _parse_block(tokens, pos, depth=0):
     """Parse a { ... } block, returning (dict_of_contents, new_pos).
 
     The dict maps:
@@ -56,6 +59,9 @@ def _parse_block(tokens, pos):
       'block:<name>'   -> nested dict (for client, server, metadata, id, output)
       'uri_list'       -> [uri, ...] from 'set uri' split on space
     """
+    if depth > _MAX_PROFILE_DEPTH:
+        raise ValueError(f'Profile nesting depth exceeds {_MAX_PROFILE_DEPTH}')
+
     result = {'_headers': [], '_parameters': []}
     # Track prepend/append from data transform chains (metadata, id, output).
     # These accumulate until consumed by a terminating 'header' or 'parameter'.
@@ -156,7 +162,7 @@ def _parse_block(tokens, pos):
         # Sub-block: name { ... }
         if pos + 1 < len(tokens) and tokens[pos + 1] == '{':
             block_name = tok
-            inner, new_pos = _parse_block(tokens, pos + 2)
+            inner, new_pos = _parse_block(tokens, pos + 2, depth + 1)
             result[f'block:{block_name}'] = inner
             pos = new_pos
             continue
@@ -191,7 +197,7 @@ def _parse_top_level(tokens):
         # Top-level block: http-get { ... }, http-post { ... }, etc.
         if pos + 1 < len(tokens) and tokens[pos + 1] == '{':
             block_name = tok
-            inner, new_pos = _parse_block(tokens, pos + 2)
+            inner, new_pos = _parse_block(tokens, pos + 2, 1)
             # Some blocks can appear with a variant name like http-get "variant"
             result['_blocks'][block_name] = inner
             pos = new_pos
@@ -202,7 +208,7 @@ def _parse_top_level(tokens):
                 and tokens[pos + 2] == '{'):
             block_name = tok
             _variant = _unquote(tokens[pos + 1])
-            inner, new_pos = _parse_block(tokens, pos + 3)
+            inner, new_pos = _parse_block(tokens, pos + 3, 1)
             # Store with variant suffix
             result['_blocks'][f'{block_name}:{_variant}'] = inner
             pos = new_pos
@@ -230,6 +236,8 @@ def parse_profile(profile_text):
       raw_blocks: [block_name, ...]
     """
     tokens = _tokenize(profile_text)
+    if len(tokens) > _MAX_PROFILE_TOKENS:
+        raise ValueError(f'Profile is too large ({len(tokens)} tokens; max {_MAX_PROFILE_TOKENS})')
     ast = _parse_top_level(tokens)
 
     result = {

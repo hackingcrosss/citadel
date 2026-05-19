@@ -11,6 +11,7 @@ from app.models.ia_business_intel import IABusinessIntel
 from app.models.project import Project
 from app.services import discovery_service
 from app.services.openai_service import get_client
+from app.utils.html_sanitizer import sanitize_email_html
 
 _log = logging.getLogger(__name__)
 
@@ -224,7 +225,7 @@ def run_generation(batch_id, project_id):
                 project_id=project_id,
                 name=t.get('pretext_category', f'Template {i + 1}'),
                 subject=t.get('subject', '(no subject)'),
-                html_body=t.get('html_body', ''),
+                html_body=sanitize_email_html(t.get('html_body', '')),
                 text_body=t.get('text_body', ''),
                 pretext_category=t.get('pretext_category', ''),
                 target_roles=json.dumps(t.get('target_roles', [])),
@@ -263,7 +264,7 @@ def push_template_to_gophish(template_id, user_id=None):
     gp_data = {
         'name': f'[Citadel] {tpl.name} - {tpl.subject[:50]} ({ts})',
         'subject': tpl.subject,
-        'html': tpl.html_body or '',
+        'html': sanitize_email_html(tpl.html_body or ''),
         'text': tpl.text_body or '',
     }
     result = gophish_service.create_template(gp_data)

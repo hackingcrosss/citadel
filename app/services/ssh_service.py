@@ -102,10 +102,10 @@ DEFAULT_PREFIXES = (
 )
 
 
-def _get_ssh_config(instance_id):
-    config = InstanceSSHConfig.query.filter_by(instance_id=instance_id).first()
+def _get_ssh_config(instance_id, provider='aws'):
+    config = InstanceSSHConfig.query.filter_by(provider=provider, instance_id=instance_id).first()
     if not config:
-        raise ValueError(f'No SSH configuration found for instance {instance_id}')
+        raise ValueError(f'No SSH configuration found for {provider} instance {instance_id}')
     return config
 
 
@@ -139,8 +139,8 @@ def _parse_private_key(key_str):
     raise ValueError('Unsupported private key format. Supported: RSA, Ed25519, ECDSA')
 
 
-def _execute_command(instance_id, command, region=None, timeout=30):
-    config = _get_ssh_config(instance_id)
+def _execute_command(instance_id, command, region=None, timeout=30, provider='aws'):
+    config = _get_ssh_config(instance_id, provider=provider)
     key_str = _decrypt_key(config)
     ip = _get_target_ip(config, region)
     pkey = _parse_private_key(key_str)
@@ -181,12 +181,13 @@ def _is_default_service(name):
     return False
 
 
-def list_services(instance_id, region=None):
+def list_services(instance_id, region=None, provider='aws'):
     # Get active units with their status
     result = _execute_command(
         instance_id,
         'systemctl list-units --type=service --all --no-pager --no-legend',
         region,
+        provider=provider,
     )
     if result['exit_code'] != 0:
         raise RuntimeError(f"Failed to list services: {result['stderr']}")
@@ -196,6 +197,7 @@ def list_services(instance_id, region=None):
         instance_id,
         'systemctl list-unit-files --type=service --no-pager --no-legend',
         region,
+        provider=provider,
     )
     unit_file_states = {}
     for line in uf_result['stdout'].strip().splitlines():
@@ -263,7 +265,7 @@ def list_services(instance_id, region=None):
     return services
 
 
-def get_service_status(instance_id, service_name, region=None):
+def get_service_status(instance_id, service_name, region=None, provider='aws'):
     # Validate service name to prevent command injection
     if not all(c.isalnum() or c in '-_@.' for c in service_name):
         raise ValueError('Invalid service name')
@@ -272,12 +274,14 @@ def get_service_status(instance_id, service_name, region=None):
         instance_id,
         f'systemctl status {service_name}.service 2>&1 || true',
         region,
+        provider=provider,
     )
 
     config_result = _execute_command(
         instance_id,
         f'systemctl cat {service_name}.service 2>&1 || true',
         region,
+        provider=provider,
     )
 
     return {
@@ -287,7 +291,7 @@ def get_service_status(instance_id, service_name, region=None):
     }
 
 
-def service_action(instance_id, service_name, action, region=None):
+def service_action(instance_id, service_name, action, region=None, provider='aws'):
     if action not in ('start', 'stop', 'restart', 'enable', 'disable'):
         raise ValueError(f'Invalid action: {action}')
 
@@ -299,6 +303,7 @@ def service_action(instance_id, service_name, action, region=None):
         instance_id,
         f'sudo systemctl {action} {service_name}.service',
         region,
+        provider=provider,
     )
 
     if result['exit_code'] != 0:

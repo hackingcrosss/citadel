@@ -39,9 +39,9 @@ def get_client():
         raise ValueError('OpenAI API key not configured. Go to Settings → OpenAI to add it.')
 
     endpoint = get_credential('openai', 'endpoint') or 'https://swedencentral.api.cognitive.microsoft.com/'
-    # E-1: block SSRF at runtime
-    from app.utils.url_validation import validate_outbound_url
-    ok, reason = validate_outbound_url(endpoint)
+    # E-3: OpenAI endpoints are high-trust model providers, not generic outbound URLs.
+    from app.utils.url_validation import validate_openai_endpoint
+    ok, reason = validate_openai_endpoint(endpoint)
     if not ok:
         raise ValueError(f'OpenAI endpoint blocked: {reason}')
     api_version = get_credential('openai', 'api_version')
