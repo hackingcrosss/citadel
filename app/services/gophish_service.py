@@ -1,3 +1,5 @@
+import os
+
 import requests
 import urllib3
 from app.services.credential_service import get_credential
@@ -24,9 +26,29 @@ def _headers():
     return {'Authorization': key, 'Content-Type': 'application/json'}
 
 
+def _truthy(value):
+    return str(value or '').strip().lower() in ('1', 'true', 'yes', 'on')
+
+
+def _tls_verify():
+    """Return requests verify value for GoPhish.
+
+    Secure default is certificate verification enabled. Internal labs often run
+    GoPhish with a self-signed certificate; admins may explicitly disable
+    verification with the gophish/tls_verify credential or env override.
+    """
+    env_value = os.getenv('CITADEL_GOPHISH_TLS_VERIFY')
+    if env_value is not None:
+        return _truthy(env_value)
+    saved = get_credential('gophish', 'tls_verify')
+    if saved is None:
+        return True
+    return _truthy(saved)
+
+
 def _request(method, path, **kwargs):
     url = _base_url() + path
-    resp = requests.request(method, url, headers=_headers(), verify=True, timeout=15, **kwargs)
+    resp = requests.request(method, url, headers=_headers(), verify=_tls_verify(), timeout=15, **kwargs)
     if resp.status_code >= 400:
         error = resp.text
         try:
@@ -186,7 +208,7 @@ def send_test_email(smtp_profile, to_email, subject, html_body, text_body='',
         'smtp': smtp,
     }
     url = _base_url() + '/api/util/send_test_email'
-    resp = requests.post(url, headers=_headers(), json=payload, verify=True, timeout=30)
+    resp = requests.post(url, headers=_headers(), json=payload, verify=_tls_verify(), timeout=30)
     if resp.status_code >= 400:
         error = resp.text
         try:

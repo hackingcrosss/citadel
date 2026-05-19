@@ -707,6 +707,13 @@
                                     <small class="text-muted" id="gophish-api-key-status"></small>
                                 </div>
                                 <div class="col-12">
+                                    <div class="form-check form-switch">
+                                        <input class="form-check-input" type="checkbox" id="gophish-tls-verify" checked>
+                                        <label class="form-check-label" for="gophish-tls-verify">Verify GoPhish TLS certificate</label>
+                                    </div>
+                                    <small class="text-muted" id="gophish-tls-verify-status">Keep enabled for trusted certificates. Disable only for internal/self-signed lab GoPhish instances.</small>
+                                </div>
+                                <div class="col-12">
                                     <button class="btn btn-sm btn-outline-primary" onclick="saveGophishCredentials()"><i class="bi bi-pencil"></i> Update</button>
                                     <button class="btn btn-sm btn-outline-success" onclick="testGophishConnection()"><i class="bi bi-check-circle"></i> Test Connection</button>
                                     <span id="gophish-test-result" class="ms-2"></span>
@@ -1215,6 +1222,9 @@
                         : Object.keys(provider).length > 0;
                     if (p.key === 'docker') {
                         isSet = !!(provider.host && provider.host.exists);
+                    }
+                    if (p.key === 'gophish') {
+                        isSet = !!(provider.api_url && provider.api_url.exists && provider.api_key && provider.api_key.exists);
                     }
                     el.className = 'config-status ' + (isSet ? 'is-set' : 'not-set');
                     el.textContent = isSet ? '✓ Configured' : '⚠ Not set';
@@ -2008,6 +2018,15 @@
                     document.getElementById('gophish-api-key-status').textContent =
                         'Last updated: ' + new Date(creds.api_key.updated_at).toLocaleString();
                 }
+                if (creds.tls_verify) {
+                    const tlsEl = document.getElementById('gophish-tls-verify');
+                    const statusEl = document.getElementById('gophish-tls-verify-status');
+                    tlsEl.checked = !!creds.tls_verify.enabled;
+                    tlsEl.disabled = !!creds.tls_verify.env_forced;
+                    statusEl.textContent = creds.tls_verify.env_forced
+                        ? 'Forced by CITADEL_GOPHISH_TLS_VERIFY.'
+                        : 'Keep enabled for trusted certificates. Disable only for internal/self-signed lab GoPhish instances.';
+                }
             })
             .catch(err => console.error('Failed to load GoPhish credentials:', err));
     }
@@ -2015,15 +2034,11 @@
     function saveGophishCredentials() {
         const apiUrl = document.getElementById('gophish-api-url').value;
         const apiKey = document.getElementById('gophish-api-key').value;
+        const tlsVerifyEl = document.getElementById('gophish-tls-verify');
 
-        const body = {};
+        const body = {tls_verify: tlsVerifyEl.checked ? 'true' : 'false'};
         if (apiUrl) body.api_url = apiUrl;
         if (apiKey) body.api_key = apiKey;
-
-        if (Object.keys(body).length === 0) {
-            showToast('Enter at least one value to save.', 'warning');
-            return;
-        }
 
         fetch('/api/credentials/gophish', {
             method: 'POST',

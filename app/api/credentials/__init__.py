@@ -91,6 +91,18 @@ def get_credentials(provider):
         })
         flat['allow_remote']['enabled'] = allow_remote
         flat['allow_remote']['env_forced'] = env_forced
+    if provider == 'gophish':
+        tls_verify_plain = credential_service.get_credential('gophish', 'tls_verify')
+        env_value = os.getenv('CITADEL_GOPHISH_TLS_VERIFY')
+        env_forced = env_value is not None
+        tls_verify = _truthy(env_value) if env_forced else (True if tls_verify_plain is None else _truthy(tls_verify_plain))
+        flat.setdefault('tls_verify', {
+            'exists': tls_verify_plain is not None,
+            'masked': 'true' if tls_verify else 'false',
+            'updated_at': None,
+        })
+        flat['tls_verify']['enabled'] = tls_verify
+        flat['tls_verify']['env_forced'] = env_forced
     return jsonify({provider: flat})
 
 
@@ -123,6 +135,11 @@ def save_credentials(provider):
     saved = []
     for key_name, value in payload.items():
         if provider == 'docker' and key_name == 'allow_remote':
+            val = 'true' if _truthy(value) else 'false'
+            credential_service.set_credential(provider, key_name, val)
+            saved.append(key_name)
+            continue
+        if provider == 'gophish' and key_name == 'tls_verify':
             val = 'true' if _truthy(value) else 'false'
             credential_service.set_credential(provider, key_name, val)
             saved.append(key_name)
