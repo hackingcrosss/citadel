@@ -915,12 +915,21 @@ def _validate_scope_subset(project, scope):
 
 @api_bp.route('/projects/<int:project_id>/scope', methods=['PATCH'])
 @login_required
-@project_member_required(write=True)
+@project_member_required()
 def update_project_scope(project_id):
-    """Update project scope within the parent company's approved scope."""
+    """Update project scope within the parent company's approved scope.
+
+    White-team project members are explicitly allowed here: defining and
+    maintaining the engagement scope is part of their role.  This is narrower
+    than general project write access, which still excludes white-team users
+    from infrastructure/resource mutation endpoints.
+    """
     import json as _json
     from flask import g
     project = g.project
+
+    if not current_user.is_admin and g.project_role not in ('project_admin', 'operator', 'white_team'):
+        return jsonify({'error': 'Project scope edit access required'}), 403
 
     data = request.get_json(silent=True) or {}
     current_scope = project.parsed_scope
