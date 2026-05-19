@@ -1,21 +1,23 @@
 """Target management API endpoints for Initial Access module."""
 
 import logging
-from flask import request, jsonify
+from flask import abort, request, jsonify
 from flask_login import login_required, current_user
 from app.api import api_bp
 from app.services import ia_target_service, ia_scan_service, audit_service
-from app.services.project_service import get_active_project, assert_record_accessible
+from app.services.project_service import can_write, get_active_project, assert_record_accessible
 from app.utils.decorators import feature_required
 from app.utils.errors import safe_error
 
 _log = logging.getLogger(__name__)
 
 
-def _require_active_project():
+def _require_active_project(write=False):
     project = get_active_project(current_user)
     if not project:
         return None
+    if write and not can_write(current_user, project.id):
+        abort(403)
     return project
 
 
@@ -38,12 +40,9 @@ def ia_list_targets():
 @feature_required('initial_access')
 def ia_create_target():
     """Create a single target."""
-    project = _require_active_project()
+    project = _require_active_project(write=True)
     if not project:
         return jsonify({'error': 'No active project selected'}), 400
-
-    if not current_user.can_write_infra:
-        return jsonify({'error': 'Write access required'}), 403
 
     data = request.get_json(silent=True) or {}
     if not data.get('email'):
@@ -67,12 +66,9 @@ def ia_create_target():
 @feature_required('initial_access')
 def ia_import_targets():
     """Import targets from CSV text."""
-    project = _require_active_project()
+    project = _require_active_project(write=True)
     if not project:
         return jsonify({'error': 'No active project selected'}), 400
-
-    if not current_user.can_write_infra:
-        return jsonify({'error': 'Write access required'}), 403
 
     payload = request.get_json(silent=True) or {}
     csv_text = payload.get('csv_text', '')
@@ -134,8 +130,6 @@ def ia_update_target(target_id):
 
     # C-04: authorise via membership, not session active-project
     assert_record_accessible(target, current_user, write=True)
-    if not current_user.can_write_infra:
-        return jsonify({'error': 'Write access required'}), 403
 
     data = request.get_json(silent=True) or {}
     try:
@@ -160,9 +154,8 @@ def ia_delete_target(target_id):
 
     # C-04: authorise via membership, not session active-project
     assert_record_accessible(target, current_user, write=True)
-    if not current_user.can_write_infra:
-        return jsonify({'error': 'Write access required'}), 403
 
+    project = target.project
     audit_service.log('ia.target_delete', 'ia_target', target.id,
                       f'project:{project.code}', {'email': target.email})
     ia_target_service.delete_target(target)
@@ -182,8 +175,6 @@ def ia_enrich_target(target_id):
 
     # C-04: authorise via membership, not session active-project
     assert_record_accessible(target, current_user, write=True)
-    if not current_user.can_write_infra:
-        return jsonify({'error': 'Write access required'}), 403
 
     # Find latest completed scan for the target's project
     latest_scan = (

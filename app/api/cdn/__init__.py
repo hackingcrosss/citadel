@@ -8,7 +8,15 @@ from app.services import cdn_service
 from app.models.cdn_distribution import CdnDistribution
 from app import db
 from app.utils.decorators import feature_required
-from app.services.project_service import build_project_tag_map, get_active_project, get_project_domain_names, get_project_resource_external_ids
+from app.services.project_service import (
+    build_project_tag_map,
+    can_read,
+    can_write,
+    get_active_project,
+    get_project_domain_names,
+    get_project_resource_external_ids,
+    tag_resource,
+)
 from app.models.project_resource import ProjectResource
 from app.utils.errors import safe_error
 
@@ -16,6 +24,50 @@ _log = logging.getLogger(__name__)
 
 _AFD_EXTERNAL_ID_RE = re.compile(r'^[A-Za-z0-9_.()\-]{1,90}/[A-Za-z0-9\-]{1,260}/[A-Za-z0-9\-]{1,260}$')
 _CLOUDFRONT_EXTERNAL_ID_RE = re.compile(r'^[A-Z0-9]{8,32}$')
+
+
+def _active_project_write_or_response():
+    project = get_active_project(current_user)
+    if not project:
+        return None, (jsonify({'error': 'No active project selected'}), 400)
+    if not can_write(current_user, project.id):
+        return None, (jsonify({'error': 'Write access required for active project'}), 403)
+    return project, None
+
+
+def _host_matches_project_domains(host, project_id):
+    host = (host or '').lower().rstrip('.')
+    if not host:
+        return False
+    for domain in get_project_domain_names(project_id):
+        domain = domain.lower().rstrip('.')
+        if host == domain or host.endswith('.' + domain):
+            return True
+    return False
+
+
+def _cdn_access_error(dist, write=False):
+    if current_user.is_admin:
+        return None
+    if current_user.is_auditor and write:
+        return (jsonify({'error': 'Auditors have read-only access'}), 403)
+
+    resource = ProjectResource.query.filter_by(
+        resource_type='cdn_dist', external_id=str(dist.id)
+    ).first()
+    if resource:
+        allowed = can_write(current_user, resource.project_id) if write else can_read(current_user, resource.project_id)
+        if allowed:
+            return None
+        return (jsonify({'error': 'CDN distribution is tagged to a project you cannot access'}), 403)
+
+    if write:
+        return (jsonify({'error': 'CDN distribution must be tagged to your project before modification'}), 403)
+
+    active_project = get_active_project(current_user)
+    if active_project and _host_matches_project_domains(dist.origin_host, active_project.id):
+        return None
+    return (jsonify({'error': 'CDN distribution is not in your active project'}), 403)
 
 
 def _validate_external_id(provider, external_id):
@@ -164,6 +216,10 @@ def cdn_import_distribution():
     if not ok:
         return jsonify({'error': reason}), 400
 
+    active_project, access_error = _active_project_write_or_response()
+    if access_error:
+        return access_error
+
     if CdnDistribution.query.filter_by(external_id=external_id).first():
         return jsonify({'error': 'Distribution already tracked'}), 409
 
@@ -178,6 +234,8 @@ def cdn_import_distribution():
         comment=data.get('comment', ''),
     )
     db.session.add(dist)
+    db.session.flush()
+    tag_resource(active_project.id, 'cdn_dist', str(dist.id), dist.domain or dist.external_id, current_user.id)
     db.session.commit()
     return jsonify({'distribution': dist.to_dict()}), 201
 
@@ -196,6 +254,10 @@ def cdn_create_distribution():
     comment = data.get('comment', '').strip()
     account_label = data.get('account_label', 'default').strip() or 'default'
     resource_group = data.get('resource_group', '').strip()
+
+    active_project, access_error = _active_project_write_or_response()
+    if access_error:
+        return access_error
 
     if not provider or not origin_host:
         return jsonify({'error': 'provider and origin_host are required'}), 400
@@ -226,16 +288,14 @@ def cdn_create_distribution():
     db.session.commit()
 
     # Auto-tag to the creator's active project
-    active_project = get_active_project(current_user)
-    if active_project:
-        db.session.add(ProjectResource(
-            project_id=active_project.id,
-            resource_type='cdn_dist',
-            external_id=str(dist.id),
-            label=f'{provider} → {origin_host}',
-            tagged_by_id=current_user.id,
-        ))
-        db.session.commit()
+    db.session.add(ProjectResource(
+        project_id=active_project.id,
+        resource_type='cdn_dist',
+        external_id=str(dist.id),
+        label=f'{provider} → {origin_host}',
+        tagged_by_id=current_user.id,
+    ))
+    db.session.commit()
 
     # Dispatch background task and store task_id in external_id for status polling
     from app.tasks.cdn_tasks import create_cdn_distribution_task
@@ -253,6 +313,9 @@ def cdn_create_distribution():
 @feature_required('cdn')
 def cdn_get_distribution(dist_id):
     dist = CdnDistribution.query.get_or_404(dist_id)
+    access_error = _cdn_access_error(dist)
+    if access_error:
+        return access_error
     return jsonify({'distribution': dist.to_dict()})
 
 
@@ -262,6 +325,9 @@ def cdn_get_distribution(dist_id):
 def cdn_get_distribution_status(dist_id):
     """Poll live status from the cloud provider (or Celery task) and update local DB."""
     dist = CdnDistribution.query.get_or_404(dist_id)
+    access_error = _cdn_access_error(dist)
+    if access_error:
+        return access_error
 
     # Task is still running (or just dispatched)
     if dist.status == 'creating':
@@ -340,6 +406,9 @@ def cdn_get_distribution_status(dist_id):
 def cdn_force_refresh(dist_id):
     """Force-recover a stuck distribution by looking up the live cloud resource."""
     dist = CdnDistribution.query.get_or_404(dist_id)
+    access_error = _cdn_access_error(dist, write=True)
+    if access_error:
+        return access_error
 
     if _try_recover_creating_dist(dist):
         db.session.commit()
@@ -355,6 +424,9 @@ def cdn_force_refresh(dist_id):
 def cdn_get_probe_settings(dist_id):
     """Return current health probe settings for an AFD distribution."""
     dist = CdnDistribution.query.get_or_404(dist_id)
+    access_error = _cdn_access_error(dist)
+    if access_error:
+        return access_error
     if dist.provider != 'azure_front_door':
         return jsonify({'error': 'Not an Azure Front Door distribution'}), 400
     ok, reason = _validate_external_id('azure_front_door', dist.external_id or '')
@@ -382,6 +454,9 @@ def cdn_get_probe_settings(dist_id):
 def cdn_update_distribution(dist_id):
     """Update origin_host, origin_port and/or comment on a tracked distribution."""
     dist = CdnDistribution.query.get_or_404(dist_id)
+    access_error = _cdn_access_error(dist, write=True)
+    if access_error:
+        return access_error
     if dist.status == 'creating':
         return jsonify({'error': 'Cannot edit a distribution that is still being created'}), 409
 
@@ -430,6 +505,9 @@ def cdn_update_distribution(dist_id):
 def cdn_delete_distribution(dist_id):
     """Teardown: disable (CloudFront only) → delete from provider → remove from DB."""
     dist = CdnDistribution.query.get_or_404(dist_id)
+    access_error = _cdn_access_error(dist, write=True)
+    if access_error:
+        return access_error
     try:
         # If the distribution is still being created by a background task, revoke the
         # task and just remove the DB record. The cloud resource may already have been

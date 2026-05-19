@@ -113,6 +113,14 @@ def register_routes(app):
     @app.before_request
     def check_password_change():
         """Force password reset before any non-password-change action."""
+        if current_user.is_authenticated:
+            # B-07: revalidate the session-scoped active project on every
+            # request so membership removals/role changes take effect even on
+            # pages that do not explicitly read the active project.
+            if session.get('active_project_id'):
+                from app.services.project_service import get_active_project
+                get_active_project(current_user)
+
         if current_user.is_authenticated and current_user.must_change_password:
             allowed = {
                 'change_password',

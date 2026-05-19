@@ -6,7 +6,11 @@ from app import db
 from app.models.instance_tag import InstanceTag
 from app.models.instance_ssh_config import InstanceSSHConfig
 from app.services.credential_service import _get_fernet, get_account_labels
-from app.services.project_service import build_project_tag_map, assert_resource_writable
+from app.services.project_service import (
+    assert_resource_readable,
+    assert_resource_writable,
+    build_project_tag_map,
+)
 from app.utils.decorators import admin_required
 from app.utils.errors import safe_error
 
@@ -141,6 +145,7 @@ def azure_delete_vm(rg, vm_name):
 def azure_get_ssh_config(rg, vm_name):
     vm_id = azure_service.vm_instance_id(rg, vm_name)
     try:
+        assert_resource_readable('azure', vm_id, current_user)
         config = InstanceSSHConfig.query.filter_by(provider='azure', instance_id=vm_id).first()
         return jsonify({'ssh_config': config.to_dict() if config else None})
     except Exception as e:

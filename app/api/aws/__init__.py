@@ -10,10 +10,12 @@ from app.services.credential_service import _get_fernet, get_account_labels
 from app.services import ssh_service
 from app.services.project_service import (
     build_project_tag_map,
+    assert_resource_readable,
     assert_resource_writable,
     get_user_project_ids,
     get_active_project,
     can_write,
+    resource_readable,
 )
 from app.utils.decorators import admin_required
 from app.services import audit_service
@@ -339,7 +341,8 @@ def aws_list_key_pairs():
 def aws_list_ssh_configs():
     try:
         configs = InstanceSSHConfig.query.filter_by(provider='aws').all()
-        return jsonify({'ssh_configs': [c.to_dict() for c in configs]})
+        visible = [c for c in configs if resource_readable('ec2', c.instance_id, current_user)]
+        return jsonify({'ssh_configs': [c.to_dict() for c in visible]})
     except Exception as e:
         return safe_error(e, 400)
 
@@ -348,6 +351,7 @@ def aws_list_ssh_configs():
 @login_required
 def aws_get_ssh_config(instance_id):
     try:
+        assert_resource_readable('ec2', instance_id, current_user)
         config = InstanceSSHConfig.query.filter_by(provider='aws', instance_id=instance_id).first()
         if not config:
             return jsonify({'ssh_config': None})

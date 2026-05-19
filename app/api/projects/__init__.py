@@ -1,4 +1,6 @@
+import ipaddress
 import logging
+import re
 from datetime import datetime
 from flask import request, jsonify, session
 from flask_login import login_required, current_user
@@ -11,6 +13,7 @@ from app.models.domain import Domain
 from app.models.cdn_distribution import CdnDistribution
 from app.models.user import User
 from app.utils.decorators import admin_required, project_member_required
+from app.services.plan_service import get_current_plan
 from app.services.project_service import (
     get_projects_for_user,
     get_user_project_role,
@@ -22,6 +25,23 @@ from app.services.project_service import (
 )
 
 _log = logging.getLogger(__name__)
+
+
+@api_bp.before_request
+def _enforce_projects_plan_feature():
+    """Mirror /citadel/projects plan gating on the project API (B-05)."""
+    if not request.path.startswith('/api/projects'):
+        return None
+    if not current_user.is_authenticated:
+        return None
+    plan = get_current_plan()
+    if not plan.is_enabled('projects'):
+        return jsonify({
+            'error': f'Feature not available on {plan.display_name} plan',
+            'code': 'FEATURE_NOT_IN_PLAN',
+            'upgrade_required': True,
+        }), 402
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -318,6 +338,8 @@ def remove_member(project_id, user_id):
                       {'user': removed_user.email if removed_user else str(user_id)})
     db.session.delete(member)
     db.session.commit()
+    if user_id == current_user.id and session.get('active_project_id') == project_id:
+        clear_active_project()
     return jsonify({'deleted': True})
 
 
@@ -824,24 +846,81 @@ def get_project_scope(project_id):
     return jsonify(g.project.parsed_scope)
 
 
+def _normalise_domain(value):
+    value = (value or '').strip().lower().rstrip('.')
+    if value.startswith('*.'):
+        value = value[2:]
+    return value
+
+
+def _parse_company_allowed_scope(company):
+    """Parse company scope_notes into approved domains, IPs and networks."""
+    allowed = {'domains': set(), 'ips': set(), 'networks': []}
+    if not company or not company.scope_notes:
+        return allowed
+    for raw in re.split(r'[\s,;]+', company.scope_notes):
+        item = raw.strip().strip('`').strip()
+        if not item or item.startswith('#'):
+            continue
+        try:
+            if '/' in item:
+                allowed['networks'].append(ipaddress.ip_network(item, strict=False))
+                continue
+            ip = ipaddress.ip_address(item)
+            allowed['ips'].add(ip)
+            continue
+        except ValueError:
+            pass
+        domain = _normalise_domain(item)
+        if domain and re.fullmatch(r'[a-z0-9.-]+', domain) and '.' in domain:
+            allowed['domains'].add(domain)
+    return allowed
+
+
+def _domain_in_allowed_scope(domain, allowed_domains):
+    domain = _normalise_domain(domain)
+    return any(domain == allowed or domain.endswith('.' + allowed) for allowed in allowed_domains)
+
+
+def _validate_scope_subset(project, scope):
+    """Non-admin scope edits must stay within the company's approved scope."""
+    if current_user.is_admin:
+        return None
+    allowed = _parse_company_allowed_scope(project.company)
+    has_allowed = allowed['domains'] or allowed['ips'] or allowed['networks']
+    if not has_allowed:
+        return 'Company scope_notes must define approved domains, IPs, or CIDRs before non-admins can edit project scope'
+
+    for domain in scope.get('domains') or []:
+        if not _domain_in_allowed_scope(domain, allowed['domains']):
+            return f'Domain outside approved company scope: {domain}'
+
+    for ip_value in scope.get('ips') or []:
+        try:
+            ip = ipaddress.ip_address(ip_value)
+        except ValueError:
+            return f'Invalid IP address: {ip_value}'
+        if ip not in allowed['ips'] and not any(ip in net for net in allowed['networks']):
+            return f'IP outside approved company scope: {ip_value}'
+
+    for cidr_value in scope.get('cidrs') or []:
+        try:
+            net = ipaddress.ip_network(cidr_value, strict=False)
+        except ValueError:
+            return f'Invalid CIDR: {cidr_value}'
+        if not any(net.subnet_of(allowed_net) for allowed_net in allowed['networks']):
+            return f'CIDR outside approved company scope: {cidr_value}'
+    return None
+
+
 @api_bp.route('/projects/<int:project_id>/scope', methods=['PATCH'])
 @login_required
+@project_member_required(write=True)
 def update_project_scope(project_id):
-    """Update project scope. Writable by admin, project_admin, and white_team."""
+    """Update project scope within the parent company's approved scope."""
     import json as _json
-    project = Project.query.get_or_404(project_id)
-
-    # Determine if the user can edit scope
-    can_edit = False
-    if current_user.is_admin:
-        can_edit = True
-    else:
-        role = get_user_project_role(current_user.id, project_id)
-        if role in ('project_admin', 'white_team'):
-            can_edit = True
-
-    if not can_edit:
-        return jsonify({'error': 'Admin, Project Admin, or White Team role required to edit scope'}), 403
+    from flask import g
+    project = g.project
 
     data = request.get_json(silent=True) or {}
     current_scope = project.parsed_scope
@@ -859,14 +938,24 @@ def update_project_scope(project_id):
     if 'notes' in data:
         current_scope['notes'] = (str(data['notes']) if data['notes'] else '').strip()
 
+    scope_error = _validate_scope_subset(project, current_scope)
+    if scope_error:
+        return jsonify({'error': scope_error}), 400
+
+    old_scope = project.parsed_scope
     project.scope = _json.dumps(current_scope)
     db.session.commit()
 
+    old_count = sum(len(old_scope.get(k) or []) for k in ('domains', 'cidrs', 'ips'))
+    new_count = sum(len(current_scope.get(k) or []) for k in ('domains', 'cidrs', 'ips'))
     _log.info('User %s updated scope for project %s', current_user.email, project.code)
     audit_service.log('project.scope_update', 'project', project.id, project.code,
                       {'domains': len(current_scope['domains']),
                        'cidrs': len(current_scope['cidrs']),
-                       'ips': len(current_scope['ips'])})
+                       'ips': len(current_scope['ips']),
+                       'scope_increased': new_count > old_count,
+                       'old_count': old_count,
+                       'new_count': new_count})
     return jsonify(current_scope)
 
 

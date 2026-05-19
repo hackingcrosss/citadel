@@ -290,35 +290,33 @@ def is_platform_core_container(name_or_id):
     return bool(_CONTAINER_PLATFORM_CORE_RE.match(str(name_or_id or '')))
 
 
-def assert_resource_readable(resource_type, external_id, user):
-    """Abort 403 if the user cannot read this external resource.
-
-    Rules:
-    - Admins: always allowed.
-    - Plain users: blocked.
-    - Platform-core containers (citadel-web, citadel-postgres, etc.) are hidden
-      from all non-admins.
-    - Operators may read untagged containers as a temporary K-03 workaround
-      because deploy flows do not auto-tag every container yet; tagged
-      resources must belong to one of their projects.
-    - Project-admin, white-team, and auditor reads are stricter: the resource
-      must be tagged to a project they can read. This restores project-scoped
-      container visibility without reopening the K-01 all-container read issue.
-    """
+def resource_readable(resource_type, external_id, user):
+    """Return True if the user can read this external resource."""
     if user.is_admin:
-        return
+        return True
     if not (user.is_operator or user.is_project_admin or user.is_white_team or user.is_auditor):
-        abort(403)
+        return False
     if resource_type == 'container' and is_platform_core_container(external_id):
-        abort(403)
+        return False
 
     resource = ProjectResource.query.filter_by(
         resource_type=resource_type, external_id=str(external_id)
     ).first()
-    if user.is_operator:
-        if resource is not None and resource.project_id not in get_user_project_ids(user):
-            abort(403)
-        return
+    if resource is None:
+        # Temporary compatibility exceptions:
+        # - container: legacy deployments before K-03 auto-tagging
+        # - ec2: current AWS pool reuses untagged instances across projects
+        return user.is_operator and resource_type in ('container', 'ec2')
 
-    if resource is None or resource.project_id not in get_user_project_ids(user):
+    return resource.project_id in get_user_project_ids(user)
+
+
+def assert_resource_readable(resource_type, external_id, user):
+    """Abort 403 if the user cannot read this external resource.
+
+    Tagged resources must belong to a project the user can read.  Untagged
+    compatibility reads are limited to operator container/EC2 workflows only;
+    other provider configs remain hidden unless explicitly project-tagged.
+    """
+    if not resource_readable(resource_type, external_id, user):
         abort(403)

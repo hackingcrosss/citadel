@@ -6,8 +6,26 @@ from app import db
 from app.models.company import Company, COMPANY_STRUCTURAL_FIELDS, COMPANY_PROFILE_FIELDS
 from app.models.project import Project, ProjectMember
 from app.utils.decorators import admin_required
+from app.services.plan_service import get_current_plan
 
 _log = logging.getLogger(__name__)
+
+
+@api_bp.before_request
+def _enforce_companies_plan_feature():
+    """Mirror /citadel/companies plan gating on the companies API."""
+    if not request.path.startswith('/api/companies'):
+        return None
+    if not current_user.is_authenticated:
+        return None
+    plan = get_current_plan()
+    if not plan.is_enabled('companies'):
+        return jsonify({
+            'error': f'Feature not available on {plan.display_name} plan',
+            'code': 'FEATURE_NOT_IN_PLAN',
+            'upgrade_required': True,
+        }), 402
+    return None
 
 
 def _can_access_company(company_id):
@@ -183,7 +201,11 @@ def update_company(company_id):
             else:
                 setattr(company, field, data[field])
 
-    # Apply profile fields (white_team writable)
+    # Apply profile fields. Re-check access immediately before mutation so
+    # future refactors cannot bypass the read gate by falling through to the
+    # profile-field loop (B-12).
+    if not current_user.is_admin and not _can_access_company(company_id):
+        return jsonify({'error': 'Access denied'}), 403
     for field in COMPANY_PROFILE_FIELDS:
         if field in data:
             setattr(company, field, data[field])

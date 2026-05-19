@@ -101,6 +101,7 @@ def deploy_landing_page(page):
     """
     from app.services import website_generator_service, npm_service, dns_service
     from app.services.credential_service import get_credential
+    from app.services.project_service import tag_resource
 
     if page.status == 'live':
         raise ValueError('Page is already deployed')
@@ -127,6 +128,8 @@ def deploy_landing_page(page):
     try:
         deploy_result = website_generator_service.deploy_website(page.html_content, folder_name)
         page.container_name = deploy_result['folder']
+        tag_resource(page.project_id, 'container', page.container_name, page.name, page.deployed_by_id)
+        tag_resource(page.project_id, 'website_gen_site', page.container_name, page.name, page.deployed_by_id)
         steps.append({'step': 'deploy_files', 'status': 'ok', 'folder': page.container_name})
     except Exception as e:
         page.status = 'error'
@@ -154,6 +157,8 @@ def deploy_landing_page(page):
             forward_port=80,
         )
         page.npm_host_id = proxy.get('id')
+        if page.npm_host_id is not None:
+            tag_resource(page.project_id, 'npm_host', str(page.npm_host_id), fqdn, page.deployed_by_id)
         steps.append({'step': 'npm_proxy', 'status': 'ok', 'proxy_id': page.npm_host_id})
     except Exception as e:
         steps.append({'step': 'npm_proxy', 'status': 'error', 'error': str(e)})
