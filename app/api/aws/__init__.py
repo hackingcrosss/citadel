@@ -7,7 +7,13 @@ from app.models.instance_tag import InstanceTag
 from app.models.instance_ssh_config import InstanceSSHConfig
 from app.services.credential_service import _get_fernet, get_account_labels
 from app.services import ssh_service
-from app.services.project_service import build_project_tag_map, assert_resource_writable
+from app.services.project_service import (
+    build_project_tag_map,
+    assert_resource_writable,
+    get_user_project_ids,
+    get_active_project,
+    can_write,
+)
 from app.utils.decorators import admin_required
 from app.services import audit_service
 from app.utils.errors import safe_error
@@ -70,13 +76,39 @@ def aws_list_instances():
             for inst in instances:
                 inst['ssh_configured'] = False
 
-        # Enrich instances with project tag
+        # Enrich instances with project tag and write eligibility
         tag_map = build_project_tag_map('ec2', instance_ids)
+        allowed_projects = get_user_project_ids(current_user) if not current_user.is_admin else set()
         for inst in instances:
             tag = tag_map.get(inst['id'])
             inst['project_id'] = tag['project_id'] if tag else None
             inst['project_code'] = tag['project_code'] if tag else None
             inst['project_resource_id'] = tag['project_resource_id'] if tag else None
+            inst['can_write'] = bool(
+                current_user.is_admin or (
+                    tag and tag['project_id'] in allowed_projects and can_write(current_user, tag['project_id'])
+                )
+            )
+
+        # Non-admin scoping mirrors the container page:
+        # - operators can see untagged instances so they can tag new assets to
+        #   their active project, but cannot start/stop them until tagged.
+        # - project-admin, white-team, and auditor reads are active-project only.
+        if not current_user.is_admin:
+            if current_user.is_operator:
+                instances = [
+                    inst for inst in instances
+                    if inst.get('project_id') is None or inst.get('project_id') in allowed_projects
+                ]
+            else:
+                active_project = get_active_project(current_user)
+                if active_project is None:
+                    instances = []
+                else:
+                    instances = [
+                        inst for inst in instances
+                        if inst.get('project_id') == active_project.id
+                    ]
 
         return jsonify({'instances': instances})
     except Exception as e:
