@@ -262,11 +262,11 @@ def assert_resource_writable(resource_type, external_id, user):
         return
 
     if not user.can_write_infra and not user.is_project_admin:
-        abort(403)
+        abort(403, description='Operator or project-admin access is required for this action')
 
     # K-02: deny writes to platform-core containers for all non-admins
     if resource_type == 'container' and is_platform_core_container(external_id):
-        abort(403)
+        abort(403, description='Platform containers can only be managed by administrators')
 
     from app.models.project import ProjectMember
     has_write_role = ProjectMember.query.filter(
@@ -274,7 +274,7 @@ def assert_resource_writable(resource_type, external_id, user):
         ProjectMember.project_role.in_(('project_admin', 'operator')),
     ).first() is not None
     if not has_write_role:
-        abort(403)
+        abort(403, description='Operator or project-admin membership is required for this action')
 
     resource = ProjectResource.query.filter_by(
         resource_type=resource_type, external_id=str(external_id)
@@ -283,9 +283,9 @@ def assert_resource_writable(resource_type, external_id, user):
     # This prevents operators from acting on platform containers or
     # cross-tenant website-generator containers that lack a tag.
     if resource is None:
-        abort(403)
+        abort(403, description='Resource must be tagged to one of your projects before it can be modified')
     if resource.project_id not in get_user_project_ids(user):
-        abort(403)
+        abort(403, description='Resource is tagged to a project you cannot modify')
 
 
 _CONTAINER_PLATFORM_CORE_RE = re.compile(

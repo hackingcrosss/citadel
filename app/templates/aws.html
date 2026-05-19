@@ -706,6 +706,21 @@
         return Array.from(document.querySelectorAll('.inst-check:checked')).map(cb => cb.value);
     }
 
+    function apiJson(response) {
+        return response.text().then(text => {
+            let data = {};
+            try {
+                data = text ? JSON.parse(text) : {};
+            } catch (e) {
+                throw new Error(text && text.trim().startsWith('<') ? `HTTP ${response.status}` : (text || `HTTP ${response.status}`));
+            }
+            if (!response.ok || data.error) {
+                throw new Error(data.error || `HTTP ${response.status}`);
+            }
+            return data;
+        });
+    }
+
     function bulkAction(action) {
         const ids = getSelectedIds();
         if (ids.length === 0) return;
@@ -720,15 +735,9 @@
                     headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify({instance_ids: ids, region: getRegion()})
                 })
-                .then(r => r.json())
-                .then(data => {
-                    if (data.error) {
-                        showToast('Error: ' + escapeHtml(data.error), 'danger');
-                    } else {
-                        setTimeout(loadInstances, 2000);
-                    }
-                })
-                .catch(err => showToast('Error: ' + escapeHtml(String(err)), 'danger'));
+                .then(apiJson)
+                .then(() => setTimeout(loadInstances, 2000))
+                .catch(err => showToast('Error: ' + escapeHtml(err.message || String(err)), 'danger'));
             }
         );
     }
@@ -741,15 +750,9 @@
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({instance_ids: [instanceId], region: getRegion()})
         })
-        .then(r => r.json())
-        .then(data => {
-            if (data.error) {
-                showToast('Error: ' + escapeHtml(data.error), 'danger');
-            } else {
-                setTimeout(loadInstances, 2000);
-            }
-        })
-        .catch(err => showToast('Error: ' + escapeHtml(String(err)), 'danger'));
+        .then(apiJson)
+        .then(() => setTimeout(loadInstances, 2000))
+        .catch(err => showToast('Error: ' + escapeHtml(err.message || String(err)), 'danger'));
     }
 
     // --- Terminate ---
@@ -769,16 +772,12 @@
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({instance_ids: [terminateId], region: getRegion()})
         })
-        .then(r => r.json())
-        .then(data => {
+        .then(apiJson)
+        .then(() => {
             bootstrap.Modal.getInstance(document.getElementById('terminateModal')).hide();
-            if (data.error) {
-                showToast('Error: ' + escapeHtml(data.error), 'danger');
-            } else {
-                setTimeout(loadInstances, 2000);
-            }
+            setTimeout(loadInstances, 2000);
         })
-        .catch(err => showToast('Error: ' + escapeHtml(String(err)), 'danger'));
+        .catch(err => showToast('Error: ' + escapeHtml(err.message || String(err)), 'danger'));
     });
 
     // --- Status Checks ---
