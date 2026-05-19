@@ -268,14 +268,6 @@ def assert_resource_writable(resource_type, external_id, user):
     if resource_type == 'container' and is_platform_core_container(external_id):
         abort(403, description='Platform containers can only be managed by administrators')
 
-    from app.models.project import ProjectMember
-    has_write_role = ProjectMember.query.filter(
-        ProjectMember.user_id == user.id,
-        ProjectMember.project_role.in_(('project_admin', 'operator')),
-    ).first() is not None
-    if not has_write_role:
-        abort(403, description='Operator or project-admin membership is required for this action')
-
     resource = ProjectResource.query.filter_by(
         resource_type=resource_type, external_id=str(external_id)
     ).first()
@@ -284,7 +276,7 @@ def assert_resource_writable(resource_type, external_id, user):
     # cross-tenant website-generator containers that lack a tag.
     if resource is None:
         abort(403, description='Resource must be tagged to one of your projects before it can be modified')
-    if resource.project_id not in get_user_project_ids(user):
+    if resource.project_id not in get_user_project_ids(user) or not can_write(user, resource.project_id):
         abort(403, description='Resource is tagged to a project you cannot modify')
 
 
