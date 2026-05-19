@@ -86,6 +86,14 @@ def list_companies():
         if company_best_role.get(company_id) != 'operator':
             company_best_role[company_id] = role
 
+    # White-team users are assigned to a company directly.  Include that
+    # company even before project memberships are created so they can maintain
+    # the company scope/ROE profile that project scope validation depends on.
+    if current_user.is_white_team and current_user.company_id:
+        company_projects.setdefault(current_user.company_id, [])
+        if company_best_role.get(current_user.company_id) != 'operator':
+            company_best_role[current_user.company_id] = 'white_team'
+
     if not company_projects:
         return jsonify({'companies': []})
 

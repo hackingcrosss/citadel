@@ -1396,8 +1396,12 @@ async function openScopeModal(projectId) {
     document.getElementById('scope-notes').value = '';
     document.getElementById('scope-summary').textContent = 'Loading...';
 
-    // Hide save button for read-only users
-    document.getElementById('scope-save-btn').style.display = IS_READONLY ? 'none' : '';
+    // Scope editing is intentionally available to assigned White Team members,
+    // even though they remain read-only for general infrastructure/project actions.
+    const canEditScope = !IS_AUDITOR && (IS_ADMIN || ((p?.members || []).some(m =>
+        m.user_id === CURRENT_USER_ID && ['project_admin', 'operator', 'white_team'].includes(m.project_role)
+    )));
+    document.getElementById('scope-save-btn').style.display = canEditScope ? '' : 'none';
 
     scopeModal.show();
 
