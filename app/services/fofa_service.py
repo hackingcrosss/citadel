@@ -70,6 +70,15 @@ def _is_restricted_field_error(data, field):
     return bool(data.get('error') and field in msg and ('820001' in msg or '没有权限' in msg))
 
 
+def _fofa_error_message(data):
+    msg = str(data.get('errmsg') or 'FOFA API error')
+    if '820031' in msg or 'F点余额不足' in msg:
+        return 'FOFA F-points balance is insufficient. Recharge/upgrade the FOFA account or reduce the search scope/results, then rerun the search.'
+    if 'lastupdatetime' in msg:
+        return f'{msg} (remove lastupdatetime from the FOFA query/fields or use a FOFA plan that permits it)'
+    return msg
+
+
 def search(query, fields=None, size=None, page=1):
     """Execute a FOFA search. Returns {total, results, query}."""
     email, api_key = _get_config()
@@ -86,10 +95,7 @@ def search(query, fields=None, size=None, page=1):
         fields = retry_fields
 
     if data.get('error'):
-        msg = data.get('errmsg', 'FOFA API error')
-        if 'lastupdatetime' in str(msg):
-            msg = f'{msg} (remove lastupdatetime from the FOFA query/fields or use a FOFA plan that permits it)'
-        raise ValueError(msg)
+        raise ValueError(_fofa_error_message(data))
 
     results = [dict(zip(fields, row)) for row in (data.get('results') or [])]
     return {
