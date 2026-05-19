@@ -1,11 +1,11 @@
+import hashlib
 import logging
 import os
-import re
-from flask import render_template, redirect, url_for, request, flash, session
+from flask import jsonify, render_template, redirect, url_for, request, flash, session
 from flask_login import login_required, current_user, login_user, logout_user
 from urllib.parse import urlparse, urljoin, unquote
 from app import db
-from app.models.user import User
+from app.models.user import User, validate_password_strength
 from app.utils.decorators import admin_required, feature_required
 from app.services import audit_service
 from datetime import datetime
@@ -56,57 +56,78 @@ def _redis_client():
     except Exception:
         return None
 
-def _is_rate_limited(ip):
+def _login_failure_keys(ip, email=None):
+    keys = [f'login_fail:ip:{ip}']
+    if email:
+        digest = hashlib.sha256(email.strip().lower().encode('utf-8')).hexdigest()
+        keys.append(f'login_fail:email:{digest}')
+    return keys
+
+
+def _is_rate_limited(ip, email=None):
     r = _redis_client()
     if r is None:
         return False
     try:
-        val = r.get(f'login_fail:{ip}')
-        return val is not None and int(val) >= _LOGIN_MAX_ATTEMPTS
+        for key in _login_failure_keys(ip, email):
+            val = r.get(key)
+            if val is not None and int(val) >= _LOGIN_MAX_ATTEMPTS:
+                return True
     except Exception:
         return False
+    return False
 
-def _record_failure(ip):
+
+def _record_failure(ip, email=None):
     r = _redis_client()
     if r is None:
         return
     try:
-        key = f'login_fail:{ip}'
         pipe = r.pipeline()
-        pipe.incr(key)
-        pipe.expire(key, _LOGIN_WINDOW_SECONDS)
+        for key in _login_failure_keys(ip, email):
+            pipe.incr(key)
+            pipe.expire(key, _LOGIN_WINDOW_SECONDS)
         pipe.execute()
     except Exception:
         pass
 
-def _clear_failures(ip):
+
+def _clear_failures(ip, email=None):
     r = _redis_client()
     if r is None:
         return
     try:
-        r.delete(f'login_fail:{ip}')
+        r.delete(*_login_failure_keys(ip, email))
     except Exception:
         pass
 
+
 def _check_password_complexity(password):
     """Return an error string if the password fails complexity rules, else None."""
-    if len(password) < 12:
-        return 'New password must be at least 12 characters long'
-    if not re.search(r'[A-Z]', password):
-        return 'New password must contain at least one uppercase letter'
-    if not re.search(r'[a-z]', password):
-        return 'New password must contain at least one lowercase letter'
-    if not re.search(r'[0-9]', password):
-        return 'New password must contain at least one digit'
-    return None
+    error = validate_password_strength(password)
+    if not error:
+        return None
+    return error.replace('Password', 'New password', 1)
 
 def register_routes(app):
     @app.before_request
     def check_password_change():
-        """Redirect authenticated users who must change their password."""
+        """Force password reset before any non-password-change action."""
         if current_user.is_authenticated and current_user.must_change_password:
-            allowed = ('change_password', 'login', 'logout', 'static')
+            allowed = {
+                'change_password',
+                'login',
+                'logout',
+                'static',
+                'api.get_me',
+                'api.change_my_password',
+            }
             if request.endpoint and request.endpoint not in allowed:
+                if request.path.startswith('/api/'):
+                    return jsonify({
+                        'error': 'Password change required before using the API',
+                        'code': 'PASSWORD_CHANGE_REQUIRED',
+                    }), 428
                 return redirect(url_for('change_password'))
 
     @app.route('/')
@@ -127,25 +148,40 @@ def register_routes(app):
 
         if request.method == 'POST':
             client_ip = request.remote_addr or '0.0.0.0'
+            email = (request.form.get('email') or '').strip().lower()
+            password = request.form.get('password') or ''
+            remember = bool(request.form.get('remember'))
 
-            if _is_rate_limited(client_ip):
+            if _is_rate_limited(client_ip, email):
                 flash('Too many failed login attempts. Please try again later.', 'danger')
                 return render_template('login.html')
-
-            email = request.form.get('email')
-            password = request.form.get('password')
-            remember = request.form.get('remember', False)
 
             user = User.query.filter_by(email=email).first()
 
             if user and user.check_password(password):
-                _clear_failures(client_ip)
+                if not user.is_active:
+                    _record_failure(client_ip, email)
+                    _log.warning('Login attempt for inactive user %r from %s', email, client_ip)
+                    audit_service.log('auth.login_inactive', 'user', user.id, user.email, {'ip': client_ip})
+                    flash('Invalid email or password', 'danger')
+                    return render_template('login.html')
+
+                _clear_failures(client_ip, email)
+
+                # Drop any anonymous/pre-auth session data before establishing
+                # the authenticated Flask-Login session. Flask uses signed
+                # client-side cookies rather than a server-side session ID, so
+                # clearing before login is the practical rotation boundary.
+                session.clear()
+                session.permanent = True
+                if not login_user(user, remember=remember, fresh=True):
+                    audit_service.log('auth.login_rejected', 'user', user.id, user.email, {'ip': client_ip})
+                    flash('Invalid email or password', 'danger')
+                    return render_template('login.html')
 
                 # Update last login
                 user.last_login = datetime.utcnow()
                 db.session.commit()
-
-                login_user(user, remember=remember)
 
                 # Force password change if flagged
                 if user.must_change_password:
@@ -161,7 +197,7 @@ def register_routes(app):
                     next_page = None
                 return redirect(next_page or url_for('dashboard'))
             else:
-                _record_failure(client_ip)
+                _record_failure(client_ip, email)
                 _log.warning('Failed login attempt for %r from %s', email, client_ip)
                 audit_service.log('auth.login_failed', 'user', '', email or '', {'ip': client_ip})
                 flash('Invalid email or password', 'danger')
@@ -203,12 +239,17 @@ def register_routes(app):
                 flash('New password must be different from current password', 'danger')
                 return render_template('change_password.html')
 
-            # Update password
-            current_user.set_password(new_password)
-            current_user.must_change_password = False
+            # Update password and rotate the authenticated session boundary.
+            user = current_user._get_current_object()
+            user.set_password(new_password)
+            user.must_change_password = False
             db.session.commit()
 
-            audit_service.log('auth.password_change', 'user', current_user.id, current_user.email)
+            session.clear()
+            session.permanent = True
+            login_user(user, fresh=True)
+
+            audit_service.log('auth.password_change', 'user', user.id, user.email)
             flash('Password changed successfully!', 'success')
             return redirect(url_for('dashboard'))
 
