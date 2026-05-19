@@ -123,12 +123,19 @@
                     </button>
                     <div class="collapse" id="docker-body">
                         <div class="provider-body">
-                            <p class="text-muted small mb-3">Leave empty to use the local Docker socket. Set a remote host to manage containers on another machine.</p>
+                            <p class="text-muted small mb-3">Leave empty to use the local Docker socket. Remote Docker is disabled by default and must be explicitly enabled below.</p>
                             <div class="row g-3">
                                 <div class="col-md-12">
                                     <label class="form-label">Docker Host URL</label>
-                                    <input type="text" class="form-control" id="docker-host" placeholder="tcp://remote-host:2375 or tcp://remote-host:2376 for TLS">
+                                    <input type="text" class="form-control" id="docker-host" placeholder="unix:///var/run/docker.sock or tcp://remote-host:2376">
                                     <small class="text-muted" id="docker-host-status"></small>
+                                </div>
+                                <div class="col-12">
+                                    <div class="form-check form-switch">
+                                        <input class="form-check-input" type="checkbox" id="docker-allow-remote">
+                                        <label class="form-check-label" for="docker-allow-remote">Allow remote Docker hosts</label>
+                                    </div>
+                                    <small class="text-muted d-block" id="docker-allow-remote-status">Keep disabled unless this deployment intentionally manages a TLS-protected remote Docker daemon on port 2376.</small>
                                 </div>
                                 <div class="col-12">
                                     <a class="small text-decoration-none" data-bs-toggle="collapse" href="#dockerTlsCollapse" role="button">
@@ -1206,6 +1213,9 @@
                     var isSet = (typeof provider.configured !== 'undefined')
                         ? provider.configured
                         : Object.keys(provider).length > 0;
+                    if (p.key === 'docker') {
+                        isSet = !!(provider.host && provider.host.exists);
+                    }
                     el.className = 'config-status ' + (isSet ? 'is-set' : 'not-set');
                     el.textContent = isSet ? '✓ Configured' : '⚠ Not set';
                 })
@@ -1913,6 +1923,14 @@
                     document.getElementById('docker-host-status').textContent =
                         'Last updated: ' + new Date(creds.host.updated_at).toLocaleString();
                 }
+                const allowRemote = creds.allow_remote || {};
+                const allowRemoteInput = document.getElementById('docker-allow-remote');
+                const allowRemoteStatus = document.getElementById('docker-allow-remote-status');
+                allowRemoteInput.checked = allowRemote.enabled === true;
+                allowRemoteInput.disabled = allowRemote.env_forced === true;
+                allowRemoteStatus.textContent = allowRemote.env_forced === true
+                    ? 'Enabled by CITADEL_ALLOW_REMOTE_DOCKER on the server. Remote hosts still require TLS on port 2376.'
+                    : 'Keep disabled unless this deployment intentionally manages a TLS-protected remote Docker daemon on port 2376.';
             })
             .catch(err => console.error('Failed to load Docker credentials:', err));
     }
@@ -1922,17 +1940,13 @@
         const tlsCa = document.getElementById('docker-tls-ca').value;
         const tlsCert = document.getElementById('docker-tls-cert').value;
         const tlsKey = document.getElementById('docker-tls-key').value;
+        const allowRemote = document.getElementById('docker-allow-remote').checked;
 
-        const body = {};
+        const body = {allow_remote: allowRemote ? 'true' : 'false'};
         if (host) body.host = host;
         if (tlsCa) body.tls_ca = tlsCa;
         if (tlsCert) body.tls_cert = tlsCert;
         if (tlsKey) body.tls_key = tlsKey;
-
-        if (Object.keys(body).length === 0) {
-            showToast('Enter at least the Docker Host URL.', 'warning');
-            return;
-        }
 
         fetch('/api/credentials/docker', {
             method: 'POST',
@@ -1961,16 +1975,19 @@
         resultEl.innerHTML = '<span class="text-muted"><i class="bi bi-hourglass-split"></i> Testing...</span>';
 
         fetch('/api/credentials/docker/test', {method: 'POST'})
-            .then(r => r.json())
-            .then(data => {
+            .then(r => r.text().then(t => ({ok: r.ok, status: r.status, text: t})))
+            .then(resp => {
+                let data = {};
+                try { data = resp.text ? JSON.parse(resp.text) : {}; }
+                catch (e) { data = {success: false, error: resp.text || ('HTTP ' + resp.status)}; }
                 if (data.success) {
                     resultEl.innerHTML = '<span class="text-success"><i class="bi bi-check-circle-fill"></i> Connected (' + escHtml(String(data.result.container_count || 0)) + ' containers)</span>';
                 } else {
-                    resultEl.innerHTML = '<span class="text-danger"><i class="bi bi-x-circle-fill"></i> ' + escHtml(data.error) + '</span>';
+                    resultEl.innerHTML = '<span class="text-danger"><i class="bi bi-x-circle-fill"></i> ' + escHtml(data.error || ('HTTP ' + resp.status)) + '</span>';
                 }
             })
             .catch(err => {
-                resultEl.innerHTML = '<span class="text-danger"><i class="bi bi-x-circle-fill"></i> Request failed</span>';
+                resultEl.innerHTML = '<span class="text-danger"><i class="bi bi-x-circle-fill"></i> Request failed: ' + escHtml(String(err)) + '</span>';
             });
     }
 

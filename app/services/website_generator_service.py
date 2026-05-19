@@ -1,14 +1,96 @@
 import io
 import json
-import random
+import posixpath
 import re
+import secrets
 import shlex
-import string
+import time
+from contextlib import contextmanager
+
 import yaml
 from app.services.credential_service import get_credential
 from app.services.openai_service import get_client as _get_client
+from app.utils.html_sanitizer import strip_active_html
+from app.utils.url_validation import validate_npm_deploy_path
 
 _EXTRA_CONTEXT_MAX = 500
+_DEPLOY_LOCK_DIR = '.citadel-compose.lock'
+_FOLDER_RE = re.compile(r'^[a-z0-9][a-z0-9_-]{0,63}$')
+_PROMPT_INJECTION_MARKERS = re.compile(
+    r'\b(ignore|disregard|forget)\s+(all\s+)?(previous|prior|above|system)\s+(instructions?|prompts?)\b|'
+    r'\b(system\s+prompt|developer\s+message|reveal\s+your\s+instructions)\b',
+    re.IGNORECASE,
+)
+
+
+def _sanitize_extra_context(extra_context):
+    if not extra_context or not str(extra_context).strip():
+        return ''
+    value = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]', ' ', str(extra_context)).strip()
+    value = value[:_EXTRA_CONTEXT_MAX]
+    if _PROMPT_INJECTION_MARKERS.search(value):
+        raise ValueError('Design preferences contain instruction-override markers')
+    return value
+
+
+def _get_deploy_path():
+    deploy_path = (get_credential('npm', 'deploy_path') or '/var/www/html').rstrip('/')
+    ok, reason = validate_npm_deploy_path(deploy_path)
+    if not ok:
+        raise ValueError(f'Invalid NPM deploy path: {reason}')
+    return deploy_path
+
+
+def _safe_join(base, *parts):
+    joined = posixpath.normpath(posixpath.join(base, *parts))
+    if joined != base and not joined.startswith(base.rstrip('/') + '/'):
+        raise ValueError('Resolved path escapes deploy directory')
+    return joined
+
+
+def _make_folder_name(category):
+    slug = re.sub(r'[^a-z0-9]+', '-', (category or '').lower()).strip('-') or 'site'
+    slug = slug[:40].strip('-') or 'site'
+    suffix = secrets.token_urlsafe(8).rstrip('=').replace('_', '-').lower()
+    folder_name = f'{slug}-{suffix}'
+    if not _FOLDER_RE.fullmatch(folder_name):
+        raise ValueError('Generated folder name failed validation')
+    return folder_name
+
+
+def _read_compose(sftp, compose_file):
+    try:
+        with sftp.open(compose_file, 'r') as f:
+            data = yaml.safe_load(f.read()) or {}
+            return data if isinstance(data, dict) else {}
+    except IOError:
+        return {}
+
+
+def _write_compose(sftp, compose_file, compose_data):
+    tmp = f'{compose_file}.tmp-{secrets.token_hex(6)}'
+    with sftp.open(tmp, 'w') as f:
+        f.write(yaml.dump(compose_data, default_flow_style=False, sort_keys=False))
+    sftp.rename(tmp, compose_file)
+
+
+@contextmanager
+def _remote_compose_lock(client, deploy_path, timeout=15):
+    lock_path = _safe_join(deploy_path, _DEPLOY_LOCK_DIR)
+    deadline = time.time() + timeout
+    acquired = False
+    while time.time() < deadline:
+        stdin, stdout, stderr = client.exec_command(f'mkdir {shlex.quote(lock_path)} 2>/dev/null')
+        if stdout.channel.recv_exit_status() == 0:
+            acquired = True
+            break
+        time.sleep(0.2)
+    if not acquired:
+        raise TimeoutError('Could not acquire website-generator compose lock')
+    try:
+        yield
+    finally:
+        client.exec_command(f'rmdir {shlex.quote(lock_path)} >/dev/null 2>&1 || true')
 
 
 def generate_website_plan(category, domain=None, extra_context=None):
@@ -25,8 +107,8 @@ The website will be hosted at **https://{domain}**.
 """
 
     extra_hint = ''
-    if extra_context and extra_context.strip():
-        sanitized_extra = extra_context.strip()[:_EXTRA_CONTEXT_MAX]
+    sanitized_extra = _sanitize_extra_context(extra_context)
+    if sanitized_extra:
         extra_hint = f"""
 Design preferences:
 {sanitized_extra}
@@ -102,6 +184,9 @@ def generate_html(plan, category, domain=None, extra_context=None):
     """Call the model to produce the full single-file HTML website."""
     client, deployment = _get_client()
 
+    sanitized_extra = _sanitize_extra_context(extra_context)
+    extra_line = f'Design preferences: {sanitized_extra}' if sanitized_extra else ''
+
     domain_instructions = ''
     if domain:
         domain_instructions = f"""
@@ -155,7 +240,7 @@ Color palette:
 
 Make this production-grade, visually striking, and unique. Avoid generic AI aesthetics.
 Use creative layouts, unexpected typography choices, engaging animations.
-{('Design preferences: ' + extra_context.strip()[:_EXTRA_CONTEXT_MAX]) if extra_context and extra_context.strip() else ''}
+{extra_line}
 Return ONLY the complete HTML code, no explanations."""
 
     response = client.chat.completions.create(
@@ -183,7 +268,7 @@ def generate_website(category, domain=None, extra_context=None):
     """Full pipeline: plan → HTML → clean. Returns (plan, html)."""
     plan = generate_website_plan(category, domain=domain, extra_context=extra_context)
     html_raw = generate_html(plan, category, domain=domain, extra_context=extra_context)
-    html = clean_html(html_raw)
+    html = strip_active_html(clean_html(html_raw))
     if not html:
         raise ValueError('HTML generation returned empty content')
     return plan, html
@@ -234,54 +319,50 @@ def deploy_website(html, category):
     """
     Upload the generated HTML to the NPM host via SSH/SFTP.
 
-    Creates  <deploy_path>/<slug>-<random>/index.html  on the remote host.
-    Returns  {'folder': folder_name, 'path': remote_path}
+    Creates <deploy_path>/<slug>-<strong-random>/index.html on the remote host.
+    Returns {'folder': folder_name, 'path': remote_path}.
     """
-    deploy_path = (get_credential('npm', 'deploy_path') or '/var/www/html').rstrip('/')
-
-    # Build folder name: <slug>-<6-digit random>
-    slug = re.sub(r'[^a-z0-9]+', '-', category.lower()).strip('-') or 'site'
-    suffix = ''.join(random.choices(string.digits, k=6))
-    folder_name = f'{slug}-{suffix}'
-    remote_dir = f'{deploy_path}/{folder_name}'
+    deploy_path = _get_deploy_path()
+    folder_name = _make_folder_name(category)
+    remote_dir = _safe_join(deploy_path, folder_name)
+    compose_file = _safe_join(deploy_path, 'docker-compose.yaml')
+    html = strip_active_html(html)
 
     client = _get_ssh_client()
     try:
-        # Create the directory
-        stdin, stdout, stderr = client.exec_command(f'mkdir -p {shlex.quote(remote_dir)}')
-        stdout.channel.recv_exit_status()
+        with _remote_compose_lock(client, deploy_path):
+            # mkdir without -p refuses collisions and prevents silent site overwrite.
+            stdin, stdout, stderr = client.exec_command(f'mkdir {shlex.quote(remote_dir)}')
+            exit_code = stdout.channel.recv_exit_status()
+            if exit_code != 0:
+                err = stderr.read().decode('utf-8', errors='replace')
+                raise RuntimeError(err or 'Could not create remote website directory')
 
-        # Upload index.html and update docker-compose.yaml via SFTP
-        sftp = client.open_sftp()
-        try:
-            with sftp.open(f'{remote_dir}/index.html', 'w') as f:
-                f.write(html)
-
-            # Read existing docker-compose.yaml or start fresh
-            compose_file = f'{deploy_path}/docker-compose.yaml'
+            sftp = client.open_sftp()
             try:
-                with sftp.open(compose_file, 'r') as f:
-                    compose_data = yaml.safe_load(f.read()) or {}
-            except IOError:
-                compose_data = {}
+                with sftp.open(_safe_join(remote_dir, 'index.html'), 'w') as f:
+                    f.write(html)
 
-            if 'services' not in compose_data:
-                compose_data['services'] = {}
-            if 'networks' not in compose_data:
-                compose_data['networks'] = {}
-            compose_data['networks']['npm_network'] = {'external': True}
+                compose_data = _read_compose(sftp, compose_file)
+                services = compose_data.setdefault('services', {})
+                networks = compose_data.setdefault('networks', {})
+                if not isinstance(services, dict) or not isinstance(networks, dict):
+                    raise ValueError('Invalid docker-compose.yaml schema')
+                networks['npm_network'] = {'external': True}
 
-            compose_data['services'][f'nginx_{folder_name}'] = {
-                'image': 'nginx:latest',
-                'container_name': folder_name,
-                'volumes': [f'./{folder_name}:/usr/share/nginx/html:ro'],
-                'networks': ['npm_network'],
-            }
+                svc_key = f'nginx_{folder_name}'
+                if svc_key in services:
+                    raise ValueError('Generated service already exists')
+                services[svc_key] = {
+                    'image': 'nginx:latest',
+                    'container_name': folder_name,
+                    'volumes': [f'./{folder_name}:/usr/share/nginx/html:ro'],
+                    'networks': ['npm_network'],
+                }
 
-            with sftp.open(compose_file, 'w') as f:
-                f.write(yaml.dump(compose_data, default_flow_style=False, sort_keys=False))
-        finally:
-            sftp.close()
+                _write_compose(sftp, compose_file, compose_data)
+            finally:
+                sftp.close()
     finally:
         client.close()
 
@@ -383,7 +464,9 @@ def start_container(service_name):
     only the newly added service without touching existing containers.
     Returns {'stdout': str, 'stderr': str}.
     """
-    deploy_path = (get_credential('npm', 'deploy_path') or '/var/www/html').rstrip('/')
+    if not re.fullmatch(r'nginx_[a-z0-9][a-z0-9_-]{0,63}', service_name or ''):
+        raise ValueError('Invalid compose service name')
+    deploy_path = _get_deploy_path()
     client = _get_ssh_client()
     try:
         cmd = (f'cd {shlex.quote(deploy_path)} && '
@@ -407,7 +490,7 @@ def relaunch_containers():
     existing containers keep their IPs and only missing/updated services start.
     Returns {'stdout': str, 'stderr': str}.
     """
-    deploy_path = (get_credential('npm', 'deploy_path') or '/var/www/html').rstrip('/')
+    deploy_path = _get_deploy_path()
     client = _get_ssh_client()
     try:
         cmd = f'cd {shlex.quote(deploy_path)} && docker compose up -d'
@@ -434,15 +517,14 @@ def get_deployed_sites():
     """
     from app.services import npm_service
 
-    deploy_path = (get_credential('npm', 'deploy_path') or '/var/www/html').rstrip('/')
+    deploy_path = _get_deploy_path()
 
     # Step 1: read docker-compose.yaml via SSH
     client = _get_ssh_client()
     try:
         sftp = client.open_sftp()
         try:
-            with sftp.open(f'{deploy_path}/docker-compose.yaml', 'r') as f:
-                compose_data = yaml.safe_load(f.read()) or {}
+            compose_data = _read_compose(sftp, _safe_join(deploy_path, 'docker-compose.yaml'))
         except IOError:
             return []
         finally:
@@ -495,8 +577,8 @@ def get_deployed_sites():
         if not folder:
             continue
         fqdn = domain_names[0]
-        # Recover readable category from slug (e.g. "law-firm-123456" → "Law Firm")
-        category_slug = re.sub(r'-\d{6}$', '', folder)
+        # Recover readable category from slug (e.g. "law-firm-token" → "Law Firm")
+        category_slug = re.sub(r'-[a-z0-9-]{10,}$', '', folder)
         category = category_slug.replace('-', ' ').title()
         results.append({
             'fqdn': fqdn,
@@ -516,35 +598,35 @@ def remove_deployed_site(folder_name):
     2. Remove the nginx_{folder_name} service from docker-compose.yaml
     Returns {'stopped': bool, 'compose_updated': bool}
     """
-    deploy_path = (get_credential('npm', 'deploy_path') or '/var/www/html').rstrip('/')
+    if not _FOLDER_RE.fullmatch(folder_name or ''):
+        raise ValueError('Invalid folder name')
+    deploy_path = _get_deploy_path()
     result = {'stopped': False, 'compose_updated': False}
 
     client = _get_ssh_client()
     try:
-        # Stop and remove the container
-        cmd = f'docker stop {shlex.quote(folder_name)} && docker rm {shlex.quote(folder_name)}'
-        stdin, stdout, stderr = client.exec_command(cmd)
-        stdout.channel.recv_exit_status()
-        result['stopped'] = True
-
-        # Update docker-compose.yaml
-        sftp = client.open_sftp()
-        try:
-            compose_file = f'{deploy_path}/docker-compose.yaml'
+        with _remote_compose_lock(client, deploy_path):
+            # Only delete services that are present in compose and have the exact
+            # Citadel-managed nginx_<folder> / container_name=<folder> shape.
+            sftp = client.open_sftp()
             try:
-                with sftp.open(compose_file, 'r') as f:
-                    compose_data = yaml.safe_load(f.read()) or {}
-            except IOError:
-                compose_data = {}
-
-            svc_key = f'nginx_{folder_name}'
-            if 'services' in compose_data and svc_key in compose_data['services']:
-                del compose_data['services'][svc_key]
-                with sftp.open(compose_file, 'w') as f:
-                    f.write(yaml.dump(compose_data, default_flow_style=False, sort_keys=False))
+                compose_file = _safe_join(deploy_path, 'docker-compose.yaml')
+                compose_data = _read_compose(sftp, compose_file)
+                services = compose_data.get('services', {}) if isinstance(compose_data, dict) else {}
+                svc_key = f'nginx_{folder_name}'
+                svc_cfg = services.get(svc_key) if isinstance(services, dict) else None
+                if not isinstance(svc_cfg, dict) or svc_cfg.get('container_name') != folder_name:
+                    raise ValueError('Site is not managed by Citadel website generator')
+                del services[svc_key]
+                _write_compose(sftp, compose_file, compose_data)
                 result['compose_updated'] = True
-        finally:
-            sftp.close()
+            finally:
+                sftp.close()
+
+            cmd = f'docker stop {shlex.quote(folder_name)} && docker rm {shlex.quote(folder_name)}'
+            stdin, stdout, stderr = client.exec_command(cmd)
+            stdout.channel.recv_exit_status()
+            result['stopped'] = True
     finally:
         client.close()
 

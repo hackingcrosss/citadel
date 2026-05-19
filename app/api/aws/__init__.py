@@ -283,7 +283,7 @@ def aws_list_key_pairs():
 @login_required
 def aws_list_ssh_configs():
     try:
-        configs = InstanceSSHConfig.query.all()
+        configs = InstanceSSHConfig.query.filter_by(provider='aws').all()
         return jsonify({'ssh_configs': [c.to_dict() for c in configs]})
     except Exception as e:
         return safe_error(e, 400)
@@ -293,7 +293,7 @@ def aws_list_ssh_configs():
 @login_required
 def aws_get_ssh_config(instance_id):
     try:
-        config = InstanceSSHConfig.query.filter_by(instance_id=instance_id).first()
+        config = InstanceSSHConfig.query.filter_by(provider='aws', instance_id=instance_id).first()
         if not config:
             return jsonify({'ssh_config': None})
         return jsonify({'ssh_config': config.to_dict()})
@@ -321,7 +321,7 @@ def aws_save_ssh_config():
         return jsonify({'error': 'ssh_username is required'}), 400
 
     try:
-        config = InstanceSSHConfig.query.filter_by(instance_id=instance_id).first()
+        config = InstanceSSHConfig.query.filter_by(provider='aws', instance_id=instance_id).first()
 
         if config:
             # Update existing
@@ -338,6 +338,7 @@ def aws_save_ssh_config():
             f = _get_fernet()
             encrypted = f.encrypt(private_key.encode()).decode()
             config = InstanceSSHConfig(
+                provider='aws',
                 instance_id=instance_id,
                 ssh_username=ssh_username,
                 encrypted_private_key=encrypted,
@@ -358,7 +359,7 @@ def aws_save_ssh_config():
 @admin_required
 def aws_delete_ssh_config(instance_id):
     try:
-        config = InstanceSSHConfig.query.filter_by(instance_id=instance_id).first()
+        config = InstanceSSHConfig.query.filter_by(provider='aws', instance_id=instance_id).first()
         if not config:
             return jsonify({'error': 'SSH config not found'}), 404
         db.session.delete(config)

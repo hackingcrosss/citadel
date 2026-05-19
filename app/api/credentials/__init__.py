@@ -1,4 +1,5 @@
 import logging
+import os
 from flask import request, jsonify
 from flask_login import login_required, current_user
 from app.api import api_bp
@@ -9,7 +10,8 @@ from app.utils.errors import safe_error
 _log = logging.getLogger(__name__)
 
 # Keys whose values must pass outbound-URL validation before being stored.
-# Blocks SSRF via credential-write (E-1).
+# Blocks SSRF via credential-write (E-1). Provider-specific exceptions are
+# validated first by _validate_credential_value().
 _URL_CREDENTIAL_KEYS = {'api_url', 'endpoint', 'host', 'webhook_url'}
 
 
@@ -20,6 +22,38 @@ _MULTI_ACCOUNT_PROVIDERS = {'cloudflare', 'aws', 'azure', 'cobaltstrike', 'hetzn
 # Hetzner servers in compute pickers. Writing/reading full credentials is
 # already admin-only via the @admin_required decorator on GET/POST.
 _ADMIN_ONLY_PROVIDERS = set()
+
+
+def _truthy(value):
+    return str(value or '').strip().lower() in ('1', 'true', 'yes', 'on')
+
+
+def _docker_remote_allowed(payload=None):
+    payload = payload or {}
+    env_forced = _truthy(os.getenv('CITADEL_ALLOW_REMOTE_DOCKER'))
+    if 'allow_remote' in payload:
+        return _truthy(payload.get('allow_remote')) or env_forced
+    return _truthy(credential_service.get_credential('docker', 'allow_remote')) or env_forced
+
+
+def _validate_credential_value(provider, key_name, value, payload=None):
+    """Return (ok, reason) for security-sensitive credential values."""
+    from app.utils.url_validation import (
+        validate_docker_host,
+        validate_npm_deploy_path,
+        validate_openai_endpoint,
+        validate_outbound_url,
+    )
+
+    if provider == 'openai' and key_name == 'endpoint':
+        return validate_openai_endpoint(value)
+    if provider == 'docker' and key_name == 'host':
+        return validate_docker_host(value, allow_remote=_docker_remote_allowed(payload))
+    if provider == 'npm' and key_name == 'deploy_path':
+        return validate_npm_deploy_path(value)
+    if key_name in _URL_CREDENTIAL_KEYS:
+        return validate_outbound_url(value, resolve=False)
+    return True, None
 
 
 @api_bp.route('/credentials/<provider>/labels', methods=['GET'])
@@ -46,6 +80,17 @@ def get_credentials(provider):
         return jsonify({provider: {'configured': len(accounts) > 0, 'accounts': accounts}})
     # All other providers: flat {key_name: {...}} format (backward compat)
     flat = data.get('default', {})
+    if provider == 'docker':
+        allow_remote_plain = credential_service.get_credential('docker', 'allow_remote')
+        env_forced = _truthy(os.getenv('CITADEL_ALLOW_REMOTE_DOCKER'))
+        allow_remote = _truthy(allow_remote_plain) or env_forced
+        flat.setdefault('allow_remote', {
+            'exists': allow_remote_plain is not None,
+            'masked': 'true' if allow_remote else 'false',
+            'updated_at': None,
+        })
+        flat['allow_remote']['enabled'] = allow_remote
+        flat['allow_remote']['env_forced'] = env_forced
     return jsonify({provider: flat})
 
 
@@ -57,19 +102,15 @@ def save_credentials(provider):
     if not payload:
         return jsonify({'error': 'No data provided'}), 400
 
-    from app.utils.url_validation import validate_outbound_url
-
     if provider in _MULTI_ACCOUNT_PROVIDERS:
         label = (payload.pop('label', None) or 'default').strip()
         saved = []
         for key_name, value in payload.items():
             if value and str(value).strip():
                 val = str(value).strip()
-                # E-1: validate URL-type credentials against SSRF allowlist
-                if key_name in _URL_CREDENTIAL_KEYS:
-                    ok, reason = validate_outbound_url(val, resolve=False)
-                    if not ok:
-                        return jsonify({'error': f'Invalid {key_name}: {reason}'}), 400
+                ok, reason = _validate_credential_value(provider, key_name, val, payload)
+                if not ok:
+                    return jsonify({'error': f'Invalid {key_name}: {reason}'}), 400
                 credential_service.set_credential(provider, key_name, val, label=label)
                 saved.append(key_name)
         # L-01: audit credential writes
@@ -81,13 +122,16 @@ def save_credentials(provider):
     # Other providers: always use label='default'
     saved = []
     for key_name, value in payload.items():
+        if provider == 'docker' and key_name == 'allow_remote':
+            val = 'true' if _truthy(value) else 'false'
+            credential_service.set_credential(provider, key_name, val)
+            saved.append(key_name)
+            continue
         if value and str(value).strip():
             val = str(value).strip()
-            # E-1: validate URL-type credentials against SSRF allowlist
-            if key_name in _URL_CREDENTIAL_KEYS:
-                ok, reason = validate_outbound_url(val, resolve=False)
-                if not ok:
-                    return jsonify({'error': f'Invalid {key_name}: {reason}'}), 400
+            ok, reason = _validate_credential_value(provider, key_name, val, payload)
+            if not ok:
+                return jsonify({'error': f'Invalid {key_name}: {reason}'}), 400
             credential_service.set_credential(provider, key_name, val)
             saved.append(key_name)
     # L-01: audit credential writes

@@ -1,44 +1,66 @@
+import os
+import tempfile
+
 import docker
 from docker.errors import NotFound, APIError
 from app.services.credential_service import get_credential
+from app.utils.url_validation import validate_docker_host
 
 # Cap socket waits so an unreachable daemon fails fast instead of hanging the worker.
 _DOCKER_TIMEOUT = 5
 
 
+def _truthy(value):
+    return str(value or '').strip().lower() in ('1', 'true', 'yes', 'on')
+
+
+def _remote_docker_allowed():
+    """Remote Docker is opt-in via secure admin setting or env override."""
+    return _truthy(get_credential('docker', 'allow_remote')) or _truthy(os.getenv('CITADEL_ALLOW_REMOTE_DOCKER'))
+
+
 def _get_client():
     """Get Docker client. Uses remote host from Settings if configured,
     otherwise falls back to local socket."""
-    docker_host = get_credential('docker', 'host')
+    docker_host = (get_credential('docker', 'host') or '').strip()
     if docker_host:
+        ok, reason = validate_docker_host(docker_host, allow_remote=_remote_docker_allowed())
+        if not ok:
+            raise ValueError(f'Invalid Docker host: {reason}')
+
         tls_config = None
-        if docker_host.startswith('tcp://') and ':2376' in docker_host:
-            # Port 2376 conventionally means TLS
+        if docker_host.startswith(('tcp://', 'https://')):
             ca = get_credential('docker', 'tls_ca')
             cert = get_credential('docker', 'tls_cert')
             key = get_credential('docker', 'tls_key')
-            if ca and cert and key:
-                import tempfile, os
-                # Write certs to temp files for the TLS config
-                ca_path = _write_temp(ca, 'ca.pem')
-                cert_path = _write_temp(cert, 'cert.pem')
-                key_path = _write_temp(key, 'key.pem')
-                tls_config = docker.tls.TLSConfig(
-                    ca_cert=ca_path,
-                    client_cert=(cert_path, key_path),
-                    verify=True
-                )
+            if not (ca and cert and key):
+                raise ValueError('Remote Docker host requires TLS CA, client certificate, and client key')
+            ca_path = _write_temp(ca, 'ca.pem')
+            cert_path = _write_temp(cert, 'cert.pem')
+            key_path = _write_temp(key, 'key.pem')
+            tls_config = docker.tls.TLSConfig(
+                ca_cert=ca_path,
+                client_cert=(cert_path, key_path),
+                verify=True,
+            )
         return docker.DockerClient(base_url=docker_host, tls=tls_config, timeout=_DOCKER_TIMEOUT)
     return docker.from_env(timeout=_DOCKER_TIMEOUT)
 
 
 def _write_temp(content, name):
-    """Write credential content to a temp file and return the path."""
-    import tempfile, os
-    path = os.path.join(tempfile.gettempdir(), f'citadel-docker-{name}')
-    with open(path, 'w') as f:
-        f.write(content)
-    os.chmod(path, 0o600)
+    """Write credential content to a private temp file and return the path."""
+    suffix = '-' + ''.join(ch for ch in name if ch.isalnum() or ch in ('.', '-'))
+    fd, path = tempfile.mkstemp(prefix='citadel-docker-', suffix=suffix)
+    try:
+        os.fchmod(fd, 0o600)
+        with os.fdopen(fd, 'w') as f:
+            f.write(content)
+    except Exception:
+        try:
+            os.unlink(path)
+        except OSError:
+            pass
+        raise
     return path
 
 
