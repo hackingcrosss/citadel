@@ -17,8 +17,13 @@ BASE_URL = 'https://fofa.info/api/v1/search/all'
 
 DEFAULT_FIELDS = (
     'host', 'ip', 'port', 'protocol', 'title', 'server',
-    'domain', 'country', 'as_organization', 'lastupdatetime',
+    'domain', 'country', 'as_organization',
 )
+
+# Some FOFA plans reject lastupdatetime with:
+# [820001] 没有权限搜索lastupdatetime字段. Keep it out of default searches and
+# gracefully retry without it if older/custom callers request it.
+_PLAN_RESTRICTED_FIELDS = {'lastupdatetime'}
 
 MAX_SIZE = 500  # results per query (safe default within free-tier limits)
 
@@ -47,12 +52,7 @@ def test_connection():
     return {'status': 'ok'}
 
 
-def search(query, fields=None, size=None, page=1):
-    """Execute a FOFA search. Returns {total, results, query}."""
-    email, api_key = _get_config()
-    fields = fields or DEFAULT_FIELDS
-    size = size or MAX_SIZE
-
+def _fofa_request(email, api_key, query, fields, size, page):
     resp = requests.get(BASE_URL, params={
         'email': email,
         'key': api_key,
@@ -62,10 +62,34 @@ def search(query, fields=None, size=None, page=1):
         'page': page,
     }, timeout=30)
     resp.raise_for_status()
-    data = resp.json()
+    return resp.json()
+
+
+def _is_restricted_field_error(data, field):
+    msg = str(data.get('errmsg') or '')
+    return bool(data.get('error') and field in msg and ('820001' in msg or '没有权限' in msg))
+
+
+def search(query, fields=None, size=None, page=1):
+    """Execute a FOFA search. Returns {total, results, query}."""
+    email, api_key = _get_config()
+    fields = tuple(fields or DEFAULT_FIELDS)
+    size = size or MAX_SIZE
+
+    data = _fofa_request(email, api_key, query, fields, size, page)
+
+    restricted = [f for f in fields if f in _PLAN_RESTRICTED_FIELDS and _is_restricted_field_error(data, f)]
+    if restricted:
+        retry_fields = tuple(f for f in fields if f not in restricted)
+        _log.warning('FOFA plan does not allow fields %s; retrying without them', ','.join(restricted))
+        data = _fofa_request(email, api_key, query, retry_fields, size, page)
+        fields = retry_fields
 
     if data.get('error'):
-        raise ValueError(data.get('errmsg', 'FOFA API error'))
+        msg = data.get('errmsg', 'FOFA API error')
+        if 'lastupdatetime' in str(msg):
+            msg = f'{msg} (remove lastupdatetime from the FOFA query/fields or use a FOFA plan that permits it)'
+        raise ValueError(msg)
 
     results = [dict(zip(fields, row)) for row in (data.get('results') or [])]
     return {
