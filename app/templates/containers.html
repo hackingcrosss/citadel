@@ -233,12 +233,15 @@
     // --- Load Containers ---
     function loadContainers() {
         fetch('/api/containers')
-            .then(function(r) { return r.json(); })
-            .then(function(data) {
-                if (data.error) {
+            .then(function(r) { return r.text().then(function(t) { return {ok: r.ok, status: r.status, text: t}; }); })
+            .then(function(resp) {
+                var data = {};
+                try { data = resp.text ? JSON.parse(resp.text) : {}; }
+                catch (e) { data = {error: resp.text || ('HTTP ' + resp.status)}; }
+                if (!resp.ok || data.error) {
                     document.getElementById('container-table').innerHTML =
                         '<tr><td colspan="8" class="text-center py-3">' +
-                        '<span class="text-danger"><i class="bi bi-exclamation-triangle"></i> ' + escapeHtml(data.error) + '</span>' +
+                        '<span class="text-danger"><i class="bi bi-exclamation-triangle"></i> ' + escapeHtml(data.error || ('HTTP ' + resp.status)) + '</span>' +
                         '<br><small><a href="' + "{{ url_for('settings') }}" + '">Configure in Settings</a></small>' +
                         '</td></tr>';
                     return;
@@ -247,10 +250,10 @@
                 updateStats();
                 applyFilters();
             })
-            .catch(function() {
+            .catch(function(err) {
                 document.getElementById('container-table').innerHTML =
                     '<tr><td colspan="8" class="text-center py-3">' +
-                    '<span class="text-danger"><i class="bi bi-exclamation-triangle"></i> Failed to connect to Docker</span>' +
+                    '<span class="text-danger"><i class="bi bi-exclamation-triangle"></i> Failed to connect to Docker: ' + escapeHtml(String(err)) + '</span>' +
                     '<br><small><a href="' + "{{ url_for('settings') }}" + '">Configure in Settings</a></small>' +
                     '</td></tr>';
             });

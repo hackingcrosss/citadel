@@ -301,25 +301,32 @@ def is_platform_core_container(name_or_id):
 def assert_resource_readable(resource_type, external_id, user):
     """Abort 403 if the user cannot read this external resource.
 
-    Stricter than assert_resource_writable on roles, looser on tagging:
+    Rules:
     - Admins: always allowed.
-    - Non-operators (project_admin, auditor, white_team, plain users): blocked —
-      they have no operational need to see live infrastructure state.
-    - Operators: blocked from platform-core containers (citadel-web,
-      citadel-postgres, etc.) and from resources tagged to other projects.
-      Untagged resources are allowed — deploy flows don't auto-tag containers
-      yet (tracked as K-03), so requiring a tag would break the operator
-      workflow. The Config.Env strip in docker_service is the load-bearing
-      defense for the K-01 master-key chain; this is the layered authz.
+    - Plain users: blocked.
+    - Platform-core containers (citadel-web, citadel-postgres, etc.) are hidden
+      from all non-admins.
+    - Operators may read untagged containers as a temporary K-03 workaround
+      because deploy flows do not auto-tag every container yet; tagged
+      resources must belong to one of their projects.
+    - Project-admin, white-team, and auditor reads are stricter: the resource
+      must be tagged to a project they can read. This restores project-scoped
+      container visibility without reopening the K-01 all-container read issue.
     """
     if user.is_admin:
         return
-    if not user.is_operator:
+    if not (user.is_operator or user.is_project_admin or user.is_white_team or user.is_auditor):
         abort(403)
     if resource_type == 'container' and is_platform_core_container(external_id):
         abort(403)
+
     resource = ProjectResource.query.filter_by(
         resource_type=resource_type, external_id=str(external_id)
     ).first()
-    if resource is not None and resource.project_id not in get_user_project_ids(user):
+    if user.is_operator:
+        if resource is not None and resource.project_id not in get_user_project_ids(user):
+            abort(403)
+        return
+
+    if resource is None or resource.project_id not in get_user_project_ids(user):
         abort(403)
