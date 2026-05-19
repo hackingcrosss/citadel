@@ -4,8 +4,12 @@ Initialize the Citadel database with default user and tables
 Run this after starting the containers with: docker-compose exec web python init_db.py
 """
 
+import os
+import secrets
+import string
+
 from app import create_app, db
-from app.models.user import User
+from app.models.user import User, validate_password_strength
 from app.models.credential import Credential
 from app.models.domain import Domain, DNSRecord
 from app.models.instance_tag import InstanceTag
@@ -19,6 +23,15 @@ from app.models.email_grooming import EmailGroomingConfig
 from app.models.email_grooming_log import EmailGroomingLog
 from app.models.phishlet import Phishlet, PhishletDNSRecord
 
+
+def _generate_bootstrap_password(length=24):
+    alphabet = string.ascii_letters + string.digits + '!@#$%^&*-_+='
+    while True:
+        password = ''.join(secrets.choice(alphabet) for _ in range(length))
+        if validate_password_strength(password) is None:
+            return password
+
+
 def init_database():
     app = create_app()
     
@@ -27,36 +40,45 @@ def init_database():
         print("Creating database tables...")
         db.create_all()
         
-        # Check if admin user exists
-        admin = User.query.filter_by(email='admin@citadel.local').first()
+        # Check if bootstrap admin user exists
+        admin_email = os.getenv('INITIAL_ADMIN_EMAIL', 'admin@citadel.local').strip().lower()
+        admin = User.query.filter_by(email=admin_email).first()
         
         if not admin:
-            # Create default admin user
-            print("Creating default admin user...")
+            # Create a bootstrap admin without the historical admin/admin default.
+            print("Creating bootstrap admin user...")
+            bootstrap_password = os.getenv('INITIAL_ADMIN_PASSWORD') or _generate_bootstrap_password()
+            password_error = validate_password_strength(bootstrap_password)
+            if password_error:
+                raise RuntimeError(f'INITIAL_ADMIN_PASSWORD is too weak: {password_error}')
+
             admin = User(
-                email='admin@citadel.local',
+                email=admin_email,
                 display_name='Administrator',
                 role='admin',
                 must_change_password=True  # Force password change on first login
             )
-            admin.set_password('admin')
+            admin.set_password(bootstrap_password)
             
             db.session.add(admin)
             db.session.commit()
             
-            print("✓ Default admin user created")
-            print("  Email: admin@citadel.local")
-            print("  Password: admin")
+            print("✓ Bootstrap admin user created")
+            print(f"  Email: {admin_email}")
+            if os.getenv('INITIAL_ADMIN_PASSWORD'):
+                print("  Password: value supplied via INITIAL_ADMIN_PASSWORD")
+            else:
+                print(f"  One-time password: {bootstrap_password}")
             print("  ⚠️  You will be required to change the password on first login!")
         else:
-            print("✓ Admin user already exists")
+            print("✓ Bootstrap admin user already exists")
 
         # Create default project if none exists
         if not Project.query.filter_by(code='DEFAULT').first():
             print("Creating default project...")
             # admin is guaranteed to exist at this point
             if not admin:
-                admin = User.query.filter_by(email='admin@citadel.local').first()
+                admin = User.query.filter_by(email=admin_email).first()
             default_project = Project(
                 name='Default',
                 code='DEFAULT',

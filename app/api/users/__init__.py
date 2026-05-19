@@ -1,9 +1,9 @@
 import logging
-from flask import request, jsonify
-from flask_login import login_required, current_user
+from flask import request, jsonify, session
+from flask_login import login_required, current_user, login_user
 from app.api import api_bp
 from app import db
-from app.models.user import User, VALID_ROLES
+from app.models.user import User, VALID_ROLES, validate_password_strength
 from app.services.plan_service import TIERS
 from app.services.plan_service import get_current_plan
 from app.utils.decorators import admin_required
@@ -39,8 +39,9 @@ def create_user():
         return jsonify({'error': f'Role must be one of: {", ".join(VALID_ROLES)}'}), 400
     if not password:
         return jsonify({'error': 'Password is required'}), 400
-    if len(password) < 12:
-        return jsonify({'error': 'Password must be at least 12 characters'}), 400
+    password_error = validate_password_strength(password)
+    if password_error:
+        return jsonify({'error': password_error}), 400
 
     # white_team users must be bound to a company
     company_id = data.get('company_id') or None
@@ -184,7 +185,6 @@ def update_me():
 @api_bp.route('/users/me/password', methods=['POST'])
 @login_required
 def change_my_password():
-    import re
     data = request.get_json(silent=True) or {}
     current_pw = data.get('current_password', '')
     new_pw = data.get('new_password', '')
@@ -193,22 +193,23 @@ def change_my_password():
         return jsonify({'error': 'Current password is incorrect'}), 400
 
     # Complexity checks
-    if len(new_pw) < 12:
-        return jsonify({'error': 'New password must be at least 12 characters long'}), 400
-    if not re.search(r'[A-Z]', new_pw):
-        return jsonify({'error': 'New password must contain at least one uppercase letter'}), 400
-    if not re.search(r'[a-z]', new_pw):
-        return jsonify({'error': 'New password must contain at least one lowercase letter'}), 400
-    if not re.search(r'[0-9]', new_pw):
-        return jsonify({'error': 'New password must contain at least one digit'}), 400
+    password_error = validate_password_strength(new_pw)
+    if password_error:
+        return jsonify({'error': password_error.replace('Password', 'New password', 1)}), 400
     if current_user.check_password(new_pw):
         return jsonify({'error': 'New password must be different from current password'}), 400
 
-    current_user.set_password(new_pw)
-    current_user.must_change_password = False
+    user = current_user._get_current_object()
+    user.set_password(new_pw)
+    user.must_change_password = False
     db.session.commit()
 
-    audit_service.log('auth.password_change', 'user', current_user.id, current_user.email)
+    # Rotate the signed session cookie after a credential change.
+    session.clear()
+    session.permanent = True
+    login_user(user, fresh=True)
+
+    audit_service.log('auth.password_change', 'user', user.id, user.email)
     return jsonify({'ok': True})
 
 

@@ -89,13 +89,13 @@ docker compose exec web python init_db.py
 
 Open http://localhost in your browser.
 
-**Default Credentials:**
-- Email: `admin@citadel.local`
-- Password: `admin`
+**Bootstrap admin:**
+- Email: `admin@citadel.local` by default, or `INITIAL_ADMIN_EMAIL` if set.
+- Password: `init_db.py` generates a one-time strong password and prints it once, unless `INITIAL_ADMIN_PASSWORD` is provided.
 
-You will be forced to change the password on first login.
+You will be forced to change the bootstrap password on first login. Do not use historical defaults such as `admin/admin`.
 
-> **Default credentials are for the `admin` role.** See [User Management](#user-management--roles) below for role details.
+> **The bootstrap credentials are for the `admin` role.** See [User Management](#user-management--roles) below for role details.
 
 ---
 
@@ -522,14 +522,14 @@ docker compose exec web python init_db.py
 
 - All API credentials encrypted at rest (Fernet AES-256)
 - Master encryption key stored as environment variable, never in the DB
-- Password hashing with Werkzeug (PBKDF2)
+- Password hashing with Werkzeug pinned to scrypt
 - Flask sessions secured with secret key
 - All routes and API endpoints require authentication (`@login_required`)
 - **Role-based access control**: Admin/Operator/Viewer roles enforced on routes and API endpoints
 - **Feature gating**: Plan-tier checks on GoPhish, Cobalt Strike, Website Generator, and Infrastructure Map
 - Forced password change on first login
 - **Password complexity**: minimum 12 characters, must include uppercase, lowercase, and a digit
-- **Login rate limiting**: 10 failed attempts per IP in a 10-minute window triggers a temporary lockout (tracked in Redis)
+- **Login rate limiting**: 10 failed attempts per client IP or attempted email in a 10-minute window triggers a temporary lockout (tracked in Redis)
 - **Open-redirect protection**: `next` parameter on login validated to reject any URL with a scheme or host
 - Docker socket access scoped to the `web` container only
 - HTTPS strongly recommended for production (configure nginx with SSL certificates)

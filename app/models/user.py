@@ -1,9 +1,28 @@
+import os
+import re
+from datetime import datetime
+
 from app import db, login_manager
 from flask_login import UserMixin
 from werkzeug.security import generate_password_hash, check_password_hash
-from datetime import datetime
 
 VALID_ROLES = ('admin', 'project_admin', 'operator', 'white_team', 'auditor')
+PASSWORD_HASH_METHOD = os.getenv('PASSWORD_HASH_METHOD', 'scrypt')
+PASSWORD_HASH_SALT_LENGTH = int(os.getenv('PASSWORD_HASH_SALT_LENGTH', '16'))
+
+
+def validate_password_strength(password):
+    """Return an error string if password does not meet policy, else None."""
+    password = password or ''
+    if len(password) < 12:
+        return 'Password must be at least 12 characters long'
+    if not re.search(r'[A-Z]', password):
+        return 'Password must contain at least one uppercase letter'
+    if not re.search(r'[a-z]', password):
+        return 'Password must contain at least one lowercase letter'
+    if not re.search(r'[0-9]', password):
+        return 'Password must contain at least one digit'
+    return None
 
 class User(UserMixin, db.Model):
     __tablename__ = 'users'
@@ -59,8 +78,16 @@ class User(UserMixin, db.Model):
     def can_manage_projects(self):
         return self.role in ('admin', 'project_admin')
 
-    def set_password(self, password):
-        self.password_hash = generate_password_hash(password)
+    def set_password(self, password, *, validate=True):
+        if validate:
+            error = validate_password_strength(password)
+            if error:
+                raise ValueError(error)
+        self.password_hash = generate_password_hash(
+            password,
+            method=PASSWORD_HASH_METHOD,
+            salt_length=PASSWORD_HASH_SALT_LENGTH,
+        )
 
     def check_password(self, password):
         return check_password_hash(self.password_hash, password)

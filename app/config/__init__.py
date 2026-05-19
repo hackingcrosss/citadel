@@ -1,4 +1,5 @@
 import os
+from datetime import timedelta
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -74,13 +75,26 @@ class Config:
     # verification. Leave at 'session' in steady state.
     SESSION_COOKIE_NAME = os.getenv('SESSION_COOKIE_NAME', 'session')
     SESSION_COOKIE_HTTPONLY = True
+
     SESSION_COOKIE_SAMESITE = 'Strict'
     SESSION_COOKIE_SECURE = os.getenv('FLASK_ENV') != 'development'
-    REMEMBER_COOKIE_HTTPONLY = True
-    REMEMBER_COOKIE_SAMESITE = 'Strict'
     REMEMBER_COOKIE_SECURE = os.getenv('FLASK_ENV') != 'development'
     # Flask-WTF CSRF
     WTF_CSRF_TIME_LIMIT = 3600  # 1 hour token lifetime
+
+    SESSION_COOKIE_SAMESITE = os.getenv('SESSION_COOKIE_SAMESITE', 'Strict')
+    SESSION_COOKIE_SECURE = os.getenv('FLASK_ENV') != 'development'
+    PERMANENT_SESSION_LIFETIME = timedelta(hours=int(os.getenv('SESSION_LIFETIME_HOURS', '8')))
+    SESSION_REFRESH_EACH_REQUEST = True
+
+    # Flask-Login persistent "remember me" cookie. Keep it shorter than the
+    # previous 1-year framework default and bind it to HTTPS/SameSite in prod.
+    REMEMBER_COOKIE_HTTPONLY = True
+    REMEMBER_COOKIE_SECURE = SESSION_COOKIE_SECURE
+    REMEMBER_COOKIE_SAMESITE = os.getenv('REMEMBER_COOKIE_SAMESITE', 'Strict')
+    REMEMBER_COOKIE_DURATION = timedelta(days=int(os.getenv('REMEMBER_COOKIE_DAYS', '14')))
+    REMEMBER_COOKIE_REFRESH_EACH_REQUEST = False
+    SESSION_PROTECTION = 'strong'
 
     # Celery
     CELERY_BROKER_URL = os.getenv('CELERY_BROKER_URL')
