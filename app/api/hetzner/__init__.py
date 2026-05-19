@@ -1,6 +1,6 @@
 from functools import wraps
 from flask import request, jsonify
-from flask_login import login_required
+from flask_login import login_required, current_user
 from app.api import api_bp
 from app.services import hetzner_service
 from app import db
@@ -8,6 +8,7 @@ from app.models.instance_tag import InstanceTag
 from app.models.instance_ssh_config import InstanceSSHConfig
 from app.services.credential_service import _get_fernet, get_account_labels
 from app.utils.decorators import admin_required
+from app.services.project_service import assert_resource_readable
 from app.services import audit_service
 from app.utils.errors import safe_error
 
@@ -297,6 +298,7 @@ def hetzner_remove_server_tag(server_id, tag):
 @_hetzner_configured_required
 def hetzner_get_ssh_config(server_id):
     try:
+        assert_resource_readable(_PROVIDER, str(server_id), current_user)
         config = InstanceSSHConfig.query.filter_by(provider=_PROVIDER, instance_id=str(server_id)).first()
         return jsonify({'ssh_config': config.to_dict() if config else None})
     except Exception as e:

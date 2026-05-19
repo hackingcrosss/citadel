@@ -1,21 +1,23 @@
 import json
 import logging
-from flask import request, jsonify
+from flask import abort, request, jsonify
 from flask_login import login_required, current_user
 from app.api import api_bp
 from app.services import ia_scan_service, audit_service
-from app.services.project_service import get_active_project, assert_record_accessible
+from app.services.project_service import can_write, get_active_project, assert_record_accessible
 from app.utils.decorators import feature_required
 from app.utils.errors import safe_error
 
 _log = logging.getLogger(__name__)
 
 
-def _require_active_project():
-    """Return the active project or abort with a JSON error."""
+def _require_active_project(write=False):
+    """Return the active project and enforce membership/project write access."""
     project = get_active_project(current_user)
     if not project:
         return None
+    if write and not can_write(current_user, project.id):
+        abort(403)
     return project
 
 
@@ -46,12 +48,9 @@ def ia_list_scans():
 @feature_required('initial_access')
 def ia_trigger_scan():
     """Trigger a new scan on the external scanner."""
-    project = _require_active_project()
+    project = _require_active_project(write=True)
     if not project:
         return jsonify({'error': 'No active project selected'}), 400
-
-    if not current_user.can_write_infra:
-        return jsonify({'error': 'Write access required'}), 403
 
     payload = request.get_json(silent=True) or {}
     scope = payload.get('scope', {})

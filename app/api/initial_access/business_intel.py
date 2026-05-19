@@ -1,9 +1,9 @@
 import logging
-from flask import request, jsonify
+from flask import abort, request, jsonify
 from flask_login import login_required, current_user
 from app.api import api_bp
 from app.services import ia_business_intel_service, audit_service
-from app.services.project_service import get_active_project
+from app.services.project_service import can_write, get_active_project
 from app.utils.decorators import feature_required
 
 _log = logging.getLogger(__name__)
@@ -30,9 +30,8 @@ def ia_update_intel():
     project = get_active_project(current_user)
     if not project:
         return jsonify({'error': 'No active project selected'}), 400
-
-    if not current_user.can_write_infra:
-        return jsonify({'error': 'Write access required'}), 403
+    if not can_write(current_user, project.id):
+        abort(403)
 
     data = request.get_json(silent=True) or {}
     if not data:
@@ -54,9 +53,8 @@ def ia_extract_intel():
     project = get_active_project(current_user)
     if not project:
         return jsonify({'error': 'No active project selected'}), 400
-
-    if not current_user.can_write_infra:
-        return jsonify({'error': 'Write access required'}), 403
+    if not can_write(current_user, project.id):
+        abort(403)
 
     data = request.get_json(silent=True) or {}
     raw_text = (data.get('raw_text') or '').strip()

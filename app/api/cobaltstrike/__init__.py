@@ -3,7 +3,16 @@ from flask_login import login_required, current_user
 from app.api import api_bp
 from app.services import cobaltstrike_service
 from app.utils.decorators import feature_required
-from app.services.project_service import build_project_tag_map, assert_resource_writable, get_active_project, filter_by_active_project, tag_resource, get_project_domain_names
+from app.models.project_resource import ProjectResource
+from app.services.project_service import (
+    assert_resource_writable,
+    build_project_tag_map,
+    can_read,
+    can_write,
+    get_active_project,
+    get_project_domain_names,
+    tag_resource,
+)
 from app.services import audit_service
 from app.utils.errors import safe_error
 
@@ -22,6 +31,48 @@ TYPE_REQUIRED = {
     'externalC2':     ['name', 'port'],
     'userDefinedC2':  ['name', 'port'],
 }
+
+
+def _active_project_write_or_response():
+    project = get_active_project(current_user)
+    if not project:
+        return None, (jsonify({'error': 'No active project selected'}), 400)
+    if not can_write(current_user, project.id):
+        return None, (jsonify({'error': 'Write access required for active project'}), 403)
+    return project, None
+
+
+def _listener_hosts(listener):
+    hosts = listener.get('host') or listener.get('hosts') or []
+    if isinstance(hosts, str):
+        hosts = [hosts]
+    return {str(h).lower().rstrip('.') for h in hosts if h}
+
+
+def _listener_read_error(listener_name, listener=None):
+    if current_user.is_admin:
+        return None
+    active_project = get_active_project(current_user)
+    if current_user.is_auditor and active_project is None:
+        return None
+
+    resource = ProjectResource.query.filter_by(
+        resource_type='cs_listener', external_id=str(listener_name)
+    ).first()
+    if resource:
+        if can_read(current_user, resource.project_id):
+            return None
+        return (jsonify({'error': 'Listener is tagged to a project you cannot access'}), 403)
+
+    if active_project is None:
+        return (jsonify({'error': 'No active project selected'}), 400)
+
+    project_domains = {d.lower().rstrip('.') for d in get_project_domain_names(active_project.id)}
+    if listener and project_domains:
+        for host in _listener_hosts(listener):
+            if any(host == d or host.endswith('.' + d) for d in project_domains):
+                return None
+    return (jsonify({'error': 'Listener is not in your active project'}), 403)
 
 
 @api_bp.route('/cobaltstrike/listeners', methods=['GET'])
@@ -85,6 +136,9 @@ def get_cs_listener(listener_name):
     label = request.args.get('label', 'default')
     try:
         listener = cobaltstrike_service.get_listener(listener_name, label=label)
+        access_error = _listener_read_error(listener_name, listener)
+        if access_error:
+            return access_error
         return jsonify({'listener': listener})
     except Exception as e:
         return safe_error(e, 400)
@@ -110,20 +164,27 @@ def create_cs_listener():
         if not data.get(field):
             return jsonify({'error': f'Missing required field for {listener_type}: {field}'}), 400
 
-    # Write guard — creating a listener is a write action
-    assert_resource_writable('cs_listener', data.get('name', ''), current_user)
+    listener_name = data.get('name', '')
+    existing_resource = ProjectResource.query.filter_by(
+        resource_type='cs_listener', external_id=listener_name
+    ).first()
+    active_project = None
+    if existing_resource:
+        assert_resource_writable('cs_listener', listener_name, current_user)
+    elif not current_user.is_admin:
+        active_project, access_error = _active_project_write_or_response()
+        if access_error:
+            return access_error
 
     try:
         result = cobaltstrike_service.create_listener(listener_type, data, label=label)
-        # Auto-tag to active project if one is set
-        listener_name = result.get('name') or data.get('name', '')
-        if listener_name:
-            active_project = get_active_project(current_user)
-            if active_project:
-                try:
-                    tag_resource(active_project.id, 'cs_listener', listener_name, listener_name, current_user.id)
-                except Exception:
-                    pass  # tagging failure must never block the create response
+        # Auto-tag new listeners to the creator's active project.
+        listener_name = result.get('name') or listener_name
+        if listener_name and active_project:
+            try:
+                tag_resource(active_project.id, 'cs_listener', listener_name, listener_name, current_user.id)
+            except Exception:
+                pass  # tagging failure must never block the create response
         audit_service.log('cs_listener.create', 'cs_listener', listener_name, listener_name,
                           {'type': listener_type, 'hosts': data.get('host') or data.get('hosts')})
         return jsonify({'listener': result}), 201

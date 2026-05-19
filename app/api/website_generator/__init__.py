@@ -3,18 +3,30 @@ from flask import request, jsonify, abort
 from flask_login import login_required, current_user
 from app.api import api_bp
 from app.utils.decorators import feature_required
-from app.services.project_service import get_active_project, get_project_domain_names
+from app.services.project_service import (
+    assert_resource_writable,
+    can_write,
+    get_active_project,
+    get_project_domain_names,
+    tag_resource,
+)
 from app.services import audit_service
 from app.utils.errors import safe_error
 
 
 def _require_can_write_infra():
-    """Abort 403 if the current user can't write infrastructure. Operators
-    and admins legitimately deploy websites; auditors, white_team, and
-    project_admin do not. There's no dedicated decorator for this, so the
-    handlers call this helper inline."""
+    """Abort 403 if the current user can't write infrastructure."""
     if not current_user.can_write_infra:
         abort(403)
+
+
+def _require_active_project_write():
+    project = get_active_project(current_user)
+    if not project:
+        return None, (jsonify({'error': 'No active project selected'}), 400)
+    if not can_write(current_user, project.id):
+        return None, (jsonify({'error': 'Write access required for active project'}), 403)
+    return project, None
 
 # Cloudflare zone IDs are 32-char hex strings
 _ZONE_ID_RE = re.compile(r'^[a-f0-9]{32}$')
@@ -90,6 +102,9 @@ def website_generator_status(task_id):
 @feature_required('website_generator')
 def website_generator_deploy():
     _require_can_write_infra()
+    active_project, access_error = _require_active_project_write()
+    if access_error:
+        return access_error
     data = request.get_json() or {}
     html = data.get('html', '').strip()
     category = data.get('category', '').strip()
@@ -101,8 +116,12 @@ def website_generator_deploy():
     try:
         from app.services import website_generator_service
         result = website_generator_service.deploy_website(html, category)
+        folder = result.get('folder') or result.get('folder_name', '')
+        if folder:
+            tag_resource(active_project.id, 'container', folder, category, current_user.id)
+            tag_resource(active_project.id, 'website_gen_site', folder, category, current_user.id)
         audit_service.log('website_generator.deploy', 'website', '', category,
-                          {'folder': result.get('folder_name', '')})
+                          {'folder': folder, 'project_id': active_project.id})
         return jsonify(result)
     except Exception as e:
         return safe_error(e, 500)
@@ -127,6 +146,9 @@ def website_generator_relaunch():
 @feature_required('website_generator')
 def website_generator_publish():
     _require_can_write_infra()
+    active_project, access_error = _require_active_project_write()
+    if access_error:
+        return access_error
     data = request.get_json() or {}
     html = data.get('html', '').strip()
     category = data.get('category', '').strip()
@@ -156,8 +178,15 @@ def website_generator_publish():
             zone_name=zone_name,
             subdomain=subdomain,
         )
+        folder = result.get('folder')
+        if folder:
+            tag_resource(active_project.id, 'container', folder, result.get('fqdn') or category, current_user.id)
+            tag_resource(active_project.id, 'website_gen_site', folder, result.get('fqdn') or category, current_user.id)
+        for step in result.get('steps') or []:
+            if step.get('step') == 'npm_proxy' and step.get('proxy_id') is not None:
+                tag_resource(active_project.id, 'npm_host', str(step['proxy_id']), result.get('fqdn') or category, current_user.id)
         audit_service.log('website_generator.publish', 'website', '', category,
-                          {'zone_name': zone_name, 'subdomain': subdomain})
+                          {'zone_name': zone_name, 'subdomain': subdomain, 'project_id': active_project.id})
         return jsonify(result)
     except Exception as e:
         return safe_error(e, 500)
@@ -209,6 +238,7 @@ def delete_deployed_site(folder_name):
     _require_can_write_infra()
     if not _FOLDER_RE.match(folder_name):
         return jsonify({'error': 'Invalid folder name'}), 400
+    assert_resource_writable('container', folder_name, current_user)
     try:
         from app.services import website_generator_service
         result = website_generator_service.remove_deployed_site(folder_name)

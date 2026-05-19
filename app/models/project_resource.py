@@ -1,7 +1,8 @@
 from app import db
 from datetime import datetime
 
-RESOURCE_TYPES = ('ec2', 'container', 'cs_listener', 'npm_host',
+RESOURCE_TYPES = ('ec2', 'azure', 'hetzner', 'container', 'cs_listener', 'npm_host',
+                  'cdn_dist', 'gophish_sender', 'mailgun_domain', 'website_gen_site',
                   'ia_campaign', 'ia_scan_job', 'ia_landing_page')
 
 

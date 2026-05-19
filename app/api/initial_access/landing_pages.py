@@ -1,21 +1,23 @@
 """Landing page management API endpoints for Initial Access module."""
 
 import logging
-from flask import request, jsonify
+from flask import abort, request, jsonify
 from flask_login import login_required, current_user
 from app.api import api_bp
 from app.services import ia_landing_service, audit_service
-from app.services.project_service import get_active_project, assert_record_accessible
+from app.services.project_service import can_write, get_active_project, assert_record_accessible
 from app.utils.decorators import feature_required
 from app.utils.errors import safe_error
 
 _log = logging.getLogger(__name__)
 
 
-def _require_active_project():
+def _require_active_project(write=False):
     project = get_active_project(current_user)
     if not project:
         return None
+    if write and not can_write(current_user, project.id):
+        abort(403)
     return project
 
 
@@ -45,11 +47,9 @@ def ia_list_landing_pages():
 @login_required
 @feature_required('initial_access')
 def ia_create_landing_page():
-    project = _require_active_project()
+    project = _require_active_project(write=True)
     if not project:
         return jsonify({'error': 'No active project selected'}), 400
-    if not current_user.can_write_infra:
-        return jsonify({'error': 'Write access required'}), 403
 
     data = request.get_json(silent=True) or {}
     if not data.get('name'):
@@ -82,9 +82,6 @@ def ia_update_landing_page(page_id):
     page, err, code = _get_page_or_403(page_id, write=True)
     if err:
         return err, code
-    if not current_user.can_write_infra:
-        return jsonify({'error': 'Write access required'}), 403
-
     data = request.get_json(silent=True) or {}
     try:
         updated = ia_landing_service.update_landing_page(page, data)
@@ -101,9 +98,6 @@ def ia_deploy_landing_page(page_id):
     page, err, code = _get_page_or_403(page_id, write=True)
     if err:
         return err, code
-    if not current_user.can_write_infra:
-        return jsonify({'error': 'Write access required'}), 403
-
     try:
         steps = ia_landing_service.deploy_landing_page(page)
     except ValueError as e:
@@ -112,9 +106,8 @@ def ia_deploy_landing_page(page_id):
         _log.exception('Failed to deploy landing page %s', page_id)
         return jsonify({'error': f'Deploy error: {e}'}), 502
 
-    project = _require_active_project()
     audit_service.log('ia.landing_deploy', 'ia_landing_page', page.id,
-                      f'project:{project.code}',
+                      f'project:{page.project.code if page.project else "?"}',
                       {'fqdn': page.fqdn, 'status': page.status})
     return jsonify({'steps': steps, 'landing_page': page.to_dict()})
 
@@ -126,16 +119,12 @@ def ia_teardown_landing_page(page_id):
     page, err, code = _get_page_or_403(page_id, write=True)
     if err:
         return err, code
-    if not current_user.can_write_infra:
-        return jsonify({'error': 'Write access required'}), 403
-
     try:
         steps = ia_landing_service.teardown_landing_page(page)
     except Exception as e:
         _log.exception('Failed to teardown landing page %s', page_id)
         return jsonify({'error': f'Teardown error: {e}'}), 502
 
-    project = _require_active_project()
     audit_service.log('ia.landing_teardown', 'ia_landing_page', page.id,
-                      f'project:{project.code}', {'fqdn': page.fqdn})
+                      f'project:{page.project.code if page.project else "?"}', {'fqdn': page.fqdn})
     return jsonify({'steps': steps, 'landing_page': page.to_dict()})

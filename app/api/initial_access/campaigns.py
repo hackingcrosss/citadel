@@ -1,21 +1,23 @@
 """Campaign management API endpoints for Initial Access module."""
 
 import logging
-from flask import request, jsonify
+from flask import abort, request, jsonify
 from flask_login import login_required, current_user
 from app.api import api_bp
 from app.services import ia_campaign_service, audit_service
-from app.services.project_service import get_active_project, assert_record_accessible
+from app.services.project_service import can_write, get_active_project, assert_record_accessible
 from app.utils.decorators import feature_required
 from app.utils.errors import safe_error
 
 _log = logging.getLogger(__name__)
 
 
-def _require_active_project():
+def _require_active_project(write=False):
     project = get_active_project(current_user)
     if not project:
         return None
+    if write and not can_write(current_user, project.id):
+        abort(403)
     return project
 
 
@@ -47,11 +49,9 @@ def ia_list_campaigns():
 @login_required
 @feature_required('initial_access')
 def ia_create_campaign():
-    project = _require_active_project()
+    project = _require_active_project(write=True)
     if not project:
         return jsonify({'error': 'No active project selected'}), 400
-    if not current_user.can_write_infra:
-        return jsonify({'error': 'Write access required'}), 403
 
     data = request.get_json(silent=True) or {}
     if not data.get('name'):
@@ -86,9 +86,6 @@ def ia_update_campaign(campaign_id):
     campaign, err, code = _get_campaign_or_404(campaign_id, write=True)
     if err:
         return err, code
-    if not current_user.can_write_infra:
-        return jsonify({'error': 'Write access required'}), 403
-
     data = request.get_json(silent=True) or {}
     try:
         updated = ia_campaign_service.update_campaign(campaign, data)
@@ -105,12 +102,8 @@ def ia_archive_campaign(campaign_id):
     campaign, err, code = _get_campaign_or_404(campaign_id, write=True)
     if err:
         return err, code
-    if not current_user.can_write_infra:
-        return jsonify({'error': 'Write access required'}), 403
-
-    project = _require_active_project()
     audit_service.log('ia.campaign_archive', 'ia_campaign', campaign.id,
-                      f'project:{project.code if project else "?"}', {'name': campaign.name})
+                      f'project:{campaign.project.code if campaign.project else "?"}', {'name': campaign.name})
     ia_campaign_service.archive_campaign(campaign)
     return jsonify({'ok': True})
 
@@ -124,9 +117,6 @@ def ia_launch_campaign(campaign_id):
     campaign, err, code = _get_campaign_or_404(campaign_id, write=True)
     if err:
         return err, code
-    if not current_user.can_write_infra:
-        return jsonify({'error': 'Write access required'}), 403
-
     try:
         launched = ia_campaign_service.launch_campaign(campaign)
     except ValueError as e:
@@ -135,9 +125,8 @@ def ia_launch_campaign(campaign_id):
         _log.exception('Failed to launch campaign %s', campaign_id)
         return jsonify({'error': f'GoPhish error: {e}'}), 502
 
-    project = _require_active_project()
     audit_service.log('ia.campaign_launch', 'ia_campaign', campaign.id,
-                      f'project:{project.code}',
+                      f'project:{campaign.project.code if campaign.project else "?"}',
                       {'gophish_id': launched.gophish_campaign_id})
     return jsonify(launched.to_dict())
 
@@ -149,9 +138,6 @@ def ia_reschedule_campaign(campaign_id):
     campaign, err, code = _get_campaign_or_404(campaign_id, write=True)
     if err:
         return err, code
-    if not current_user.can_write_infra:
-        return jsonify({'error': 'Write access required'}), 403
-
     data = request.get_json(silent=True) or {}
     scheduled_start = data.get('scheduled_start')
     if not scheduled_start:
@@ -168,9 +154,8 @@ def ia_reschedule_campaign(campaign_id):
         _log.exception('Failed to reschedule campaign %s', campaign_id)
         return jsonify({'error': f'GoPhish error: {e}'}), 502
 
-    project = _require_active_project()
     audit_service.log('ia.campaign_reschedule', 'ia_campaign', campaign.id,
-                      f'project:{project.code}',
+                      f'project:{campaign.project.code if campaign.project else "?"}',
                       {'scheduled_start': scheduled_start, 'gophish_id': updated.gophish_campaign_id})
     return jsonify(updated.to_dict())
 
@@ -209,9 +194,6 @@ def ia_log_event(campaign_id):
     campaign, err, code = _get_campaign_or_404(campaign_id, write=True)
     if err:
         return err, code
-    if not current_user.can_write_infra:
-        return jsonify({'error': 'Write access required'}), 403
-
     data = request.get_json(silent=True) or {}
     if not data.get('event_type'):
         return jsonify({'error': 'event_type is required'}), 400
@@ -233,9 +215,6 @@ def ia_add_campaign_targets(campaign_id):
     campaign, err, code = _get_campaign_or_404(campaign_id, write=True)
     if err:
         return err, code
-    if not current_user.can_write_infra:
-        return jsonify({'error': 'Write access required'}), 403
-
     data = request.get_json(silent=True) or {}
     target_ids = data.get('target_ids', [])
     if not target_ids:
@@ -252,9 +231,6 @@ def ia_remove_campaign_target(campaign_id, target_id):
     campaign, err, code = _get_campaign_or_404(campaign_id, write=True)
     if err:
         return err, code
-    if not current_user.can_write_infra:
-        return jsonify({'error': 'Write access required'}), 403
-
     removed = ia_campaign_service.remove_target(campaign, target_id)
     if not removed:
         return jsonify({'error': 'Target not in campaign'}), 404
