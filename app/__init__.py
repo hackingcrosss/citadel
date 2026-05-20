@@ -32,15 +32,46 @@ def create_app(config_class=Config):
     migrate.init_app(app, db)
     csrf.init_app(app)
 
+    def _normalise_origin(value):
+        """Return scheme://host[:port] for origin-like values, or None."""
+        if not value:
+            return None
+        parsed = urlparse(value.strip())
+        if not parsed.scheme or not parsed.netloc:
+            return None
+        if parsed.scheme.lower() not in ('http', 'https'):
+            return None
+        return f'{parsed.scheme.lower()}://{parsed.netloc.lower()}'
+
+    def _configured_trusted_origins():
+        """Origins explicitly allowed for deployments behind reverse proxies."""
+        origins = set()
+        public_origin = app.config.get('CITADEL_PUBLIC_ORIGIN')
+        normalised = _normalise_origin(public_origin)
+        if normalised:
+            origins.add(normalised)
+        for raw in (app.config.get('CITADEL_TRUSTED_ORIGINS') or '').split(','):
+            normalised = _normalise_origin(raw)
+            if normalised:
+                origins.add(normalised)
+        return origins
+
     def _same_origin_url(value):
-        """Return True when an Origin/Referer header points at this app."""
+        """Return True when an Origin/Referer header points at this app.
+
+        Reverse proxies sometimes fail to forward the external Host/Proto on a
+        subset of API requests. Compare against Flask's effective host plus any
+        explicitly configured public/trusted origins rather than hard-coding a
+        single backend origin.
+        """
         if not value:
             return True
-        parsed = urlparse(value)
-        if not parsed.scheme or not parsed.netloc:
+        origin = _normalise_origin(value)
+        if not origin:
             return False
-        expected = urlparse(request.host_url)
-        return parsed.scheme in ('http', 'https') and parsed.netloc == expected.netloc
+        allowed = {_normalise_origin(request.host_url)} | _configured_trusted_origins()
+        allowed.discard(None)
+        return origin in allowed
 
     @app.before_request
     def enforce_api_request_hardening():
@@ -55,12 +86,20 @@ def create_app(config_class=Config):
         if request.method not in ('POST', 'PUT', 'PATCH', 'DELETE'):
             return None
 
+        # Prefer browser-controlled Fetch Metadata when available. This keeps
+        # the check robust behind reverse proxies whose forwarded Host/Proto may
+        # be inconsistent, while still rejecting cross-site browser requests.
+        fetch_site = (request.headers.get('Sec-Fetch-Site') or '').lower()
+        if fetch_site == 'cross-site':
+            return jsonify({'error': 'Cross-origin API request rejected'}), 403
+
         origin = request.headers.get('Origin')
         referer = request.headers.get('Referer')
-        if origin and not _same_origin_url(origin):
-            return jsonify({'error': 'Cross-origin API request rejected'}), 403
-        if not origin and referer and not _same_origin_url(referer):
-            return jsonify({'error': 'Cross-origin API request rejected'}), 403
+        if fetch_site not in ('same-origin', 'none'):
+            if origin and not _same_origin_url(origin):
+                return jsonify({'error': 'Cross-origin API request rejected'}), 403
+            if not origin and referer and not _same_origin_url(referer):
+                return jsonify({'error': 'Cross-origin API request rejected'}), 403
 
         if request.content_length and request.mimetype != 'application/json':
             return jsonify({'error': 'API mutations with a request body must use application/json'}), 415

@@ -82,6 +82,13 @@ class Config:
     # Flask-WTF CSRF
     WTF_CSRF_TIME_LIMIT = 3600  # 1 hour token lifetime
 
+    # Public/proxy origin hints for API same-origin hardening. Set
+    # CITADEL_PUBLIC_ORIGIN to the canonical browser URL, e.g.
+    # https://citadel.example.com. Use CITADEL_TRUSTED_ORIGINS for additional
+    # comma-separated origins during migrations or multi-host deployments.
+    CITADEL_PUBLIC_ORIGIN = os.getenv('CITADEL_PUBLIC_ORIGIN', '').strip()
+    CITADEL_TRUSTED_ORIGINS = os.getenv('CITADEL_TRUSTED_ORIGINS', '').strip()
+
     SESSION_COOKIE_SAMESITE = os.getenv('SESSION_COOKIE_SAMESITE', 'Strict')
     SESSION_COOKIE_SECURE = os.getenv('FLASK_ENV') != 'development'
     PERMANENT_SESSION_LIFETIME = timedelta(hours=int(os.getenv('SESSION_LIFETIME_HOURS', '8')))
