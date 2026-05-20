@@ -15,6 +15,8 @@
     </button>
 </div>
 
+<div id="plan-override-alert" class="alert alert-warning d-none" role="alert"></div>
+
 <div class="card bg-dark border-secondary">
     <div class="card-body p-0">
         <div class="table-responsive">
@@ -200,8 +202,22 @@ function loadUsers() {
     ]).then(([users, lic]) => {
         if (lic) {
             const maxU = lic.max_users === -1 ? '∞' : lic.max_users;
+            const activeUsers = users.filter(u => u.is_active).length;
             const el = document.getElementById('user-limit-display');
-            if (el) el.textContent = `(${users.length} / ${maxU})`;
+            if (el) el.textContent = `(${activeUsers} active / ${maxU})`;
+        }
+
+        const overrideUsers = users.filter(u => u.plan_override && u.role !== 'admin');
+        const overrideAlert = document.getElementById('plan-override-alert');
+        if (overrideAlert) {
+            if (overrideUsers.length) {
+                overrideAlert.classList.remove('d-none');
+                overrideAlert.innerHTML = `<i class="bi bi-exclamation-triangle-fill me-1"></i>` +
+                    `${overrideUsers.length} user(s) have personal plan overrides. Review these after license downgrades or admin compromise.`;
+            } else {
+                overrideAlert.classList.add('d-none');
+                overrideAlert.textContent = '';
+            }
         }
 
         const tbody = document.getElementById('users-tbody');
@@ -291,7 +307,7 @@ function openCreateModal() {
     new bootstrap.Modal(document.getElementById('createUserModal')).show();
 }
 
-function submitCreateUser() {
+async function submitCreateUser() {
     const email = document.getElementById('create-email').value.trim();
     const displayName = document.getElementById('create-display-name').value.trim();
     const role = document.getElementById('create-role').value;
@@ -318,31 +334,49 @@ function submitCreateUser() {
         return;
     }
 
-    const payload = {email, display_name: displayName, role, password};
-    if (companyId) payload.company_id = parseInt(companyId);
-
-    fetch('/api/users', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify(payload)
-    })
-    .then(r => r.json().then(d => ({status: r.status, data: d})))
-    .then(({status, data}) => {
-        if (status === 201) {
-            bootstrap.Modal.getInstance(document.getElementById('createUserModal')).hide();
-            showToast('User created successfully.', 'success');
-            loadUsers();
-        } else if (status === 402 || data.upgrade_required) {
+    try {
+        // MASS-01: /api/users now creates an operator only. Role elevation is
+        // a second, explicit, separately audited call.
+        let res = await fetch('/api/users', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({email, display_name: displayName, password})
+        });
+        let data = await res.json();
+        if (res.status === 402 || data.upgrade_required) {
             showUpgradeRequired(data.error);
-        } else {
+            return;
+        }
+        if (res.status !== 201) {
             errEl.textContent = data.error || 'Failed to create user.';
             errEl.classList.remove('d-none');
+            return;
         }
-    })
-    .catch(() => {
+
+        if (role !== 'operator') {
+            const rolePayload = {role};
+            if (role === 'white_team') rolePayload.company_id = parseInt(companyId);
+            res = await fetch(`/api/users/${data.id}/role`, {
+                method: 'PUT',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(rolePayload)
+            });
+            const roleData = await res.json();
+            if (!res.ok) {
+                errEl.textContent = roleData.error || 'User created, but role update failed.';
+                errEl.classList.remove('d-none');
+                loadUsers();
+                return;
+            }
+        }
+
+        bootstrap.Modal.getInstance(document.getElementById('createUserModal')).hide();
+        showToast('User created successfully.', 'success');
+        loadUsers();
+    } catch (e) {
         errEl.textContent = 'Request failed. Please try again.';
         errEl.classList.remove('d-none');
-    });
+    }
 }
 
 function openEditModal(userJson) {
@@ -379,11 +413,11 @@ function onEditRoleChange(selectedCompanyId) {
     }
 }
 
-function submitEditUser() {
+async function submitEditUser() {
     const id = document.getElementById('edit-user-id').value;
     const displayName = document.getElementById('edit-display-name').value.trim();
     const role = document.getElementById('edit-role').value;
-    const planOverride = document.getElementById('edit-plan-override').value || null;
+    const planOverride = role === 'admin' ? null : (document.getElementById('edit-plan-override').value || null);
     const isActive = document.getElementById('edit-active').checked;
     const errEl = document.getElementById('edit-error');
     const companyIdRaw = role === 'white_team' ? document.getElementById('edit-company').value : null;
@@ -397,29 +431,42 @@ function submitEditUser() {
         return;
     }
 
-    const payload = {display_name: displayName, role, is_active: isActive, plan_override: planOverride};
-    if (role === 'white_team') payload.company_id = companyId;
+    try {
+        // C-08/B-04: split normal profile updates, role changes, and per-user
+        // plan overrides into explicit endpoints with distinct audit events.
+        let res = await fetch(`/api/users/${id}`, {
+            method: 'PUT',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({display_name: displayName, is_active: isActive})
+        });
+        let data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Failed to update user.');
 
-    fetch(`/api/users/${id}`, {
-        method: 'PUT',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify(payload)
-    })
-    .then(r => r.json().then(d => ({status: r.status, data: d})))
-    .then(({status, data}) => {
-        if (status === 200) {
-            bootstrap.Modal.getInstance(document.getElementById('editUserModal')).hide();
-            showToast('User updated.', 'success');
-            loadUsers();
-        } else {
-            errEl.textContent = data.error || 'Failed to update user.';
-            errEl.classList.remove('d-none');
-        }
-    })
-    .catch(() => {
-        errEl.textContent = 'Request failed. Please try again.';
+        const rolePayload = {role};
+        if (role === 'white_team') rolePayload.company_id = companyId;
+        res = await fetch(`/api/users/${id}/role`, {
+            method: 'PUT',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(rolePayload)
+        });
+        data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Failed to update role.');
+
+        res = await fetch(`/api/users/${id}/plan-override`, {
+            method: 'PUT',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({plan_override: planOverride})
+        });
+        data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Failed to update plan override.');
+
+        bootstrap.Modal.getInstance(document.getElementById('editUserModal')).hide();
+        showToast('User updated.', 'success');
+        loadUsers();
+    } catch (e) {
+        errEl.textContent = e.message || 'Request failed. Please try again.';
         errEl.classList.remove('d-none');
-    });
+    }
 }
 
 function deleteUser(id, email) {

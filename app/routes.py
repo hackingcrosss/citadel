@@ -114,6 +114,17 @@ def register_routes(app):
     def check_password_change():
         """Force password reset before any non-password-change action."""
         if current_user.is_authenticated:
+            # C-08/A-09: deactivation must take effect for already-issued
+            # Flask client-side session cookies, not only for future logins.
+            if not current_user.is_active:
+                audit_service.log('auth.inactive_session_rejected', 'user', current_user.id, current_user.email)
+                logout_user()
+                session.clear()
+                if request.path.startswith('/api/'):
+                    return jsonify({'error': 'Account is inactive'}), 403
+                flash('Your account is inactive', 'danger')
+                return redirect(url_for('login'))
+
             # B-07: revalidate the session-scoped active project on every
             # request so membership removals/role changes take effect even on
             # pages that do not explicitly read the active project.

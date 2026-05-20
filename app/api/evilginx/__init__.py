@@ -1,6 +1,8 @@
 """Evilginx phishlet management API endpoints."""
 
+import ipaddress
 import logging
+import os
 import re
 
 from flask import jsonify, request
@@ -9,7 +11,7 @@ from flask_login import current_user, login_required
 from app.api import api_bp
 from app.models.domain import Domain
 from app.services import audit_service, evilginx_service
-from app.services.project_service import get_active_project, assert_record_accessible
+from app.services.project_service import get_active_project, assert_record_accessible, can_write
 from app.utils.decorators import feature_required
 from app.utils.errors import safe_error
 
@@ -35,8 +37,31 @@ def _get_phishlet_or_403(phishlet_id, write=False):
     return p, None, None
 
 
-def _can_write():
-    return current_user.is_admin or getattr(current_user, 'can_write_infra', False)
+def _can_write_project(project_id):
+    """True when the current user may mutate resources in this project."""
+    return can_write(current_user, project_id)
+
+
+def _target_ip_allowed(target_ip):
+    """Return (ok, reason) for optional red-team-owned target subnet policy.
+
+    Configure CITADEL_EVILGINX_TARGET_CIDRS as a comma-separated list of CIDRs
+    (for example: "203.0.113.0/24,2001:db8::/32").  When unset, deployments
+    remain possible for legacy compatibility and are governed by project write
+    access plus Cloudflare zone checkout.
+    """
+    raw = os.getenv('CITADEL_EVILGINX_TARGET_CIDRS', '')
+    cidrs = [c.strip() for c in raw.split(',') if c.strip()]
+    if not cidrs:
+        return True, None
+    try:
+        ip_obj = ipaddress.ip_address(target_ip)
+        networks = [ipaddress.ip_network(c, strict=False) for c in cidrs]
+    except ValueError:
+        return False, 'invalid target IP or allowlist CIDR'
+    if any(ip_obj in net for net in networks):
+        return True, None
+    return False, 'target_ip is outside the configured Evilginx target allowlist'
 
 
 # ── Parse / preview ─────────────────────────────────────────────────────
@@ -90,7 +115,7 @@ def evilginx_create():
     project = _require_active_project()
     if not project:
         return jsonify({'error': 'No active project selected'}), 400
-    if not _can_write():
+    if not _can_write_project(project.id):
         return jsonify({'error': 'Write access required'}), 403
 
     data = request.get_json(silent=True) or {}
@@ -110,6 +135,9 @@ def evilginx_create():
         return jsonify({'error': 'target_ip is required'}), 400
     if not _IPV4_RE.match(target_ip):
         return jsonify({'error': 'target_ip must be a valid IPv4 address'}), 400
+    ok, reason = _target_ip_allowed(target_ip)
+    if not ok:
+        return jsonify({'error': reason}), 400
 
     domain = Domain.query.get(domain_id)
     if not domain:
@@ -140,6 +168,7 @@ def evilginx_create():
             'name': phishlet.name,
             'phishlet_name': phishlet.phishlet_name,
             'domain': domain.name,
+            'target_ip': target_ip,
             'subs': len(parsed['phish_subs']),
             'bot_protection': phishlet.bot_protection_enabled,
         },
@@ -156,8 +185,17 @@ def evilginx_deploy(phishlet_id):
     p, err, code = _get_phishlet_or_403(phishlet_id, write=True)
     if err:
         return err, code
-    if not _can_write():
+    if not _can_write_project(p.project_id):
         return jsonify({'error': 'Write access required'}), 403
+    # C-10: deployment may create multiple Cloudflare DNS records, but it
+    # should follow the same authorization model as the DNS module: admins can
+    # act globally, while operators/project admins can write only to resources
+    # tied to projects they may modify. _get_phishlet_or_403(write=True) and
+    # _can_write_project() enforce that; target_ip policy constrains where
+    # records may point when CITADEL_EVILGINX_TARGET_CIDRS is configured.
+    ok, reason = _target_ip_allowed(p.target_ip)
+    if not ok:
+        return jsonify({'error': reason}), 400
 
     try:
         steps = evilginx_service.deploy_phishlet(p)
@@ -170,7 +208,12 @@ def evilginx_deploy(phishlet_id):
     audit_service.log(
         'evilginx.deploy', 'phishlet', p.id,
         f'project:{p.project.code}' if p.project else '',
-        {'status': p.status, 'steps': steps},
+        {
+            'status': p.status,
+            'target_ip': p.target_ip,
+            'fqdns': [s.get('fqdn') for s in steps if s.get('fqdn')],
+            'steps': steps,
+        },
     )
     return jsonify({'phishlet': p.to_dict(), 'steps': steps})
 
@@ -184,7 +227,7 @@ def evilginx_teardown(phishlet_id):
     p, err, code = _get_phishlet_or_403(phishlet_id, write=True)
     if err:
         return err, code
-    if not _can_write():
+    if not _can_write_project(p.project_id):
         return jsonify({'error': 'Write access required'}), 403
 
     try:
@@ -210,7 +253,7 @@ def evilginx_delete(phishlet_id):
     p, err, code = _get_phishlet_or_403(phishlet_id, write=True)
     if err:
         return err, code
-    if not _can_write():
+    if not _can_write_project(p.project_id):
         return jsonify({'error': 'Write access required'}), 403
 
     force = request.args.get('force', 'false').lower() == 'true'

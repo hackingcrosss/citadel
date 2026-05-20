@@ -68,19 +68,31 @@ def can_read(user, project_id):
 # Domain access guard
 # ---------------------------------------------------------------------------
 
-def assert_domain_accessible(domain, user):
+def assert_domain_accessible(domain, user, write=False):
     """Abort 403 if the user cannot access this domain.
 
     - Admins can always access any domain.
     - Operators/white_team can only access domains checked out to their projects.
     - Available (un-checked-out) domains are not visible to non-admins outside of
       the checkout flow itself.
+    - ``write=True`` additionally requires an operator/project_admin membership
+      in the checkout project.
+
+    ``domain`` may be a Domain instance or a domain id.  Accepting both shapes
+    keeps call sites from falling into the C-09 wrong-arity/wrong-type trap.
     """
+    if not hasattr(domain, 'checkout_project_id'):
+        from app.models.domain import Domain
+        domain = Domain.query.get(domain)
+    if domain is None:
+        abort(404)
     if user.is_admin:
         return
     if domain.checkout_project_id is None:
         abort(403)
     if domain.checkout_project_id not in get_user_project_ids(user):
+        abort(403)
+    if write and not can_write(user, domain.checkout_project_id):
         abort(403)
 
 
