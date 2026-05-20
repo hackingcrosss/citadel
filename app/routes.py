@@ -110,21 +110,46 @@ def _check_password_complexity(password):
     return error.replace('Password', 'New password', 1)
 
 def _white_team_request_allowed():
-    """White-team users are restricted to Watchtower/profile/session routes."""
+    """Restrict white-team users to Citadel org views and Watchtower IOCs."""
     endpoint = request.endpoint or ''
     if endpoint == 'static':
         return True
     if endpoint in {
+        # Citadel organisation pages and legacy redirects into them
+        'citadel_dashboard',
+        'citadel_projects',
+        'citadel_companies',
+        'projects',
+        'admin_projects',
+        'company_detail',
+        'admin_companies',
+        # Watchtower pages
         'watchtower_dashboard',
         'watchtower_project_iocs',
         'watchtower_company',
+        # Account/session pages
         'profile',
         'change_password',
         'logout',
         'login',
+        # Self-service account API
         'api.get_me',
         'api.update_me',
         'api.change_my_password',
+        # Citadel project/company APIs used by My Projects, Companies, and the
+        # global active-project switch. Mutating operations here remain guarded
+        # by the underlying API authorization decorators.
+        'api.list_projects',
+        'api.get_project',
+        'api.list_project_domains',
+        'api.get_project_scope',
+        'api.update_project_scope',
+        'api.get_active',
+        'api.activate_project',
+        'api.deactivate_project',
+        'api.list_companies',
+        'api.get_company',
+        'api.update_company',
     }:
         return True
     if endpoint.startswith('api.watchtower_'):
@@ -174,7 +199,7 @@ def register_routes(app):
 
         if current_user.is_authenticated and current_user.is_white_team and not _white_team_request_allowed():
             if request.path.startswith('/api/'):
-                return jsonify({'error': 'White team users can only access Watchtower APIs'}), 403
+                return jsonify({'error': 'White team users can only access Citadel organisation and Watchtower APIs'}), 403
             return redirect(url_for('watchtower_dashboard'))
 
     @app.route('/')

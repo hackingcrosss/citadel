@@ -345,7 +345,7 @@ function renderProjects(projects) {
             ? `<button class="btn btn-outline-danger btn-sm ms-1" style="font-size:0.7rem;padding:0.1rem 0.4rem" title="Check out a domain" onclick="openCheckoutModal(${parseInt(p.id)},'${escapeAttr(p.code)}')"><i class="bi bi-plus-lg me-1"></i>Check Out</button>`
             : '';
         const domainsHtml = (p.domains && p.domains.length
-            ? p.domains.map(d => `<span class="domain-chip"><i class="bi bi-globe me-1"></i>${escapeHtml(d.name)}<i class="bi bi-clipboard-check ms-1" style="cursor:pointer;opacity:0.7" title="Check readiness" onclick="checkReadiness(${parseInt(d.id)},'${escapeAttr(d.name)}',${parseInt(p.id)})"></i>${isOperator && !IS_READONLY ? ` <i class="bi bi-x text-danger" style="cursor:pointer" title="Release domain" onclick="releaseDomain(${parseInt(p.id)},${parseInt(d.id)},'${escapeAttr(d.name)}')"></i>` : ''}</span>`).join('')
+            ? p.domains.map(d => `<span class="domain-chip"><i class="bi bi-globe me-1"></i>${escapeHtml(d.name)}${!IS_WHITE_TEAM ? `<i class="bi bi-clipboard-check ms-1" style="cursor:pointer;opacity:0.7" title="Check readiness" onclick="checkReadiness(${parseInt(d.id)},'${escapeAttr(d.name)}',${parseInt(p.id)})"></i>` : ''}${isOperator && !IS_READONLY ? ` <i class="bi bi-x text-danger" style="cursor:pointer" title="Release domain" onclick="releaseDomain(${parseInt(p.id)},${parseInt(d.id)},'${escapeAttr(d.name)}')"></i>` : ''}</span>`).join('')
             : '<span class="text-muted small">No domains checked out</span>') + checkoutBtn;
 
         // Members summary

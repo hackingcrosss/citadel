@@ -31,16 +31,16 @@ def _enforce_companies_plan_feature():
 def _can_access_company(company_id):
     """Return True if the current user may read this company.
 
-    Admins and auditors always can.
-    project_admin/operator: via any project membership linked to this company.
-    white_team: via direct company_id match OR project membership.
+    Admins and auditors always can. Operators/project admins require project
+    membership. White-team users are deliberately restricted to their directly
+    assigned company; project memberships only refine project visibility within
+    that company.
     """
     if current_user.is_admin or current_user.is_auditor:
         return True
-    # white_team: direct company binding
-    if current_user.is_white_team and current_user.company_id == company_id:
-        return True
-    # Any user with project membership linked to this company
+    if current_user.is_white_team:
+        return current_user.company_id == company_id
+    # Any non-white-team user with project membership linked to this company
     return (
         Project.query
         .filter_by(company_id=company_id, status='active')
@@ -66,15 +66,23 @@ def list_companies():
         companies = Company.query.order_by(Company.name).all()
         return jsonify({'companies': [c.to_dict() for c in companies]})
 
-    # Non-admin: companies reachable via any of the user's project memberships
-    memberships = (
+    # Non-admin: companies reachable via any of the user's project memberships.
+    # White-team users are restricted to explicit white_team assignments inside
+    # their bound company.
+    membership_query = (
         ProjectMember.query
         .filter_by(user_id=current_user.id)
         .join(Project, Project.id == ProjectMember.project_id)
         .filter(Project.status == 'active', Project.company_id.isnot(None))
-        .add_columns(Project.company_id, Project.code, ProjectMember.project_role)
-        .all()
     )
+    if current_user.is_white_team:
+        membership_query = membership_query.filter(
+            Project.company_id == current_user.company_id,
+            ProjectMember.project_role == 'white_team',
+        )
+    memberships = membership_query.add_columns(
+        Project.company_id, Project.code, ProjectMember.project_role,
+    ).all()
 
     # Group by company_id, collect projects + determine best role per company
     from collections import defaultdict

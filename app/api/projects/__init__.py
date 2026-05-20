@@ -352,6 +352,20 @@ def remove_member(project_id, user_id):
 @project_member_required()
 def list_project_domains(project_id):
     domains = Domain.query.filter_by(checkout_project_id=project_id).order_by(Domain.name).all()
+    if current_user.is_white_team:
+        return jsonify([
+            {
+                'id': d.id,
+                'name': d.name,
+                'status': d.status,
+                'purpose': d.purpose,
+                'checkout_project_id': d.checkout_project_id,
+                'checkout_project_code': d.checkout_project.code if d.checkout_project else None,
+                'checked_out_at': d.checked_out_at.isoformat() if d.checked_out_at else None,
+                'updated_at': d.updated_at.isoformat() if d.updated_at else None,
+            }
+            for d in domains
+        ])
     return jsonify([d.to_dict() for d in domains])
 
 

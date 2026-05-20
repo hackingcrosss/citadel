@@ -65,6 +65,14 @@ def project_member_required(write=False):
                 return f(*args, **kwargs)
 
             role = get_user_project_role(current_user.id, project_id)
+            if current_user.is_white_team and (
+                role != 'white_team' or project.company_id != current_user.company_id
+            ):
+                if request.path.startswith('/api/'):
+                    return jsonify({'error': 'Not a white-team member of this company project'}), 403
+                flash('You are not assigned to this company project as white team.', 'danger')
+                return redirect(url_for('dashboard'))
+
             if not role:
                 if request.path.startswith('/api/'):
                     return jsonify({'error': 'Not a member of this project'}), 403

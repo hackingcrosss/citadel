@@ -695,11 +695,15 @@
 </head>
 <body>
     <!-- Sidebar -->
-    <div class="sidebar{% if is_watchtower_phase or (current_user.is_authenticated and current_user.is_white_team) %} watchtower-phase{% elif is_ia_phase %} ia-phase{% elif is_citadel_phase %} citadel-phase{% endif %}">
+    <div class="sidebar{% if is_watchtower_phase or (current_user.is_authenticated and current_user.is_white_team and not is_citadel_phase) %} watchtower-phase{% elif is_ia_phase %} ia-phase{% elif is_citadel_phase %} citadel-phase{% endif %}">
         <div class="brand">
             {% if current_user.is_authenticated and current_user.is_white_team %}
+            <a href="{{ url_for('citadel_dashboard') }}"
+               class="phase-link {% if is_citadel_phase %}active-citadel{% endif %}">
+                <i class="bi bi-shield-shaded"></i> Citadel
+            </a>
             <a href="{{ url_for('watchtower_dashboard') }}"
-               class="phase-link {% if is_watchtower_phase or current_user.is_white_team %}active-watchtower{% endif %}">
+               class="phase-link {% if is_watchtower_phase %}active-watchtower{% endif %}">
                 <i class="bi bi-binoculars"></i> Watchtower
             </a>
             {% else %}
@@ -721,7 +725,7 @@
         </div>
         {% set admin_plat_pages = ['admin_users','admin_domain_pool','admin_license','admin_audit','settings'] %}
 
-        {% if is_watchtower_phase or (current_user.is_authenticated and current_user.is_white_team) %}
+        {% if is_watchtower_phase or (current_user.is_authenticated and current_user.is_white_team and not is_citadel_phase) %}
         {# ── Watchtower sidebar ─────────────────────────────────────────── #}
         <nav class="nav flex-column">
             <a class="nav-link {% if request.endpoint == 'watchtower_dashboard' %}active{% endif %}" href="{{ url_for('watchtower_dashboard') }}">
@@ -998,7 +1002,7 @@
 
     <!-- Topbar -->
     <div class="topbar">
-        {% if current_user.is_authenticated and user_projects and current_plan.is_enabled('projects') and not current_user.is_white_team %}
+        {% if current_user.is_authenticated and user_projects and current_plan.is_enabled('projects') %}
         <div class="dropdown me-2">
             <button class="btn btn-sm btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown" title="Active project">
                 <i class="bi bi-folder2 me-1"></i>{% if active_project %}<strong>{{ active_project.code }}</strong>{% else %}<span class="text-muted">No Project</span>{% endif %}
@@ -1513,11 +1517,27 @@
     // ── Project switcher ────────────────────────────────────────────────────────
     window.setActiveProject = function(id) {
         fetch('/api/projects/' + id + '/activate', {method: 'POST'})
-            .then(function() { location.reload(); });
+            .then(function() {
+                {% if current_user.is_authenticated and current_user.is_white_team %}
+                if (location.pathname.startsWith('/watchtower')) {
+                    location.href = '/watchtower/projects/' + id + '/iocs';
+                    return;
+                }
+                {% endif %}
+                location.reload();
+            });
     };
     window.clearActiveProject = function() {
         fetch('/api/projects/active', {method: 'DELETE'})
-            .then(function() { location.reload(); });
+            .then(function() {
+                {% if current_user.is_authenticated and current_user.is_white_team %}
+                if (location.pathname.startsWith('/watchtower/projects/')) {
+                    location.href = '/watchtower';
+                    return;
+                }
+                {% endif %}
+                location.reload();
+            });
     };
     </script>
     {% block extra_js %}{% endblock %}
