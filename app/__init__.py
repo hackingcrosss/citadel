@@ -75,9 +75,9 @@ def create_app(config_class=Config):
         response.headers.setdefault(
             'Content-Security-Policy',
             "default-src 'self'; "
-            "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://unpkg.com; "
-            "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
-            "font-src 'self' https://cdn.jsdelivr.net data:; "
+            "script-src 'self' 'unsafe-inline'; "
+            "style-src 'self' 'unsafe-inline'; "
+            "font-src 'self' data:; "
             "img-src 'self' data:; "
             "connect-src 'self'; "
             "frame-ancestors 'none'; object-src 'none'; base-uri 'self'; form-action 'self'"
