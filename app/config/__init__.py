@@ -96,6 +96,10 @@ class Config:
     REMEMBER_COOKIE_REFRESH_EACH_REQUEST = False
     SESSION_PROTECTION = 'strong'
 
+    # Audit retention. Use `flask audit-retention-sweep` from cron/systemd to
+    # purge rows older than this many days; set to 0 to disable purging.
+    AUDIT_RETENTION_DAYS = int(os.getenv('AUDIT_RETENTION_DAYS', '365'))
+
     # Celery
     CELERY_BROKER_URL = os.getenv('CELERY_BROKER_URL')
     CELERY_RESULT_BACKEND = os.getenv('CELERY_RESULT_BACKEND')

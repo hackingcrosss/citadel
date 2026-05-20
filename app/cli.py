@@ -1,11 +1,15 @@
 """Flask CLI commands for Citadel operational tasks."""
+from datetime import datetime, timedelta
+
 import click
 from cryptography.fernet import InvalidToken
+from flask import current_app
 from flask.cli import with_appcontext
 
 from app import db
 from app.models.credential import Credential
 from app.models.instance_ssh_config import InstanceSSHConfig
+from app.models.audit_log import AuditLog
 from app.services.credential_service import _get_fernet, _get_primary_fernet
 
 
@@ -106,6 +110,48 @@ def rotate_keys_sweep(dry_run):
         raise click.exceptions.Exit(1)
 
 
+@click.command('audit-retention-sweep')
+@click.option('--days', type=int, default=None, help='Retention window in days; defaults to AUDIT_RETENTION_DAYS.')
+@click.option('--batch-size', type=int, default=1000, show_default=True, help='Rows to delete per transaction.')
+@click.option('--dry-run', is_flag=True, help='Report rows that would be purged; do not delete.')
+@with_appcontext
+def audit_retention_sweep(days, batch_size, dry_run):
+    """Purge audit rows older than the configured retention window (L-04).
+
+    Intended for cron/systemd timers, e.g. daily:
+      flask audit-retention-sweep --days 365
+    """
+    retention_days = current_app.config.get('AUDIT_RETENTION_DAYS', 365) if days is None else days
+    if retention_days <= 0:
+        click.echo('Audit retention purge disabled (days <= 0).')
+        return
+    if batch_size <= 0:
+        raise click.ClickException('batch-size must be positive')
+
+    cutoff = datetime.utcnow() - timedelta(days=retention_days)
+    q = AuditLog.query.filter(AuditLog.timestamp < cutoff)
+    total = q.count()
+    click.echo(f'Audit rows older than {retention_days} days ({cutoff.isoformat()}Z): {total}')
+    if dry_run or total == 0:
+        if dry_run:
+            click.echo('[DRY RUN] No rows deleted.')
+        return
+
+    deleted = 0
+    while True:
+        rows = q.order_by(AuditLog.id).limit(batch_size).all()
+        if not rows:
+            break
+        for row in rows:
+            db.session.delete(row)
+        db.session.commit()
+        deleted += len(rows)
+        click.echo(f'  deleted {deleted}/{total}')
+
+    click.echo(f'Purged {deleted} audit rows.')
+
+
 def register_cli(app):
     """Attach Citadel CLI commands to the Flask app."""
     app.cli.add_command(rotate_keys_sweep)
+    app.cli.add_command(audit_retention_sweep)
