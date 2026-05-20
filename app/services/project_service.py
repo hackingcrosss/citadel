@@ -19,6 +19,20 @@ def get_projects_for_user(user):
     """
     if user.is_admin or user.is_auditor:
         return Project.query.order_by(Project.name).all()
+    if user.is_white_team:
+        if not user.company_id:
+            return []
+        return (
+            Project.query
+            .join(ProjectMember, ProjectMember.project_id == Project.id)
+            .filter(
+                ProjectMember.user_id == user.id,
+                ProjectMember.project_role == 'white_team',
+                Project.company_id == user.company_id,
+            )
+            .order_by(Project.name)
+            .all()
+        )
     memberships = ProjectMember.query.filter_by(user_id=user.id).all()
     project_ids = [m.project_id for m in memberships]
     if not project_ids:
@@ -34,6 +48,21 @@ def get_user_project_ids(user):
     if user.is_admin or user.is_auditor:
         ids = Project.query.with_entities(Project.id).all()
         return {row[0] for row in ids}
+    if user.is_white_team:
+        if not user.company_id:
+            return set()
+        rows = (
+            ProjectMember.query
+            .join(Project, Project.id == ProjectMember.project_id)
+            .filter(
+                ProjectMember.user_id == user.id,
+                ProjectMember.project_role == 'white_team',
+                Project.company_id == user.company_id,
+            )
+            .with_entities(ProjectMember.project_id)
+            .all()
+        )
+        return {row[0] for row in rows}
     rows = ProjectMember.query.filter_by(user_id=user.id).with_entities(
         ProjectMember.project_id
     ).all()
@@ -58,9 +87,16 @@ def can_write(user, project_id):
 
 
 def can_read(user, project_id):
-    """True if the user has any membership (including white_team) in this project."""
+    """True if the user can read this project."""
     if user.is_admin or user.is_auditor:
         return True
+    if user.is_white_team:
+        project = Project.query.get(project_id)
+        return bool(
+            project
+            and project.company_id == user.company_id
+            and get_user_project_role(user.id, project_id) == 'white_team'
+        )
     return get_user_project_role(user.id, project_id) is not None
 
 

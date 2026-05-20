@@ -172,9 +172,10 @@ def create_app(config_class=Config):
             return {
                 'is_ia_phase': path.startswith('/initial-access/'),
                 'is_citadel_phase': path.startswith('/citadel/'),
+                'is_watchtower_phase': path.startswith('/watchtower'),
             }
         except Exception:
-            return {'is_ia_phase': False, 'is_citadel_phase': False}
+            return {'is_ia_phase': False, 'is_citadel_phase': False, 'is_watchtower_phase': False}
 
     @app.context_processor
     def inject_company():

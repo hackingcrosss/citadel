@@ -10,4 +10,4 @@ def api_http_error(error):
     return jsonify({'error': error.description or error.name}), error.code or 500
 
 
-from app.api import domains, containers, aws, azure, azure_dns, hetzner, cdn, credentials, npm, email, gophish, cobaltstrike, website_generator, task_log, users, license, projects, companies, audit, email_grooming, initial_access, evilginx
+from app.api import domains, containers, aws, azure, azure_dns, hetzner, cdn, credentials, npm, email, gophish, cobaltstrike, website_generator, task_log, users, license, projects, companies, audit, email_grooming, initial_access, evilginx, watchtower

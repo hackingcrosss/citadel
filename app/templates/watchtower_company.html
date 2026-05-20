@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block title %}Watchtower · Company Profile{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h4 class="mb-1"><i class="bi bi-building-check me-2 text-success"></i>Company Profile</h4>
+    <div class="text-muted">Read-only company and exercise contact information for Watchtower users.</div>
+</div>
+
+{% set c = current_user.company if current_user.company_id else none %}
+{% if not c %}
+<div class="alert alert-warning">Your account is not assigned to a company. Contact your Citadel administrator.</div>
+{% else %}
+<div class="row g-3">
+    <div class="col-lg-6">
+        <div class="card bg-dark border-secondary h-100">
+            <div class="card-header"><strong>{{ c.code }}</strong> · {{ c.name }}</div>
+            <div class="card-body">
+                <dl class="row small mb-0">
+                    <dt class="col-sm-4 text-muted">Status</dt><dd class="col-sm-8">{{ c.status }}</dd>
+                    <dt class="col-sm-4 text-muted">Industry</dt><dd class="col-sm-8">{{ c.industry or '—' }}</dd>
+                    <dt class="col-sm-4 text-muted">Description</dt><dd class="col-sm-8">{{ c.description or '—' }}</dd>
+                    <dt class="col-sm-4 text-muted">Allowed hours</dt><dd class="col-sm-8">{{ c.allowed_hours or '—' }}</dd>
+                </dl>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-6">
+        <div class="card bg-dark border-secondary h-100">
+            <div class="card-header"><strong>Contacts</strong></div>
+            <div class="card-body">
+                <dl class="row small mb-0">
+                    <dt class="col-sm-4 text-muted">Primary</dt><dd class="col-sm-8">{{ c.primary_contact_name or '—' }}{% if c.primary_contact_email %}<br><code>{{ c.primary_contact_email }}</code>{% endif %}{% if c.primary_contact_phone %}<br>{{ c.primary_contact_phone }}{% endif %}</dd>
+                    <dt class="col-sm-4 text-muted">Emergency</dt><dd class="col-sm-8">{{ c.emergency_contact_name or '—' }}{% if c.emergency_contact_phone %}<br>{{ c.emergency_contact_phone }}{% endif %}</dd>
+                    <dt class="col-sm-4 text-muted">IT</dt><dd class="col-sm-8">{{ c.it_contact_name or '—' }}{% if c.it_contact_email %}<br><code>{{ c.it_contact_email }}</code>{% endif %}</dd>
+                </dl>
+            </div>
+        </div>
+    </div>
+    <div class="col-12">
+        <div class="card bg-dark border-secondary">
+            <div class="card-header"><strong>Rules of Engagement / Scope Notes</strong></div>
+            <div class="card-body">
+                <div class="row g-3">
+                    <div class="col-md-4">
+                        <div class="text-muted small mb-1">Scope notes</div>
+                        <pre class="small text-light mb-0" style="white-space:pre-wrap">{{ c.scope_notes or '—' }}</pre>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="text-muted small mb-1">Out of scope</div>
+                        <pre class="small text-light mb-0" style="white-space:pre-wrap">{{ c.out_of_scope_notes or '—' }}</pre>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="text-muted small mb-1">ROE notes</div>
+                        <pre class="small text-light mb-0" style="white-space:pre-wrap">{{ c.roe_notes or '—' }}</pre>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+{% endblock %}

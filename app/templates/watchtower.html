@@ -1,0 +1,265 @@
+{% extends "base.html" %}
+{% block title %}Watchtower · Project IOCs{% endblock %}
+
+{% block content %}
+<div class="page-header d-flex align-items-center justify-content-between gap-3">
+    <div>
+        <h4 class="mb-1"><i class="bi bi-binoculars me-2 text-success"></i>Watchtower</h4>
+        <div class="text-muted">Defender-facing indicators for your assigned active exercises.</div>
+    </div>
+    <div id="wt-export-actions" class="d-none">
+        <a id="wt-export-csv" href="#" class="btn btn-sm btn-outline-success">
+            <i class="bi bi-download me-1"></i>Export CSV
+        </a>
+        <a href="{{ url_for('watchtower_dashboard') }}" class="btn btn-sm btn-outline-secondary ms-1">
+            <i class="bi bi-grid-1x2 me-1"></i>Exercises
+        </a>
+    </div>
+</div>
+
+<div id="wt-alert" class="alert alert-info d-none"></div>
+
+<section id="wt-projects-section">
+    <div class="d-flex align-items-center justify-content-between mb-3">
+        <h6 class="text-uppercase text-muted mb-0" style="letter-spacing:.08em;font-size:.72rem">Assigned active exercises</h6>
+        <button class="btn btn-sm btn-outline-secondary" onclick="watchtowerLoadProjects()">
+            <i class="bi bi-arrow-clockwise me-1"></i>Refresh
+        </button>
+    </div>
+    <div id="wt-projects" class="row g-3">
+        <div class="col-12 text-muted small">Loading assigned projects…</div>
+    </div>
+</section>
+
+<section id="wt-iocs-section" class="d-none">
+    <div class="row g-3 mb-3" id="wt-summary-cards"></div>
+
+    <div class="card bg-dark border-secondary mb-3">
+        <div class="card-body py-3">
+            <div class="row g-2 align-items-end">
+                <div class="col-md-4">
+                    <label class="form-label small text-muted mb-1">Search</label>
+                    <input id="wt-search" class="form-control form-control-sm bg-dark text-white border-secondary" placeholder="Filter indicators, values, category…">
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label small text-muted mb-1">Type</label>
+                    <select id="wt-type" class="form-select form-select-sm bg-dark text-white border-secondary">
+                        <option value="">All types</option>
+                        <option value="domain">Domains</option>
+                        <option value="dns">DNS records</option>
+                        <option value="ip">IP addresses</option>
+                        <option value="hostname">Hostnames</option>
+                        <option value="url">URLs</option>
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label small text-muted mb-1">Category</label>
+                    <select id="wt-category" class="form-select form-select-sm bg-dark text-white border-secondary">
+                        <option value="">All categories</option>
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <button class="btn btn-sm btn-outline-secondary w-100" onclick="watchtowerClearFilters()">
+                        Clear filters
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card bg-dark border-secondary">
+        <div class="card-header d-flex align-items-center justify-content-between">
+            <div>
+                <strong id="wt-project-title">Project IOCs</strong>
+                <div id="wt-project-subtitle" class="text-muted small"></div>
+            </div>
+            <span id="wt-count" class="badge bg-success">0 indicators</span>
+        </div>
+        <div class="table-responsive">
+            <table class="table table-dark table-hover table-sm align-middle mb-0">
+                <thead>
+                    <tr>
+                        <th style="width:90px">Type</th>
+                        <th>Indicator</th>
+                        <th>Value</th>
+                        <th style="width:95px">Record</th>
+                        <th style="width:130px">Category</th>
+                        <th style="width:110px">Status</th>
+                        <th style="width:170px">Updated</th>
+                    </tr>
+                </thead>
+                <tbody id="wt-iocs-body">
+                    <tr><td colspan="7" class="text-muted text-center py-4">No indicators loaded.</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</section>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const WATCHTOWER_PROJECT_ID = {{ (watchtower_project_id if watchtower_project_id is defined else none)|tojson }};
+let WT_IOCS = [];
+let WT_PROJECT = null;
+
+function wtShowAlert(message, type) {
+    const el = document.getElementById('wt-alert');
+    el.className = 'alert alert-' + (type || 'info');
+    el.textContent = message;
+    el.classList.remove('d-none');
+}
+function wtHideAlert() { document.getElementById('wt-alert').classList.add('d-none'); }
+
+function fmtDate(s) {
+    if (!s) return '—';
+    try { return new Date(s).toLocaleString(); } catch(e) { return s; }
+}
+function badgeForType(t) {
+    const cls = {domain:'secondary', dns:'info', ip:'danger', hostname:'primary', url:'warning'}[t] || 'secondary';
+    return `<span class="badge bg-${cls}">${escapeHtml(t)}</span>`;
+}
+function statusBadge(s) {
+    const v = (s || 'active').toLowerCase();
+    const cls = ['active','live','created','deployed'].includes(v) ? 'success' : (['removed','retired','torn_down'].includes(v) ? 'secondary' : 'warning');
+    return `<span class="badge bg-${cls}">${escapeHtml(s || 'active')}</span>`;
+}
+
+async function watchtowerLoadProjects() {
+    wtHideAlert();
+    const container = document.getElementById('wt-projects');
+    container.innerHTML = '<div class="col-12 text-muted small">Loading assigned projects…</div>';
+    try {
+        const res = await fetch('/api/watchtower/projects');
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Failed to load projects');
+        const projects = data.projects || [];
+        if (!projects.length) {
+            container.innerHTML = `<div class="col-12"><div class="alert alert-warning mb-0">
+                No active white-team exercises are assigned to your account. Contact your Citadel administrator if this is unexpected.
+            </div></div>`;
+            return;
+        }
+        container.innerHTML = projects.map(p => `
+            <div class="col-lg-4 col-md-6">
+                <div class="card bg-dark border-secondary h-100">
+                    <div class="card-body d-flex flex-column">
+                        <div class="d-flex align-items-start justify-content-between gap-2 mb-2">
+                            <div>
+                                <div class="badge bg-success mb-2">${escapeHtml(p.status || 'active')}</div>
+                                <h5 class="mb-1">${escapeHtml(p.code)}</h5>
+                                <div class="text-muted small">${escapeHtml(p.name || '')}</div>
+                            </div>
+                            <span class="badge bg-secondary">${p.ioc_count || 0} IOCs</span>
+                        </div>
+                        <p class="text-muted small flex-grow-1 mb-3">${escapeHtml(p.description || 'Project-specific indicators for this exercise.')}</p>
+                        <div class="small text-muted mb-3">
+                            <i class="bi bi-clock-history me-1"></i>Last IOC update: ${escapeHtml(fmtDate(p.last_ioc_update))}
+                        </div>
+                        <a class="btn btn-sm btn-outline-success mt-auto" href="/watchtower/projects/${p.id}/iocs">
+                            <i class="bi bi-broadcast-pin me-1"></i>Open IOCs
+                        </a>
+                    </div>
+                </div>
+            </div>`).join('');
+    } catch (e) {
+        container.innerHTML = '';
+        wtShowAlert(e.message, 'danger');
+    }
+}
+
+async function watchtowerLoadIocs(projectId) {
+    wtHideAlert();
+    document.getElementById('wt-projects-section').classList.add('d-none');
+    document.getElementById('wt-iocs-section').classList.remove('d-none');
+    document.getElementById('wt-export-actions').classList.remove('d-none');
+    document.getElementById('wt-export-csv').href = `/api/watchtower/projects/${projectId}/iocs.csv`;
+    try {
+        const res = await fetch(`/api/watchtower/projects/${projectId}/iocs`);
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Failed to load IOCs');
+        WT_IOCS = data.iocs || [];
+        WT_PROJECT = data.project || null;
+        document.getElementById('wt-project-title').textContent = WT_PROJECT ? `${WT_PROJECT.code} · Indicators` : 'Project IOCs';
+        document.getElementById('wt-project-subtitle').textContent = WT_PROJECT ? `${WT_PROJECT.name || ''} · ${WT_PROJECT.company_name || ''}` : '';
+        renderSummary();
+        renderCategoryOptions();
+        renderIocs();
+    } catch (e) {
+        wtShowAlert(e.message, 'danger');
+    }
+}
+
+function renderSummary() {
+    const counts = (WT_PROJECT && WT_PROJECT.counts) || {};
+    const cards = [
+        ['Total', WT_IOCS.length, 'bi-broadcast-pin'],
+        ['DNS', counts.dns || 0, 'bi-globe'],
+        ['IPs', counts.ip || 0, 'bi-hdd-network'],
+        ['Hostnames/URLs', (counts.hostname || 0) + (counts.url || 0), 'bi-link-45deg'],
+    ];
+    document.getElementById('wt-summary-cards').innerHTML = cards.map(c => `
+        <div class="col-md-3">
+            <div class="card bg-dark border-secondary"><div class="card-body py-3">
+                <div class="d-flex align-items-center justify-content-between">
+                    <div><div class="text-muted small">${escapeHtml(c[0])}</div><div class="h4 mb-0">${c[1]}</div></div>
+                    <i class="bi ${c[2]} text-success" style="font-size:1.5rem"></i>
+                </div>
+            </div></div>
+        </div>`).join('');
+}
+
+function renderCategoryOptions() {
+    const categories = [...new Set(WT_IOCS.map(i => i.category).filter(Boolean))].sort();
+    const sel = document.getElementById('wt-category');
+    sel.innerHTML = '<option value="">All categories</option>' + categories.map(c => `<option value="${escapeAttr(c)}">${escapeHtml(c)}</option>`).join('');
+}
+
+function filteredIocs() {
+    const q = document.getElementById('wt-search').value.trim().toLowerCase();
+    const type = document.getElementById('wt-type').value;
+    const cat = document.getElementById('wt-category').value;
+    return WT_IOCS.filter(i => {
+        if (type && i.type !== type) return false;
+        if (cat && i.category !== cat) return false;
+        if (!q) return true;
+        return [i.indicator, i.value, i.record_type, i.category, i.status, i.source].some(v => String(v || '').toLowerCase().includes(q));
+    });
+}
+
+function renderIocs() {
+    const rows = filteredIocs();
+    document.getElementById('wt-count').textContent = `${rows.length} indicator${rows.length === 1 ? '' : 's'}`;
+    const body = document.getElementById('wt-iocs-body');
+    if (!rows.length) {
+        body.innerHTML = '<tr><td colspan="7" class="text-muted text-center py-4">No indicators match the current filters.</td></tr>';
+        return;
+    }
+    body.innerHTML = rows.map(i => `
+        <tr>
+            <td>${badgeForType(i.type)}</td>
+            <td><code>${escapeHtml(i.indicator)}</code><div class="text-muted small">${escapeHtml(i.source || '')}</div></td>
+            <td>${i.value ? `<code>${escapeHtml(i.value)}</code>` : '<span class="text-muted">—</span>'}</td>
+            <td>${escapeHtml(i.record_type || '—')}</td>
+            <td>${escapeHtml(i.category || '—')}</td>
+            <td>${statusBadge(i.status)}</td>
+            <td class="text-muted small">${escapeHtml(fmtDate(i.updated_at || i.first_seen))}</td>
+        </tr>`).join('');
+}
+
+function watchtowerClearFilters() {
+    document.getElementById('wt-search').value = '';
+    document.getElementById('wt-type').value = '';
+    document.getElementById('wt-category').value = '';
+    renderIocs();
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    document.getElementById('wt-search').addEventListener('input', renderIocs);
+    document.getElementById('wt-type').addEventListener('change', renderIocs);
+    document.getElementById('wt-category').addEventListener('change', renderIocs);
+    if (WATCHTOWER_PROJECT_ID) watchtowerLoadIocs(WATCHTOWER_PROJECT_ID);
+    else watchtowerLoadProjects();
+});
+</script>
+{% endblock %}

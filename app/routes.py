@@ -109,6 +109,29 @@ def _check_password_complexity(password):
         return None
     return error.replace('Password', 'New password', 1)
 
+def _white_team_request_allowed():
+    """White-team users are restricted to Watchtower/profile/session routes."""
+    endpoint = request.endpoint or ''
+    if endpoint == 'static':
+        return True
+    if endpoint in {
+        'watchtower_dashboard',
+        'watchtower_project_iocs',
+        'watchtower_company',
+        'profile',
+        'change_password',
+        'logout',
+        'login',
+        'api.get_me',
+        'api.update_me',
+        'api.change_my_password',
+    }:
+        return True
+    if endpoint.startswith('api.watchtower_'):
+        return True
+    return False
+
+
 def register_routes(app):
     @app.before_request
     def check_password_change():
@@ -149,15 +172,24 @@ def register_routes(app):
                     }), 428
                 return redirect(url_for('change_password'))
 
+        if current_user.is_authenticated and current_user.is_white_team and not _white_team_request_allowed():
+            if request.path.startswith('/api/'):
+                return jsonify({'error': 'White team users can only access Watchtower APIs'}), 403
+            return redirect(url_for('watchtower_dashboard'))
+
     @app.route('/')
     def index():
         if current_user.is_authenticated:
+            if current_user.is_white_team:
+                return redirect(url_for('watchtower_dashboard'))
             return redirect(url_for('dashboard'))
         return redirect(url_for('login'))
 
     @app.route('/dashboard')
     @login_required
     def dashboard():
+        if current_user.is_white_team:
+            return redirect(url_for('watchtower_dashboard'))
         return render_template('dashboard.html')
 
     @app.route('/login', methods=['GET', 'POST'])
@@ -208,6 +240,8 @@ def register_routes(app):
 
                 audit_service.log('auth.login', 'user', user.id, user.email)
                 flash('Login successful!', 'success')
+                if user.is_white_team:
+                    return redirect(url_for('watchtower_dashboard'))
                 next_page = request.args.get('next')
                 # A-02: urlparse-only validation misses several browser-equivalent
                 # off-origin payloads (backslashes, %5c, ////host, /\, etc.).
@@ -278,6 +312,34 @@ def register_routes(app):
     @login_required
     def profile():
         return render_template('profile.html')
+
+    # ── Watchtower phase (white-team defender IOC portal) ─────────────
+    @app.route('/watchtower')
+    @login_required
+    def watchtower_dashboard():
+        if not current_user.is_white_team:
+            flash('Watchtower is available to white-team users only.', 'warning')
+            return redirect(url_for('dashboard'))
+        return render_template('watchtower.html')
+
+    @app.route('/watchtower/projects/<int:project_id>/iocs')
+    @login_required
+    def watchtower_project_iocs(project_id):
+        if not current_user.is_white_team:
+            flash('Watchtower is available to white-team users only.', 'warning')
+            return redirect(url_for('dashboard'))
+        from app.services.watchtower_service import assert_watchtower_project
+        project = assert_watchtower_project(current_user, project_id)
+        session['active_project_id'] = project.id
+        return render_template('watchtower.html', watchtower_project_id=project.id)
+
+    @app.route('/watchtower/company')
+    @login_required
+    def watchtower_company():
+        if not current_user.is_white_team:
+            flash('Watchtower is available to white-team users only.', 'warning')
+            return redirect(url_for('dashboard'))
+        return render_template('watchtower_company.html')
 
     @app.route('/domains')
     @login_required

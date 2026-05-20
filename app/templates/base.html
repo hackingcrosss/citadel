@@ -141,6 +141,12 @@
             background: var(--cit-gold-dim);
         }
 
+        .sidebar .brand .phase-link.active-watchtower {
+            color: var(--cit-green);
+            text-shadow: 0 0 20px rgba(63,185,80,0.25);
+            background: rgba(63,185,80,0.1);
+        }
+
         .sidebar .brand .phase-link i {
             font-size: 1rem;
             width: 18px;
@@ -187,6 +193,11 @@
         .sidebar.citadel-phase .nav-link.active {
             background: var(--cit-gold-dim);
             border-left-color: var(--cit-yellow);
+        }
+
+        .sidebar.watchtower-phase .nav-link.active {
+            background: rgba(63,185,80,0.1);
+            border-left-color: var(--cit-green);
         }
 
         .sidebar .nav-section {
@@ -684,14 +695,20 @@
 </head>
 <body>
     <!-- Sidebar -->
-    <div class="sidebar{% if is_ia_phase %} ia-phase{% elif is_citadel_phase %} citadel-phase{% endif %}">
+    <div class="sidebar{% if is_watchtower_phase or (current_user.is_authenticated and current_user.is_white_team) %} watchtower-phase{% elif is_ia_phase %} ia-phase{% elif is_citadel_phase %} citadel-phase{% endif %}">
         <div class="brand">
+            {% if current_user.is_authenticated and current_user.is_white_team %}
+            <a href="{{ url_for('watchtower_dashboard') }}"
+               class="phase-link {% if is_watchtower_phase or current_user.is_white_team %}active-watchtower{% endif %}">
+                <i class="bi bi-binoculars"></i> Watchtower
+            </a>
+            {% else %}
             <a href="{{ url_for('citadel_dashboard') }}"
                class="phase-link {% if is_citadel_phase %}active-citadel{% endif %}">
                 <i class="bi bi-shield-shaded"></i> Citadel
             </a>
             <a href="{{ url_for('dashboard') }}"
-               class="phase-link {% if not is_ia_phase and not is_citadel_phase %}active-ir{% endif %}">
+               class="phase-link {% if not is_ia_phase and not is_citadel_phase and not is_watchtower_phase %}active-ir{% endif %}">
                 <i class="bi bi-hammer"></i> Arsenal
             </a>
             {% if current_plan.is_enabled('initial_access') %}
@@ -700,10 +717,27 @@
                 <i class="bi bi-crosshair2"></i> Frontline
             </a>
             {% endif %}
+            {% endif %}
         </div>
         {% set admin_plat_pages = ['admin_users','admin_domain_pool','admin_license','admin_audit','settings'] %}
 
-        {% if is_citadel_phase %}
+        {% if is_watchtower_phase or (current_user.is_authenticated and current_user.is_white_team) %}
+        {# ── Watchtower sidebar ─────────────────────────────────────────── #}
+        <nav class="nav flex-column">
+            <a class="nav-link {% if request.endpoint == 'watchtower_dashboard' %}active{% endif %}" href="{{ url_for('watchtower_dashboard') }}">
+                <i class="bi bi-grid-1x2"></i> Exercises
+            </a>
+            {% if active_project %}
+            <a class="nav-link {% if request.endpoint == 'watchtower_project_iocs' %}active{% endif %}" href="{{ url_for('watchtower_project_iocs', project_id=active_project.id) }}">
+                <i class="bi bi-broadcast-pin"></i> Project IOCs
+            </a>
+            {% endif %}
+            <a class="nav-link {% if request.endpoint == 'watchtower_company' %}active{% endif %}" href="{{ url_for('watchtower_company') }}">
+                <i class="bi bi-building-check"></i> Company Profile
+            </a>
+        </nav>
+
+        {% elif is_citadel_phase %}
         {# ── Citadel sidebar ────────────────────────────────────────────── #}
         {% set citadel_pages = ['citadel_dashboard','citadel_projects','citadel_companies'] %}
         <nav class="nav flex-column">
@@ -964,7 +998,7 @@
 
     <!-- Topbar -->
     <div class="topbar">
-        {% if current_user.is_authenticated and user_projects and current_plan.is_enabled('projects') %}
+        {% if current_user.is_authenticated and user_projects and current_plan.is_enabled('projects') and not current_user.is_white_team %}
         <div class="dropdown me-2">
             <button class="btn btn-sm btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown" title="Active project">
                 <i class="bi bi-folder2 me-1"></i>{% if active_project %}<strong>{{ active_project.code }}</strong>{% else %}<span class="text-muted">No Project</span>{% endif %}
@@ -986,6 +1020,7 @@
             </ul>
         </div>
         {% endif %}
+        {% if not (current_user.is_authenticated and current_user.is_white_team) %}
         <button class="btn btn-sm btn-light position-relative px-2"
                 data-bs-toggle="offcanvas" data-bs-target="#taskLogOffcanvas"
                 title="Background tasks">
@@ -994,6 +1029,7 @@
                   class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger d-none"
                   style="font-size:0.6rem;">0</span>
         </button>
+        {% endif %}
         {% if current_user.is_authenticated %}
         <a href="{{ url_for('profile') }}" class="btn btn-sm btn-outline-secondary d-flex align-items-center gap-1 px-2" title="My Profile" style="font-size:0.75rem;">
             <i class="bi bi-person-circle"></i>
@@ -1177,6 +1213,7 @@
 
     // ── Task Log (global, runs on every page) ──────────────────────────────
     (function() {
+        if ({{ 'true' if (current_user.is_authenticated and current_user.is_white_team) else 'false' }}) return;
         var _tlTimer = null;
         var TERMINAL = ['SUCCESS', 'FAILURE', 'REVOKED'];
         var TYPE_LABELS = { 'website_generation': 'Website Generation' };
