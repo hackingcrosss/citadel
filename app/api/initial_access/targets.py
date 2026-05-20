@@ -74,6 +74,9 @@ def ia_import_targets():
     csv_text = payload.get('csv_text', '')
     if not csv_text.strip():
         return jsonify({'error': 'No CSV data provided'}), 400
+    ok, reason = ia_target_service.validate_csv_import_size(csv_text)
+    if not ok:
+        return jsonify({'error': reason, 'code': 'CSV_IMPORT_TOO_LARGE'}), 413
 
     result = ia_target_service.import_csv(project.id, csv_text, current_user.id)
 

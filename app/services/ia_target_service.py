@@ -31,6 +31,22 @@ _CSV_FIELD_MAP = {
 _VALID_FIELDS = {'first_name', 'last_name', 'email', 'phone', 'job_title',
                  'department', 'organisation', 'linkedin_url', 'notes'}
 
+MAX_CSV_IMPORT_ROWS = 5000
+MAX_CSV_IMPORT_BYTES = 1024 * 1024
+
+
+def validate_csv_import_size(csv_text):
+    """Return (ok, reason) for IA target CSV import limits (L-09)."""
+    if len((csv_text or '').encode('utf-8')) > MAX_CSV_IMPORT_BYTES:
+        return False, f'CSV import exceeds {MAX_CSV_IMPORT_BYTES // 1024} KiB limit'
+    try:
+        row_count = max(0, sum(1 for _ in csv.reader(io.StringIO(csv_text))) - 1)
+    except csv.Error as exc:
+        return False, f'Invalid CSV: {exc}'
+    if row_count > MAX_CSV_IMPORT_ROWS:
+        return False, f'CSV import exceeds {MAX_CSV_IMPORT_ROWS} data-row limit'
+    return True, None
+
 
 def list_targets(project_id, search=None):
     """List all targets for a project, optionally filtered by search term."""

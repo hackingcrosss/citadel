@@ -73,8 +73,11 @@ def init_database():
         else:
             print("✓ Bootstrap admin user already exists")
 
-        # Create default project if none exists
-        if not Project.query.filter_by(code='DEFAULT').first():
+        # Create optional default project for development/demo installs only.
+        # M-06: production bootstrap data should not linger automatically.
+        create_default_project = os.getenv('CITADEL_CREATE_DEFAULT_PROJECT', '').strip().lower() in ('1', 'true', 'yes', 'on')
+        existing_default = Project.query.filter_by(code='DEFAULT').first()
+        if create_default_project and not existing_default:
             print("Creating default project...")
             # admin is guaranteed to exist at this point
             if not admin:
@@ -97,8 +100,10 @@ def init_database():
             db.session.add(default_member)
             db.session.commit()
             print("✓ Default project created (code: DEFAULT)")
-        else:
+        elif existing_default:
             print("✓ Default project already exists")
+        else:
+            print("✓ Default project creation skipped (set CITADEL_CREATE_DEFAULT_PROJECT=true for demos/dev)")
 
         # Create default Community license if none exists
         if not License.query.first():

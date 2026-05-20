@@ -29,6 +29,7 @@ _log = logging.getLogger(__name__)
 # log injection / CSV formula injection / search pollution.
 _CONTROL_RE = re.compile(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]')
 _MAX_ENTITY_NAME = 120
+_MAX_DETAILS_BYTES = 16 * 1024
 
 
 def _sanitise_text(value, max_len=_MAX_ENTITY_NAME):
@@ -42,6 +43,24 @@ def _sanitise_text(value, max_len=_MAX_ENTITY_NAME):
     if value and value[0] in ('=', '+', '-', '@', '\t'):
         value = "'" + value
     return value[:max_len]
+
+
+def _serialise_details(details):
+    """JSON-serialise details with a hard size cap (L-09)."""
+    if details is None:
+        return None
+    try:
+        encoded = json.dumps(details, default=str)
+    except Exception:
+        encoded = json.dumps({'unserialisable': True, 'repr': repr(details)[:1000]})
+    if len(encoded.encode('utf-8')) <= _MAX_DETAILS_BYTES:
+        return encoded
+    preview = encoded[:_MAX_DETAILS_BYTES]
+    return json.dumps({
+        'truncated': True,
+        'original_bytes_min': len(encoded.encode('utf-8')),
+        'preview': preview,
+    })
 
 
 def log(action, entity_type='', entity_id='', entity_name='', details=None,
@@ -89,7 +108,7 @@ def log(action, entity_type='', entity_id='', entity_name='', details=None,
             entity_type = str(entity_type or '')[:40],
             entity_id   = clean_eid,
             entity_name = clean_name,
-            details     = json.dumps(details) if details is not None else None,
+            details     = _serialise_details(details),
             ip_address  = ip,
         )
 
