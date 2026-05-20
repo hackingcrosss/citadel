@@ -48,6 +48,7 @@ def _tls_verify():
 
 def _request(method, path, **kwargs):
     url = _base_url() + path
+    kwargs.setdefault('allow_redirects', False)
     resp = requests.request(method, url, headers=_headers(), verify=_tls_verify(), timeout=15, **kwargs)
     if resp.status_code >= 400:
         error = resp.text
@@ -208,7 +209,7 @@ def send_test_email(smtp_profile, to_email, subject, html_body, text_body='',
         'smtp': smtp,
     }
     url = _base_url() + '/api/util/send_test_email'
-    resp = requests.post(url, headers=_headers(), json=payload, verify=_tls_verify(), timeout=30)
+    resp = requests.post(url, headers=_headers(), json=payload, verify=_tls_verify(), timeout=30, allow_redirects=False)
     if resp.status_code >= 400:
         error = resp.text
         try:

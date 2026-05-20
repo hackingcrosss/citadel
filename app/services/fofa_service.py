@@ -44,7 +44,7 @@ def test_connection():
         'qbase64': b64encode(b'host="fofa.info"').decode(),
         'fields': 'host',
         'size': 1,
-    }, timeout=15)
+    }, timeout=15, allow_redirects=False)
     resp.raise_for_status()
     data = resp.json()
     if data.get('error'):
@@ -60,7 +60,7 @@ def _fofa_request(email, api_key, query, fields, size, page):
         'fields': ','.join(fields),
         'size': size,
         'page': page,
-    }, timeout=30)
+    }, timeout=30, allow_redirects=False)
     resp.raise_for_status()
     return resp.json()
 

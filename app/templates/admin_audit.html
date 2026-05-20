@@ -289,8 +289,16 @@ function exportCsv() {
                     e.details ? JSON.stringify(e.details) : '', e.ip_address || ''
                 ]);
             });
+            function csvCell(v) {
+                let s = String(v == null ? '' : v);
+                // I-09: prevent spreadsheet formula injection when admins open
+                // exports in Excel/LibreOffice. Quote all cells and prefix any
+                // formula-like leading character with a single quote.
+                if (/^[=+\-@\t\r]/.test(s)) s = "'" + s;
+                return '"' + s.replace(/"/g, '""') + '"';
+            }
             const csv = rows.map(function(r) {
-                return r.map(function(v) { return '"' + String(v).replace(/"/g, '""') + '"'; }).join(',');
+                return r.map(csvCell).join(',');
             }).join('\n');
             const blob = new Blob([csv], {type: 'text/csv'});
             const url  = URL.createObjectURL(blob);

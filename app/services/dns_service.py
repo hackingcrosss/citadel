@@ -30,6 +30,7 @@ def _headers(label='default'):
 
 def _request(method, path, label='default', **kwargs):
     url = f'{CF_BASE}{path}'
+    kwargs.setdefault('allow_redirects', False)
     resp = requests.request(method, url, headers=_headers(label=label), timeout=15, **kwargs)
     data = resp.json()
     if not data.get('success', False):

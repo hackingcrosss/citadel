@@ -48,6 +48,7 @@ def test_connection():
         f'{api_url}/api/health',
         headers=_headers(api_key),
         timeout=_REQUEST_TIMEOUT,
+        allow_redirects=False,
     )
     resp.raise_for_status()
     return {'status': 'ok', 'url': api_url}
@@ -71,6 +72,7 @@ def trigger_scan(project_id, scope_config, user_id):
         headers=_headers(api_key),
         json={'scope': scope_config},
         timeout=_REQUEST_TIMEOUT,
+        allow_redirects=False,
     )
     resp.raise_for_status()
     data = resp.json()
@@ -112,6 +114,7 @@ def poll_scan_job(job_id):
         f'{api_url}/api/scans/{job.external_job_id}',
         headers=_headers(api_key),
         timeout=_REQUEST_TIMEOUT,
+        allow_redirects=False,
     )
     resp.raise_for_status()
     data = resp.json()

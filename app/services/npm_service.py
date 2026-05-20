@@ -51,6 +51,7 @@ def _refresh_token():
 
 def _request(method, path, _retried=False, **kwargs):
     url = f'{_base_url()}{path}'
+    kwargs.setdefault('allow_redirects', False)
     resp = requests.request(method, url, headers=_headers(), timeout=15, **kwargs)
 
     # Auto-refresh token on 401/403 and retry once
@@ -85,7 +86,7 @@ def get_token(identity, secret):
     resp = requests.post(url, json={
         'identity': identity,
         'secret': secret
-    }, timeout=15)
+    }, timeout=15, allow_redirects=False)
     if resp.status_code >= 400:
         raise Exception(f"NPM auth failed ({resp.status_code})")
     data = resp.json()

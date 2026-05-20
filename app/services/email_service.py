@@ -18,6 +18,7 @@ def _auth():
 def _request(method, path, region='us', **kwargs):
     base = MG_BASES.get(region, MG_BASES['us'])
     url = f'{base}{path}'
+    kwargs.setdefault('allow_redirects', False)
     resp = requests.request(method, url, auth=_auth(), timeout=15, **kwargs)
     if resp.status_code >= 400:
         try:

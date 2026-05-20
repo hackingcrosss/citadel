@@ -1,19 +1,24 @@
+import time
+import threading
+
+import jwt
 import requests
 import urllib3
-import threading
 from app.services.credential_service import get_credential
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-# Per-label JWT token cache: {label: {'token': str|None, 'lock': Lock}}
+# Per-label JWT token cache: {label: {'token': str|None, 'expires_at': float, 'lock': Lock}}
 _token_caches = {}
 _cache_lock = threading.Lock()
+_TOKEN_REFRESH_SKEW_SECONDS = 30
+_TOKEN_FALLBACK_TTL_SECONDS = 300
 
 
 def _get_label_cache(label='default'):
     with _cache_lock:
         if label not in _token_caches:
-            _token_caches[label] = {'token': None, 'lock': threading.Lock()}
+            _token_caches[label] = {'token': None, 'expires_at': 0, 'lock': threading.Lock()}
         return _token_caches[label]
 
 
@@ -59,7 +64,7 @@ def _authenticate(label='default'):
     resp = requests.post(url, json={
         'username': username,
         'password': password
-    }, verify=_tls_verify(label), timeout=15)
+    }, verify=_tls_verify(label), timeout=15, allow_redirects=False)
     if resp.status_code >= 400:
         raise Exception(f'Cobalt Strike auth failed ({resp.status_code}): {resp.text}')
     data = resp.json()
@@ -69,12 +74,31 @@ def _authenticate(label='default'):
     return token
 
 
+def _token_expiry(token):
+    """Return JWT exp as epoch seconds, or a short fallback TTL if absent."""
+    try:
+        claims = jwt.decode(token, options={'verify_signature': False, 'verify_exp': False})
+        exp = claims.get('exp')
+        if exp:
+            return float(exp)
+    except Exception:
+        pass
+    return time.time() + _TOKEN_FALLBACK_TTL_SECONDS
+
+
 def _get_token(label='default', force_refresh=False):
-    """Get a cached token or authenticate to obtain a new one."""
+    """Get a cached token or authenticate to obtain a new one.
+
+    G-10: refresh proactively before the JWT expires instead of caching for the
+    lifetime of the worker process.
+    """
     cache = _get_label_cache(label)
     with cache['lock']:
-        if cache['token'] is None or force_refresh:
+        now = time.time()
+        expires_at = float(cache.get('expires_at') or 0)
+        if cache['token'] is None or force_refresh or now >= (expires_at - _TOKEN_REFRESH_SKEW_SECONDS):
             cache['token'] = _authenticate(label)
+            cache['expires_at'] = _token_expiry(cache['token'])
         return cache['token']
 
 
@@ -119,6 +143,7 @@ def _request(method, path, label='default', **kwargs):
     for attempt in range(2):
         try:
             token = _get_token(label, force_refresh=(attempt > 0))
+            kwargs.setdefault('allow_redirects', False)
             resp = requests.request(
                 method, url,
                 headers=_headers(label, token),
@@ -137,6 +162,7 @@ def _request(method, path, label='default', **kwargs):
     # Re-authenticate on any auth-related error (stale JWT after CS restart).
     if _is_auth_error(resp):
         new_token = _get_token(label, force_refresh=True)
+        kwargs.setdefault('allow_redirects', False)
         resp = requests.request(
             method, url,
             headers=_headers(label, new_token),

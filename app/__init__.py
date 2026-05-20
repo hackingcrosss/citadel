@@ -1,4 +1,6 @@
-from flask import Flask, g
+from urllib.parse import urlparse
+
+from flask import Flask, g, jsonify, request
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager
 from flask_migrate import Migrate
@@ -29,6 +31,58 @@ def create_app(config_class=Config):
     login_manager.login_view = 'login'
     migrate.init_app(app, db)
     csrf.init_app(app)
+
+    def _same_origin_url(value):
+        """Return True when an Origin/Referer header points at this app."""
+        if not value:
+            return True
+        parsed = urlparse(value)
+        if not parsed.scheme or not parsed.netloc:
+            return False
+        expected = urlparse(request.host_url)
+        return parsed.scheme in ('http', 'https') and parsed.netloc == expected.netloc
+
+    @app.before_request
+    def enforce_api_request_hardening():
+        """Defense-in-depth for JSON API CSRF targets (H-06).
+
+        Flask-WTF CSRFProtect validates X-CSRFToken on mutating API requests;
+        this additionally rejects cross-origin browser requests and non-JSON
+        request bodies for API mutations that send a body.
+        """
+        if not request.path.startswith('/api/'):
+            return None
+        if request.method not in ('POST', 'PUT', 'PATCH', 'DELETE'):
+            return None
+
+        origin = request.headers.get('Origin')
+        referer = request.headers.get('Referer')
+        if origin and not _same_origin_url(origin):
+            return jsonify({'error': 'Cross-origin API request rejected'}), 403
+        if not origin and referer and not _same_origin_url(referer):
+            return jsonify({'error': 'Cross-origin API request rejected'}), 403
+
+        if request.content_length and request.mimetype != 'application/json':
+            return jsonify({'error': 'API mutations with a request body must use application/json'}), 415
+        return None
+
+    @app.after_request
+    def set_security_headers(response):
+        """Apply app-layer browser hardening headers (I-07/M-05)."""
+        response.headers.setdefault('X-Frame-Options', 'DENY')
+        response.headers.setdefault('X-Content-Type-Options', 'nosniff')
+        response.headers.setdefault('Referrer-Policy', 'same-origin')
+        response.headers.setdefault(
+            'Content-Security-Policy',
+            "default-src 'self'; "
+            "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://unpkg.com; "
+            "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
+            "font-src 'self' https://cdn.jsdelivr.net data:; "
+            "img-src 'self' data:; "
+            "connect-src 'self'; "
+            "frame-ancestors 'none'; object-src 'none'; base-uri 'self'; form-action 'self'"
+        )
+        return response
 
     # Register blueprints
     from app.api import api_bp
